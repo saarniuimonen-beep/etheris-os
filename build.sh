@@ -74,7 +74,9 @@ Server = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch
 EOF
     pacman-key --init
     pacman-key --populate archlinux
-    pacman -Sy --noconfirm --needed archiso arch-install-scripts
+    # Full upgrade first — partial -Sy against rolling Arch breaks openssl/soname deps.
+    pacman -Syu --noconfirm
+    pacman -S --noconfirm --needed archiso arch-install-scripts
     echo "archiso: $(pacman -Q archiso)"
     df -h /work /out /var/cache/pacman/pkg | sed "s/^/    /"
 
