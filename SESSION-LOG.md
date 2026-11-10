@@ -1,6 +1,6 @@
 # Etheris OS — Session log (continue here)
 
-**Last updated:** 2026-11-10T16:30+02:00
+**Last updated:** 2026-11-10T21:10+02:00
 **Version:** 0.1.0-alpha  
 **Host:** Fedora (builds via Podman; tests via `qemu:///session` only — no host package installs / no physical disks without approval)
 
@@ -9,6 +9,13 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 ---
 
 ## Status snapshot
+
+**Launch progress (2026-11-10 evening):**
+- Cursor repo: https://cursor.com/codebase/saarniuimonen/etheris-os (pushed)
+- ISO rebake **PASS**: `out/etheris-2026.11.10-x86_64.iso` · SHA256 `7a5ea54b9b11dc7aa2a981f9887d94c2cc7007707c834f6692556607ba7416f0`
+- Performance Manager verified in bake airootfs; VM booting new ISO
+- GitHub public/Pages/Release: **blocked on `gh auth login`** (device code in chat)
+
 
 
 **2026-11-10:** Rename Stage C **PASS** · CPU/GPU Performance Manager + GPU Manager in tree · official website scaffold started · **no public GitHub/visibility/domain changes**.
