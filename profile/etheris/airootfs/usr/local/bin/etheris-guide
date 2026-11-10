@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Etheris OS — short first-login guide (not OOBE).
+# Auto once on installed systems; reopen: etheris guide --force
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+FLAG="$CONF_DIR/guide-done"
+LEGACY_FLAG="$CONF_DIR/welcomed"
+FORCE=0
+RUN_UI=0
+
+is_live() {
+  [[ -d /run/archiso ]] || [[ -f /run/archiso/bootmnt ]]
+}
+
+mark_done() {
+  mkdir -p "$CONF_DIR"
+  touch "$FLAG"
+}
+
+already_done() {
+  [[ -f "$FLAG" ]] || [[ -f "$LEGACY_FLAG" ]]
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --force|-force|-f) FORCE=1 ;;
+    --ui) RUN_UI=1 ;;
+    --help|-h)
+      cat <<EOF
+Usage: etheris-guide [--force|-f]
+
+  Short first-login desktop guide (max 5 steps).
+  Auto-shows once on installed systems after first login.
+  Completion flag: $FLAG
+  Legacy tip flag also counts as done: $LEGACY_FLAG
+
+  Reopen: etheris guide --force
+EOF
+      exit 0
+      ;;
+  esac
+done
+
+run_ui() {
+  local step=1 total=5 key
+  while true; do
+    clear
+    echo
+    echo "  Etheris OS — Getting started  ($step / $total)"
+    echo "  ────────────────────────────────────"
+    echo
+    case "$step" in
+      1)
+        echo "  Welcome"
+        echo
+        echo "  Etheris is a lightweight Sway desktop on Arch."
+        echo "  Themes, wallpapers, and shortcuts are yours to change."
+        echo
+        echo "  This guide is separate from first-boot system setup."
+        ;;
+      2)
+        echo "  Navigation"
+        echo
+        echo "  • Super+D or Super+Space — Etheris launcher (Rofi)"
+        echo "  • Super+1..9 — workspaces"
+        echo "  • Alt+Tab — cycle windows on this workspace"
+        echo "  • Alt+F4 or Super+Q — close window"
+        echo "  • Super+H — hide to scratchpad (Super+Shift+H show)"
+        ;;
+      3)
+        echo "  Keyboard shortcuts"
+        echo
+        echo "  Important defaults:"
+        echo "    Super+Return   terminal"
+        echo "    Super+D        Etheris launcher"
+        echo "    Super+/        Shortcut Center (full list + search)"
+        echo "    Super+Shift+E  logout menu"
+        echo
+        echo "  Open the Shortcut Center anytime with Super+/."
+        ;;
+      4)
+        echo "  Customisation"
+        echo
+        echo "  • etheris themes / Etheris Wallpapers (etheris-wallpaper)"
+        echo "  • Or: Super+D → search Etheris"
+        echo "  • Sway config: ~/.config/sway/config"
+        echo "  • Sound startup: etheris sound"
+        ;;
+      5)
+        echo "  You are ready"
+        echo
+        echo "  Settings & apps: Super+D Etheris launcher, or run etheris"
+        echo "  Help: etheris guide --force  ·  etheris shortcuts"
+        echo "  Docs: /usr/local/share/etheris/docs/"
+        echo
+        echo "  Enjoy Etheris OS."
+        ;;
+    esac
+    echo
+    echo "  [n]ext  [b]ack  [s]kip  [f]inish"
+    echo -n "  › "
+    IFS= read -r -n 1 key || key=n
+    echo
+    case "$key" in
+      n|N|"")
+        if [[ "$step" -ge "$total" ]]; then
+          mark_done
+          exit 0
+        fi
+        step=$((step + 1))
+        ;;
+      b|B)
+        [[ "$step" -gt 1 ]] && step=$((step - 1))
+        ;;
+      s|S|f|F|q|Q|$'\e')
+        mark_done
+        exit 0
+        ;;
+    esac
+  done
+}
+
+if [[ "$RUN_UI" -eq 1 ]]; then
+  run_ui
+  exit 0
+fi
+
+if [[ "$FORCE" -eq 0 ]]; then
+  if is_live; then
+    exit 0
+  fi
+  if already_done; then
+    exit 0
+  fi
+fi
+
+if ! command -v foot >/dev/null 2>&1; then
+  # Fallback: run inline if already in a TTY
+  if [[ -t 0 ]]; then
+    run_ui
+  fi
+  exit 0
+fi
+
+foot -T "Etheris OS — Getting started" -a etheris-guide etheris-guide --ui || true

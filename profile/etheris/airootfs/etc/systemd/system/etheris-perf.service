@@ -1,0 +1,13 @@
+[Unit]
+Description=Etheris Performance Manager — apply saved profile
+After=multi-user.target etheris-cpu-setup.service
+Wants=etheris-cpu-setup.service
+ConditionPathExists=/usr/local/bin/etheris-perf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/etheris-perf apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

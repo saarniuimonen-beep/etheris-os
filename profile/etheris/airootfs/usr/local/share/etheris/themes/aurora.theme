@@ -1,0 +1,7 @@
+# Neo-Aero — Aurora (blue-green)
+NAME=aurora
+VARIANT=dark
+ACCENT=#2dd4bf
+WALLPAPER=/usr/local/share/etheris/wallpapers/aurora.png
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

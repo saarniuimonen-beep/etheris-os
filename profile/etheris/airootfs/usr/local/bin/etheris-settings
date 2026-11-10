@@ -1,0 +1,480 @@
+#!/usr/bin/env python3
+"""Etheris OS — Neo-Aero Settings (GTK4). Appearance / Shell / Motion / Links."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-settings: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+SHARE = Path(os.environ.get("ETHERIS_SHARE", "/usr/local/share/etheris"))
+THEMES = SHARE / "themes"
+WALLS = SHARE / "wallpapers"
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "etheris"
+SETTINGS = CONF / "settings.conf"
+
+
+def load_settings() -> dict[str, str]:
+    data = {
+        "theme": "ocean-glass",
+        "wallpaper": str(WALLS / "ocean-glass.png"),
+        "animations": "off",
+        "tray": "panel",
+        "widgets": "off",
+        "blur": "off",
+        "dnd": "off",
+        "panel_layout": "floating",
+        "launcher_style": "wide",
+        "timezone_auto": "on",
+        "performance_profile": "balanced",
+    }
+    if SETTINGS.is_file():
+        for line in SETTINGS.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip()
+    return data
+
+
+def save_setting(key: str, value: str) -> None:
+    CONF.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    found = False
+    if SETTINGS.is_file():
+        for line in SETTINGS.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    SETTINGS.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def run_bg(cmd: list[str]) -> None:
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def list_themes() -> list[str]:
+    if not THEMES.is_dir():
+        return ["ocean-glass"]
+    return sorted(p.stem for p in THEMES.glob("*.theme"))
+
+
+def list_wallpapers() -> list[str]:
+    if not WALLS.is_dir():
+        return []
+    files = sorted([*WALLS.glob("*.png"), *WALLS.glob("*.svg")], key=lambda p: p.name)
+    # Prefer png when both exist
+    names: dict[str, Path] = {}
+    for p in files:
+        stem = p.stem
+        if stem not in names or p.suffix == ".png":
+            names[stem] = p
+    return [str(names[k]) for k in sorted(names)]
+
+
+class SettingsApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.settings")
+        self.state = load_settings()
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Settings")
+        win.set_default_size(820, 520)
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window { background: #07111f; color: #e8f4fc; }
+            .nav {
+              background: alpha(#0d1b2e, 0.96);
+              border-right: 1px solid alpha(#38bdf8, 0.16);
+              min-width: 188px; padding: 16px 12px;
+            }
+            .nav button {
+              padding: 11px 14px; border-radius: 12px; margin: 3px 0;
+              background: transparent; color: #9db6cc; border: none; font-weight: 500;
+            }
+            .nav button:checked, .nav button:hover {
+              background: alpha(#38bdf8, 0.16); color: #e8f4fc;
+            }
+            .pane { padding: 22px 26px; }
+            .card {
+              background: alpha(#0f2136, 0.92);
+              border: 1px solid alpha(#38bdf8, 0.18);
+              border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;
+            }
+            label.heading { font-size: 16px; font-weight: 650; margin-bottom: 6px; }
+            label.caption { color: #9db6cc; font-size: 12px; }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        nav.add_css_class("nav")
+        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        stack.set_hexpand(True)
+
+        pages = [
+            ("appearance", "Appearance", self._page_appearance()),
+            ("shell", "Shell", self._page_shell()),
+            ("performance", "Performance", self._page_performance()),
+            ("defaults", "Defaults", self._page_defaults()),
+            ("motion", "Motion", self._page_motion()),
+            ("links", "More", self._page_links()),
+        ]
+        group: Gtk.ToggleButton | None = None
+        for name, label, widget in pages:
+            stack.add_named(widget, name)
+            btn = Gtk.ToggleButton(label=label)
+            if group is None:
+                group = btn
+                btn.set_active(True)
+            else:
+                btn.set_group(group)
+            btn.connect("toggled", self._on_nav, stack, name)
+            nav.append(btn)
+
+        root.append(nav)
+        root.append(stack)
+        win.set_child(root)
+        win.present()
+
+    def _on_nav(self, btn: Gtk.ToggleButton, stack: Gtk.Stack, name: str) -> None:
+        if btn.get_active():
+            stack.set_visible_child_name(name)
+
+    def _card(self, title: str, caption: str, child: Gtk.Widget) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.add_css_class("card")
+        t = Gtk.Label(label=title, xalign=0)
+        t.add_css_class("heading")
+        c = Gtk.Label(label=caption, xalign=0, wrap=True)
+        c.add_css_class("caption")
+        box.append(t)
+        box.append(c)
+        box.append(child)
+        return box
+
+    def _page_appearance(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+
+        theme_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        for name in list_themes():
+            b = Gtk.Button(label=name)
+            if name == self.state.get("theme"):
+                b.set_sensitive(False)
+            b.connect("clicked", self._apply_theme, name)
+            theme_box.append(b)
+        pane.append(self._card("Atmosphere / theme", "Applies Neo-Aero tokens to panel, menus, GTK, terminal.", theme_box))
+
+        wall_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        open_w = Gtk.Button(label="Open Etheris Wallpapers")
+        open_w.connect("clicked", lambda *_: run_bg(["etheris-wallpaper"]))
+        wall_box.append(open_w)
+        quick = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        for path in list_wallpapers()[:8]:
+            b = Gtk.Button(label=Path(path).stem)
+            b.connect("clicked", self._apply_wallpaper, path)
+            quick.append(b)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(120)
+        scroll.set_child(quick)
+        wall_box.append(scroll)
+        pane.append(
+            self._card(
+                "Wallpaper",
+                "Browse My Wallpapers, Pictures, and the Etheris library. Add your own JPG/PNG/WebP and more.",
+                wall_box,
+            )
+        )
+        return pane
+
+    def _page_shell(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+
+        layout = Gtk.DropDown.new_from_strings(["Top panel", "Bottom dock"])
+        layout_vals = ["floating", "dock"]
+        cur_layout = self.state.get("panel_layout", "floating")
+        if cur_layout in ("top", "panel"):
+            cur_layout = "floating"
+        elif cur_layout == "bottom":
+            cur_layout = "dock"
+        try:
+            layout.set_selected(layout_vals.index(cur_layout))
+        except ValueError:
+            layout.set_selected(0)
+        layout.connect("notify::selected", self._on_panel_layout)
+        pane.append(
+            self._card(
+                "Panel position",
+                "Top panel = Neo-Aero floating bar with window title and controls. Bottom dock = centered island with app pins (no title chrome).",
+                layout,
+            )
+        )
+
+        tray = Gtk.DropDown.new_from_strings(["panel", "off", "cc"])
+        opts = ["panel", "off", "cc"]
+        try:
+            tray.set_selected(opts.index(self.state.get("tray", "panel")))
+        except ValueError:
+            tray.set_selected(0)
+        tray.connect("notify::selected", self._on_tray)
+        pane.append(self._card("System tray", "panel = icons in Waybar · off = hidden · cc = Control Center only", tray))
+
+        widgets = Gtk.DropDown.new_from_strings(["off", "clock"])
+        wopts = ["off", "clock"]
+        try:
+            widgets.set_selected(wopts.index(self.state.get("widgets", "off")))
+        except ValueError:
+            widgets.set_selected(0)
+        widgets.connect("notify::selected", self._on_widgets)
+        pane.append(self._card("Desktop widgets", "Optional. Clock floats on the wallpaper (Sway sticky). Off by default.", widgets))
+
+        launcher = Gtk.DropDown.new_from_strings(["Wide (default)", "Slim"])
+        lvals = ["wide", "slim"]
+        cur_launch = (self.state.get("launcher_style") or "wide").lower()
+        if cur_launch in ("narrow", "thin", "compact"):
+            cur_launch = "slim"
+        try:
+            launcher.set_selected(lvals.index(cur_launch))
+        except ValueError:
+            launcher.set_selected(0)
+        launcher.connect("notify::selected", self._on_launcher_style)
+        pane.append(
+            self._card(
+                "Application launcher",
+                "Wide = roomy Kickoff (680px). Slim = compact strip (380px). Applies the next time you open Super+D / Super+Space.",
+                launcher,
+            )
+        )
+        return pane
+
+    def _page_performance(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+
+        labels = [
+            "Maximum Performance",
+            "Balanced",
+            "Quiet",
+            "Power Saving",
+        ]
+        vals = ["maximum", "balanced", "quiet", "powersave"]
+        cur = (self.state.get("performance_profile") or "balanced").lower()
+        try:
+            out = subprocess.run(
+                ["etheris-perf", "get"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=3,
+            )
+            if out.stdout.strip():
+                cur = out.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        drop = Gtk.DropDown.new_from_strings(labels)
+        try:
+            drop.set_selected(vals.index(cur if cur in vals else "balanced"))
+        except ValueError:
+            drop.set_selected(1)
+        drop.connect("notify::selected", self._on_performance_profile)
+        pane.append(
+            self._card(
+                "Performance profile",
+                "Applies supported CPU/GPU power settings without overclocking or undervolting. "
+                "Also available in Quick Settings (Super+A).",
+                drop,
+            )
+        )
+
+        btns = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        for label, argv in [
+            ("Open Performance Manager", ["etheris-performance"]),
+            ("Open GPU Manager", ["etheris-gpu-manager"]),
+            ("Hardware report", ["foot", "-e", "sh", "-c", "etheris-hw; echo; read -r _"]),
+        ]:
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _b, a=argv: run_bg(a))
+            btns.append(b)
+        pane.append(self._card("Managers", "Detailed metrics, GPU detection, and driver helpers.", btns))
+        return pane
+
+    def _page_defaults(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        open_b = Gtk.Button(label="Open Etheris Defaults")
+        open_b.connect("clicked", lambda *_: run_bg(["etheris-defaults"]))
+        box.append(open_b)
+        note = Gtk.Label(
+            label="Browser (Super+B) · Terminal (Super+Return) · AI Agent (Super+I). Install extras on demand — Firefox and foot ship on the ISO.",
+            xalign=0,
+            wrap=True,
+        )
+        note.add_css_class("caption")
+        box.append(note)
+        pane.append(
+            self._card(
+                "Default apps",
+                "Choose defaults and install Chromium, Vivaldi, Chrome, Edge, Zen, Kitty, Ollama, ChatGPT, and more.",
+                box,
+            )
+        )
+
+        tz_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        open_tz = Gtk.Button(label="Open timezone globe")
+        open_tz.connect("clicked", lambda *_: run_bg(["etheris-timezone", "--force"]))
+        tz_box.append(open_tz)
+        auto = Gtk.DropDown.new_from_strings(["Auto when traveling (on)", "Manual only (off)"])
+        auto_vals = ["on", "off"]
+        cur_auto = (self.state.get("timezone_auto") or "on").lower()
+        if cur_auto in ("0", "false", "no"):
+            cur_auto = "off"
+        try:
+            auto.set_selected(auto_vals.index(cur_auto if cur_auto in auto_vals else "on"))
+        except ValueError:
+            auto.set_selected(0)
+        auto.connect("notify::selected", self._on_timezone_auto)
+        tz_box.append(auto)
+        pane.append(
+            self._card(
+                "Timezone / travel",
+                "Pick a city on the 3D globe. When auto-travel is on, Etheris updates the clock if your network location moves to another country.",
+                tz_box,
+            )
+        )
+        return pane
+
+    def _page_motion(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+        anim = Gtk.DropDown.new_from_strings(["off", "on", "reduced"])
+        aopts = ["off", "on", "reduced"]
+        cur = self.state.get("animations", "off")
+        try:
+            anim.set_selected(aopts.index(cur))
+        except ValueError:
+            anim.set_selected(0)
+        anim.connect("notify::selected", self._on_anim)
+        pane.append(
+            self._card(
+                "Window motion",
+                "Lightweight opacity ramps via sway IPC (WP-S4). Off by default for snappy feel. Full glass/refraction effects require a compositor that supports them — Sway stays the fallback.",
+                anim,
+            )
+        )
+        return pane
+
+    def _page_links(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        for label, argv in [
+            ("Etheris Defaults", ["etheris-defaults"]),
+            ("Performance Manager", ["etheris-performance"]),
+            ("GPU Manager", ["etheris-gpu-manager"]),
+            ("Timezone / Region (3D globe)", ["etheris-timezone", "--force"]),
+            ("Timezone auto-travel: on", ["etheris-timezone-auto", "--enable"]),
+            ("Timezone auto-travel: off", ["etheris-timezone-auto", "--disable"]),
+            ("Etheris Wallpapers", ["etheris-wallpaper"]),
+            ("Etheris Transfers", ["etheris-transfer"]),
+            ("Shortcut Center", ["etheris-shortcuts"]),
+            ("Sound settings", ["etheris-sound", "status"]),
+            ("Control Center", ["etheris-overlay", "control-center"]),
+            ("Workspace overview", ["etheris-workspace-overview"]),
+            ("Power menu", ["etheris-overlay", "power"]),
+        ]:
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _b, a=argv: run_bg(a))
+            box.append(b)
+        pane.append(self._card("Open", "Jump to other Etheris surfaces.", box))
+        about = Gtk.Label(
+            label="Etheris OS · Neo-Aero Path A (Sway + Waybar)\nQuickshell remains optional after RSS gates.",
+            xalign=0,
+        )
+        about.add_css_class("caption")
+        pane.append(about)
+        return pane
+
+    def _apply_theme(self, _btn: Gtk.Button, name: str) -> None:
+        save_setting("theme", name)
+        run_bg(["etheris", "theme", name])
+        self.state["theme"] = name
+
+    def _apply_wallpaper(self, _btn: Gtk.Button, path: str) -> None:
+        save_setting("wallpaper", path)
+        run_bg(["etheris", "wallpaper", path])
+        self.state["wallpaper"] = path
+
+    def _on_panel_layout(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["floating", "dock"][dropdown.get_selected()]
+        save_setting("panel_layout", val)
+        self.state["panel_layout"] = val
+        run_bg(["etheris-shell-layout", "panel", val])
+
+    def _on_tray(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["panel", "off", "cc"][dropdown.get_selected()]
+        save_setting("tray", val)
+        run_bg(["etheris-shell-layout", "tray", val])
+
+    def _on_widgets(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["off", "clock"][dropdown.get_selected()]
+        save_setting("widgets", val)
+        run_bg(["etheris-widgets", "apply"])
+
+    def _on_launcher_style(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["wide", "slim"][dropdown.get_selected()]
+        save_setting("launcher_style", val)
+        self.state["launcher_style"] = val
+
+    def _on_timezone_auto(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["on", "off"][dropdown.get_selected()]
+        save_setting("timezone_auto", val)
+        self.state["timezone_auto"] = val
+        run_bg(["etheris-timezone-auto", "--enable" if val == "on" else "--disable"])
+
+    def _on_anim(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["off", "on", "reduced"][dropdown.get_selected()]
+        save_setting("animations", val)
+        # Restart motion helper if enabling
+        if val == "on":
+            run_bg(["sh", "-c", "pkill -f etheris-motion; etheris-motion &"])
+        else:
+            run_bg(["pkill", "-f", "etheris-motion"])
+
+    def _on_performance_profile(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        val = ["maximum", "balanced", "quiet", "powersave"][dropdown.get_selected()]
+        save_setting("performance_profile", val)
+        self.state["performance_profile"] = val
+        run_bg(["etheris-perf", "set", val])
+
+
+def main() -> int:
+    return SettingsApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

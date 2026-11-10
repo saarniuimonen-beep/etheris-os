@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Back-compat shim → Etheris Defaults (browser section).
+set -euo pipefail
+
+case "${1:-}" in
+  ""|ui|gui|manage)
+    exec etheris-defaults browser
+    ;;
+  list|ls)
+    exec etheris-defaults list browser
+    ;;
+  install)
+    shift
+    exec etheris-defaults install "${1:?id}"
+    ;;
+  default|set-default)
+    shift
+    exec etheris-defaults default browser "${1:?id}"
+    ;;
+  open|launch)
+    shift
+    if [[ -n "${1:-}" ]]; then
+      exec etheris-defaults open browser "$@"
+    fi
+    exec etheris-defaults open browser
+    ;;
+  ids)
+    exec etheris-defaults ids browser
+    ;;
+  -h|--help|help)
+    exec etheris-defaults --help
+    ;;
+  *)
+    exec etheris-defaults open browser "$@"
+    ;;
+esac

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=Timezone / Region
+GenericName=Timezone
+Comment=Pick your city on a 3D globe and set the system timezone
+Exec=etheris-timezone --force
+Icon=preferences-system-time
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;
+Keywords=timezone;region;city;globe;clock;time;
+StartupNotify=true

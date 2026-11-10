@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Cycle focus among toplevel windows on the focused workspace (Alt+Tab helper).
+# Usage: etheris-focus-cycle next|prev
+set -euo pipefail
+
+dir="${1:-next}"
+[[ "$dir" == "next" || "$dir" == "prev" ]] || dir=next
+
+if ! command -v jq >/dev/null 2>&1; then
+  if [[ "$dir" == "prev" ]]; then
+    exec swaymsg focus prev
+  else
+    exec swaymsg focus next
+  fi
+fi
+
+tree="$(swaymsg -t get_tree)"
+
+# Window IDs (app containers with a PID) on the workspace that contains the focused node
+mapfile -t ARR < <(printf '%s' "$tree" | jq -r '
+  def focused_ws:
+    first(
+      .. | objects | select(.type? == "workspace")
+      | select(any(..; objects | select(.focused? == true)))
+    );
+  focused_ws as $ws
+  | [$ws | .. | objects
+      | select(
+          (.pid? != null)
+          and (.name? != null)
+          and (.type == "con" or .type == "floating_con")
+        )
+      | .id]
+  | unique
+  | .[]
+')
+
+n=${#ARR[@]}
+(( n > 1 )) || exit 0
+
+focused="$(printf '%s' "$tree" | jq -r '
+  first(.. | objects | select(.focused? == true and .pid? != null) | .id)
+')"
+
+idx=0
+for i in "${!ARR[@]}"; do
+  if [[ "${ARR[$i]}" == "$focused" ]]; then
+    idx=$i
+    break
+  fi
+done
+
+if [[ "$dir" == "prev" ]]; then
+  idx=$(( (idx - 1 + n) % n ))
+else
+  idx=$(( (idx + 1) % n ))
+fi
+
+swaymsg "[con_id=${ARR[$idx]}]" focus >/dev/null

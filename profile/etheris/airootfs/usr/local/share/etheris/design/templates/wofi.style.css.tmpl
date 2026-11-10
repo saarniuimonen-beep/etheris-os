@@ -1,0 +1,36 @@
+window {
+  margin: 0;
+  border: 1px solid @BORDER_RGBA@;
+  border-radius: @RADIUS_MENU@px;
+  background-color: @BG_MENU_RGBA@;
+  font-family: "@FONT_UI@", "JetBrainsMono Nerd Font", sans-serif;
+  font-size: 13px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+#input {
+  margin: 14px 14px 8px 14px;
+  border: 1px solid @BORDER_RGBA@;
+  border-radius: @RADIUS_CONTROL@px;
+  color: @FG@;
+  background-color: @BG_INPUT_RGBA@;
+  padding: 10px 12px;
+}
+
+#inner-box {
+  margin: 6px 10px 12px 10px;
+  background-color: transparent;
+}
+
+#entry {
+  padding: 9px 12px;
+  border-radius: @RADIUS_CONTROL@px;
+  color: @FG_MUTED@;
+  margin: 2px 0;
+}
+
+#entry:selected {
+  background-color: @ACCENT_SOFT_RGBA@;
+  color: @FG@;
+  border: 1px solid @ACCENT@;
+}

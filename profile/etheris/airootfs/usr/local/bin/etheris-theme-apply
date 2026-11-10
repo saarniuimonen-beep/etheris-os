@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# Etheris OS — apply Neo-Aero design tokens to Sway shell surfaces (no restart).
+# Stage 1: loads tokens-*.conf generated from design/etheris.tokens.json.
+set -euo pipefail
+
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}"
+DESIGN="$SHARE/design"
+THEMES="$SHARE/themes"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+
+mkdir -p "$CONF_DIR" "$CFG/waybar" "$CFG/wofi" "$CFG/rofi" "$CFG/mako" "$CFG/foot" \
+  "$CFG/sway/config.d" "$CFG/gtk-3.0" "$CFG/gtk-4.0" \
+  "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes"
+
+# Ensure confs exist when JSON is present (first boot / incomplete image).
+if [[ -f "$DESIGN/etheris.tokens.json" ]] && [[ -x /usr/local/bin/etheris-tokens-generate ]]; then
+  if [[ ! -f "$DESIGN/tokens-dark.conf" || ! -f "$DESIGN/tokens-light.conf" ]]; then
+    ETHERIS_SHARE="$SHARE" etheris-tokens-generate --design-dir "$DESIGN" || true
+  fi
+fi
+
+get_setting() {
+  local key="$1" def="${2:-}"
+  [[ -f "$SETTINGS" ]] || { echo "$def"; return; }
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  [[ -n "$v" ]] && echo "$v" || echo "$def"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  [[ -f "$SETTINGS" ]] || cat >"$SETTINGS" <<'EOF'
+theme=ocean-glass
+wallpaper=/usr/local/share/etheris/wallpapers/ocean-glass.png
+accent=#38bdf8
+blur=off
+animations=off
+panel_layout=floating
+shell=waybar
+EOF
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+# Load KEY=VAL file into shell vars (safe keys)
+load_kv() {
+  local file="$1" line key val
+  [[ -f "$file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"
+    printf -v "$key" '%s' "$val"
+  done <"$file"
+}
+
+subst_template() {
+  local tmpl="$1" out="$2"
+  local data
+  data="$(cat "$tmpl")"
+  # Replace @TOKEN@ placeholders
+  local k v
+  for k in VARIANT BG BG_ELEVATED BG_DEEP BG_PANEL_RGBA BG_MENU_RGBA BG_INPUT_RGBA \
+           FG FG_MUTED FG_SUBTLE ACCENT ACCENT_2 ACCENT_SOFT_RGBA BORDER_RGBA \
+           SUCCESS WARNING DANGER FOCUS HIGHLIGHT GTK_THEME ICON_THEME \
+           FONT_UI FONT_MONO \
+           SWAY_FOCUSED_BORDER SWAY_FOCUSED_BG SWAY_FOCUSED_TEXT SWAY_FOCUSED_INDICATOR \
+           SWAY_INACTIVE_BORDER SWAY_INACTIVE_BG SWAY_INACTIVE_TEXT SWAYLOCK_COLOR \
+           FOOT_FG FOOT_BG FOOT_ALPHA RADIUS_PANEL RADIUS_MENU RADIUS_CONTROL; do
+    v="${!k-}"
+    data="${data//@${k}@/${v}}"
+  done
+  printf '%s\n' "$data" >"$out"
+}
+
+theme_name="$(get_setting theme ocean-glass)"
+tfile="$THEMES/${theme_name}.theme"
+VARIANT=dark
+ACCENT=""
+WALLPAPER=""
+GTK_THEME=""
+ICON_THEME=""
+NAME="$theme_name"
+
+# Fast path: skip rewrite + sway reload when already applied this session
+_stamp_dir="${XDG_RUNTIME_DIR:-/tmp}/etheris"
+mkdir -p "$_stamp_dir"
+_stamp_file="$_stamp_dir/theme.apply.stamp"
+_want_key="${theme_name}:$(get_setting accent):$(get_setting animations off):$(get_setting panel_layout floating)"
+if [[ "${ETHERIS_THEME_FORCE:-0}" != 1 && -f "$_stamp_file" && -f "$CFG/waybar/style.css" ]]; then
+  if [[ "$(cat "$_stamp_file" 2>/dev/null || true)" == "$_want_key" ]]; then
+    echo "etheris-theme-apply: skip (already applied this session)"
+    exit 0
+  fi
+fi
+
+if [[ -f "$tfile" ]]; then
+  # shellcheck disable=SC1090
+  source "$tfile"
+fi
+
+tokens="$DESIGN/tokens-${VARIANT}.conf"
+[[ -f "$tokens" ]] || tokens="$DESIGN/tokens-dark.conf"
+load_kv "$tokens"
+
+# Defaults for new Stage 1 keys when loading older confs
+FONT_UI="${FONT_UI:-Outfit}"
+FONT_MONO="${FONT_MONO:-JetBrains Mono}"
+FG_SUBTLE="${FG_SUBTLE:-$FG_MUTED}"
+BG_DEEP="${BG_DEEP:-$BG}"
+HIGHLIGHT="${HIGHLIGHT:-rgba(255,255,255,0.12)}"
+
+# Theme pack overrides accent / gtk / icon / wallpaper (tokens already loaded)
+if [[ -f "$tfile" ]]; then
+  # shellcheck disable=SC1090
+  source "$tfile"
+fi
+ACCENT="${ACCENT:-#38bdf8}"
+GTK_THEME="${GTK_THEME:-Adwaita-dark}"
+ICON_THEME="${ICON_THEME:-Papirus-Dark}"
+# Keep focused chrome in sync with pack accent
+SWAY_FOCUSED_BORDER="$ACCENT"
+SWAY_FOCUSED_INDICATOR="${ACCENT_2:-$ACCENT}"
+FOCUS="$ACCENT"
+
+set_setting accent "${ACCENT}"
+[[ -n "${WALLPAPER:-}" ]] && set_setting wallpaper "$WALLPAPER"
+set_setting theme_variant "${VARIANT}"
+
+subst_template "$DESIGN/templates/waybar.style.css.tmpl" "$CFG/waybar/style.css"
+subst_template "$DESIGN/templates/wofi.style.css.tmpl" "$CFG/wofi/style.css"
+if [[ -f "$DESIGN/templates/rofi.etheris.rasi.tmpl" ]]; then
+  subst_template "$DESIGN/templates/rofi.etheris.rasi.tmpl" "$CFG/rofi/etheris.rasi"
+  ln -sfn "$CFG/rofi/etheris.rasi" \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes/etheris.rasi" 2>/dev/null || true
+fi
+if [[ -f "$DESIGN/templates/rofi.etheris-slim.rasi.tmpl" ]]; then
+  subst_template "$DESIGN/templates/rofi.etheris-slim.rasi.tmpl" "$CFG/rofi/etheris-slim.rasi"
+  ln -sfn "$CFG/rofi/etheris-slim.rasi" \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes/etheris-slim.rasi" 2>/dev/null || true
+fi
+subst_template "$DESIGN/templates/mako.config.tmpl" "$CFG/mako/config"
+# Keep Rofi Kickoff icon theme in sync with Atmosphere (Papirus / Papirus-Dark)
+if [[ -f "$CFG/rofi/config.rasi" ]]; then
+  sed -i "s|icon-theme: \".*\";|icon-theme: \"${ICON_THEME}\";|" "$CFG/rofi/config.rasi" 2>/dev/null || true
+fi
+# GTK CSD theming (apps that draw their own headerbars)
+if [[ -f "$DESIGN/templates/gtk.css.tmpl" ]]; then
+  subst_template "$DESIGN/templates/gtk.css.tmpl" "$CFG/gtk-3.0/gtk.css"
+  subst_template "$DESIGN/templates/gtk.css.tmpl" "$CFG/gtk-4.0/gtk.css"
+fi
+
+# foot
+cat >"$CFG/foot/foot.ini" <<EOF
+# Generated by etheris-theme-apply — Neo-Aero ${VARIANT}
+[main]
+font=JetBrainsMono Nerd Font:size=11
+pad=10x10
+dpi-aware=yes
+shell=/usr/bin/bash
+initial-color-theme=${VARIANT}
+
+[colors-dark]
+alpha=${FOOT_ALPHA}
+foreground=${FOOT_FG}
+background=${FOOT_BG}
+regular0=1a1f33
+regular1=${DANGER#\#}
+regular2=${SUCCESS#\#}
+regular3=${WARNING#\#}
+regular4=93c5fd
+regular5=c4b5fd
+regular6=${ACCENT_2#\#}
+regular7=${FOOT_FG}
+bright0=334155
+bright1=fda4af
+bright2=bbf7d0
+bright3=fef3c7
+bright4=bfdbfe
+bright5=ddd6fe
+bright6=a5f3fc
+bright7=ffffff
+cursor=${FOOT_BG} ${ACCENT#\#}
+
+[colors-light]
+alpha=${FOOT_ALPHA}
+foreground=${FOOT_FG}
+background=${FOOT_BG}
+regular0=cbd5e1
+regular1=${DANGER#\#}
+regular2=${SUCCESS#\#}
+regular3=${WARNING#\#}
+regular4=0284c7
+regular5=7c3aed
+regular6=${ACCENT_2#\#}
+regular7=${FOOT_FG}
+bright0=94a3b8
+bright1=e11d48
+bright2=16a34a
+bright3=d97706
+bright4=0ea5e9
+bright5=8b5cf6
+bright6=14b8a6
+bright7=0c2740
+cursor=${FOOT_BG} ${ACCENT#\#}
+EOF
+
+# Sway client colors (included from config)
+cat >"$CFG/sway/config.d/20-etheris-colors" <<EOF
+# Generated by etheris-theme-apply — do not edit (re-apply via etheris theme)
+client.focused          ${SWAY_FOCUSED_BORDER} ${SWAY_FOCUSED_BG} ${SWAY_FOCUSED_TEXT} ${SWAY_FOCUSED_INDICATOR} ${SWAY_FOCUSED_BORDER}
+client.focused_inactive ${SWAY_INACTIVE_BORDER} ${SWAY_INACTIVE_BG} ${SWAY_INACTIVE_TEXT} ${SWAY_INACTIVE_BG} ${SWAY_INACTIVE_BORDER}
+client.unfocused        ${SWAY_INACTIVE_BORDER} ${BG} ${FG_MUTED} ${BG} ${SWAY_INACTIVE_BORDER}
+client.urgent           ${DANGER} ${BG} ${FG} ${DANGER} ${DANGER}
+EOF
+
+# GTK (Neo-Aero chrome + Etheris Files / PCManFM)
+FONT_UI="${FONT_UI:-Outfit}"
+for g in gtk-3.0 gtk-4.0; do
+  cat >"$CFG/$g/settings.ini" <<EOF
+[Settings]
+gtk-theme-name=${GTK_THEME}
+gtk-icon-theme-name=${ICON_THEME}
+gtk-font-name=${FONT_UI} 11
+gtk-cursor-theme-name=Adwaita
+gtk-application-prefer-dark-theme=$([[ "$VARIANT" == dark ]] && echo 1 || echo 0)
+gtk-decoration-layout=icon:minimize,maximize,close
+gtk-enable-animations=1
+gtk-primary-button-warps-slider=1
+EOF
+done
+# Ensure PCManFM / libfm Neo-Aero defaults exist (do not overwrite user tweaks)
+if [[ ! -f "$CFG/pcmanfm/default/pcmanfm.conf" && -f /etc/skel/.config/pcmanfm/default/pcmanfm.conf ]]; then
+  mkdir -p "$CFG/pcmanfm/default"
+  cp /etc/skel/.config/pcmanfm/default/pcmanfm.conf "$CFG/pcmanfm/default/pcmanfm.conf"
+fi
+if [[ ! -f "$CFG/libfm/libfm.conf" && -f /etc/skel/.config/libfm/libfm.conf ]]; then
+  mkdir -p "$CFG/libfm"
+  cp /etc/skel/.config/libfm/libfm.conf "$CFG/libfm/libfm.conf"
+fi
+
+# Soft reload
+pkill -USR2 waybar 2>/dev/null || true
+pkill -x mako 2>/dev/null || true
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+  mako >/dev/null 2>&1 &
+  if command -v swaymsg >/dev/null 2>&1; then
+    swaymsg reload >/dev/null 2>&1 || true
+  fi
+fi
+
+# Tray / layout preferences (Path A)
+if [[ -x /usr/local/bin/etheris-shell-layout ]]; then
+  etheris-shell-layout apply >/dev/null 2>&1 || true
+fi
+
+printf '%s\n' "$_want_key" >"$_stamp_file"
+echo "etheris-theme-apply: theme=${theme_name} variant=${VARIANT} accent=${ACCENT}"

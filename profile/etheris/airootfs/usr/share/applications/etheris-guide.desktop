@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=First-Login Guide
+Comment=Short Etheris OS getting-started guide
+Exec=etheris-guide --force
+Icon=help-about
+Terminal=false
+Categories=Settings;Documentation;
+Keywords=etheris;guide;help;welcome;getting started;

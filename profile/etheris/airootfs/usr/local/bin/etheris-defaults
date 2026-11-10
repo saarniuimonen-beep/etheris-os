@@ -1,0 +1,405 @@
+#!/usr/bin/env bash
+# Etheris Defaults — browser / terminal / AI agent catalog + defaults.
+set -euo pipefail
+
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}"
+CATALOG="$SHARE/defaults/catalog.json"
+# Prefer unified catalog; fall back to browsers-only for older trees.
+[[ -f "$CATALOG" ]] || CATALOG="$SHARE/browsers/catalog.json"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+
+usage() {
+  cat <<'EOF'
+Etheris Defaults
+
+  etheris-defaults                 Open the Defaults manager (GTK)
+  etheris-defaults list [kind]     browser | terminal | agent | all
+  etheris-defaults install ID
+  etheris-defaults default KIND ID
+  etheris-defaults open KIND [ID]
+  etheris-defaults get KIND
+
+Kinds: browser · terminal · agent
+EOF
+}
+
+need_catalog() { [[ -f "$CATALOG" ]] || { echo "missing $CATALOG" >&2; exit 1; }; }
+
+py() {
+  python3 - "$CATALOG" "$@" <<'PY'
+import json, sys
+cat = json.load(open(sys.argv[1], encoding="utf-8"))
+items = cat.get("items") or cat.get("browsers") or []
+cats = {c["id"]: c for c in (cat.get("categories") or [])}
+args = sys.argv[2:]
+cmd = args[0] if args else ""
+
+def find(iid):
+    for it in items:
+        if it.get("id") == iid:
+            return it
+    return None
+
+if cmd == "field":
+    it = find(args[1]); field = args[2]
+    if not it: sys.exit(1)
+    v = it.get(field, "")
+    if isinstance(v, list):
+        # launch argv or packages
+        if field == "launch":
+            import shlex
+            print("\0".join(str(x) for x in v))
+        else:
+            print(" ".join(str(x) for x in v))
+    else:
+        print(v if v is not None else "")
+elif cmd == "category":
+    it = find(args[1])
+    sys.exit(0 if it and print(it.get("category", "browser")) is None else 1)
+elif cmd == "ids":
+    kind = args[1] if len(args) > 1 else "all"
+    for it in items:
+        if kind != "all" and it.get("category", "browser") != kind:
+            continue
+        print(it["id"])
+elif cmd == "setting-key":
+    kind = args[1]
+    c = cats.get(kind) or {}
+    print(c.get("setting") or f"default_{kind}")
+elif cmd == "fallback":
+    kind = args[1]
+    c = cats.get(kind) or {}
+    print(c.get("fallback") or "")
+elif cmd == "list-json":
+    print(json.dumps(items))
+else:
+    sys.exit(2)
+PY
+}
+
+item_field() { py field "$1" "$2"; }
+
+get_setting() {
+  local key="$1" fallback="$2" val
+  val="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  printf '%s\n' "${val:-$fallback}"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  mkdir -p "$CONF_DIR"
+  if [[ -f "$SETTINGS" ]] && grep -qE "^${key}=" "$SETTINGS"; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+kind_setting() { py setting-key "$1"; }
+kind_fallback() { py fallback "$1"; }
+
+get_default() {
+  local kind="$1"
+  get_setting "$(kind_setting "$kind")" "$(kind_fallback "$kind")"
+}
+
+is_ready() {
+  local id="$1" src bin
+  src="$(item_field "$id" source)" || return 1
+  case "$src" in
+    web) return 0 ;;
+    *)
+      bin="$(item_field "$id" bin)"
+      [[ -n "$bin" ]] && command -v "$bin" >/dev/null 2>&1
+      ;;
+  esac
+}
+
+cmd_list() {
+  need_catalog
+  local kind="${1:-all}"
+  python3 - "$CATALOG" "$SETTINGS" "$kind" <<'PY'
+import json, shutil, sys
+from pathlib import Path
+cat = json.load(open(sys.argv[1], encoding="utf-8"))
+items = cat.get("items") or cat.get("browsers") or []
+cats = {c["id"]: c for c in (cat.get("categories") or [])}
+settings = {}
+p = Path(sys.argv[2])
+if p.is_file():
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.strip().startswith("#"):
+            k,v = line.split("=",1); settings[k.strip()] = v.strip()
+kind = sys.argv[3]
+print(f"{'ID':14} {'KIND':9} {'STATE':10} {'SRC':5}  NAME")
+for it in items:
+    c = it.get("category", "browser")
+    if kind != "all" and c != kind: continue
+    meta = cats.get(c) or {}
+    key = meta.get("setting") or f"default_{c}"
+    default = settings.get(key) or meta.get("fallback") or ""
+    src = it.get("source", "?")
+    if src == "web":
+        state = "ready"
+    else:
+        state = "installed" if shutil.which(it.get("bin") or "") else "available"
+    if it.get("shipped") and state == "installed":
+        state = "shipped"
+    mark = "*" if it["id"] == default else " "
+    print(f"{mark}{it['id']:13} {c:9} {state:10} {src:5}  {it.get('name')}")
+PY
+}
+
+# GUI installs cannot prompt on a TTY. Prefer pkexec (polkit grants wheel YES),
+# then passwordless sudo, then an interactive terminal.
+run_pacman() {
+  local args=("$@")
+  if command -v pkexec >/dev/null 2>&1; then
+    if pkexec pacman "${args[@]}"; then
+      return 0
+    fi
+    echo "pkexec pacman failed; trying sudo…" >&2
+  fi
+  if sudo -n true 2>/dev/null; then
+    sudo -n pacman "${args[@]}"
+    return $?
+  fi
+  # Last resort: visible terminal so the user can enter their password.
+  local term=() q
+  q="$(printf '%q ' pacman "${args[@]}")"
+  if command -v foot >/dev/null 2>&1; then
+    term=(foot -a etheris-pkg -e)
+  elif command -v xdg-terminal-exec >/dev/null 2>&1; then
+    term=(xdg-terminal-exec)
+  elif command -v kitty >/dev/null 2>&1; then
+    term=(kitty)
+  else
+    echo "Cannot elevate privileges: install pkexec/polkit or run from a terminal:" >&2
+    echo "  sudo pacman ${args[*]}" >&2
+    return 1
+  fi
+  local script
+  script="$(mktemp /tmp/etheris-pacman.XXXXXX.sh)"
+  cat >"$script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+echo "==> sudo ${q}"
+eval "sudo ${q}"
+ec=\$?
+echo
+if [[ \$ec -eq 0 ]]; then echo "OK — you can close this window."; else echo "FAILED (\$ec)"; fi
+read -r -p "Press Enter to close…" _
+exit \$ec
+EOF
+  chmod 700 "$script"
+  "${term[@]}" bash "$script"
+  local ec=$?
+  rm -f "$script"
+  return "$ec"
+}
+
+ensure_build_deps() {
+  if ! command -v makepkg >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+    run_pacman -S --needed --noconfirm base-devel git
+  fi
+}
+
+cmd_install() {
+  local id="${1:?id}" src pkgs pkg work
+  need_catalog
+  src="$(item_field "$id" source)" || { echo "unknown id: $id" >&2; exit 1; }
+  case "$src" in
+    web)
+      echo "nothing to install (web app): $id"
+      return 0
+      ;;
+    repo)
+      if is_ready "$id"; then echo "already installed: $id"; return 0; fi
+      pkgs="$(item_field "$id" packages)"
+      [[ -n "$pkgs" ]] || { echo "no packages listed for $id" >&2; return 1; }
+      echo "==> pacman -S --needed $pkgs"
+      # shellcheck disable=SC2086
+      run_pacman -S --needed --noconfirm $pkgs
+      ;;
+    aur)
+      if is_ready "$id"; then echo "already installed: $id"; return 0; fi
+      pkg="$(item_field "$id" packages | awk '{print $1}')"
+      [[ -n "$pkg" ]] || { echo "no AUR package for $id" >&2; return 1; }
+      # UI sets ETHERIS_AUR_LAG_DAYS=0 so installs are not blocked by lag policy.
+      if [[ -x /usr/local/bin/etheris-aur ]]; then
+        etheris-aur check "$pkg" || {
+          echo "AUR lag policy blocked $pkg. Retry with: ETHERIS_AUR_LAG_DAYS=0 etheris-defaults install $id" >&2
+          return 1
+        }
+      fi
+      ensure_build_deps
+      work="$(mktemp -d /tmp/etheris-defaults-build.XXXXXX)"
+      # shellcheck disable=SC2064
+      trap 'rm -rf "$work"' RETURN
+      git clone --depth=1 "https://aur.archlinux.org/${pkg}.git" "$work/$pkg"
+      # makepkg -si needs sudo for install; use a terminal when we cannot elevate quietly.
+      if sudo -n true 2>/dev/null || command -v pkexec >/dev/null 2>&1; then
+        ( cd "$work/$pkg" && makepkg -s --noconfirm --needed )
+        local built
+        built="$(find "$work/$pkg" -maxdepth 1 -name '*.pkg.tar.*' ! -name '*.sig' | head -n1)"
+        [[ -n "$built" ]] || { echo "makepkg produced no package" >&2; return 1; }
+        if command -v pkexec >/dev/null 2>&1; then
+          pkexec pacman -U --noconfirm --needed "$built"
+        else
+          sudo -n pacman -U --noconfirm --needed "$built"
+        fi
+      else
+        local script term=()
+        script="$(mktemp /tmp/etheris-aur.XXXXXX.sh)"
+        cat >"$script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd $(printf '%q' "$work/$pkg")
+makepkg -si --noconfirm --needed
+echo
+read -r -p "Press Enter to close…" _
+EOF
+        chmod 700 "$script"
+        if command -v foot >/dev/null 2>&1; then
+          foot -a etheris-aur -e bash "$script"
+        else
+          bash "$script"
+        fi
+        rm -f "$script"
+      fi
+      ;;
+    *) echo "unsupported source: $src" >&2; exit 1 ;;
+  esac
+  if is_ready "$id"; then
+    echo "installed: $id"
+    return 0
+  fi
+  echo "install finished but '$id' is not on PATH yet (bin=$(item_field "$id" bin))" >&2
+  return 1
+}
+
+cmd_default() {
+  local kind="${1:?kind}" id="${2:?id}" cat desk
+  need_catalog
+  cat="$(item_field "$id" category)" || { echo "unknown id: $id" >&2; exit 1; }
+  [[ "$cat" == "$kind" ]] || { echo "$id is a $cat, not $kind" >&2; exit 1; }
+  set_setting "$(kind_setting "$kind")" "$id"
+  if [[ "$kind" == "browser" ]]; then
+    desk="$(item_field "$id" desktop)"
+    if [[ -n "$desk" ]] && command -v xdg-settings >/dev/null 2>&1; then
+      xdg-settings set default-web-browser "${desk}.desktop" 2>/dev/null || true
+    fi
+  fi
+  if [[ "$kind" == "terminal" ]]; then
+    # Keep PCManFM / libfm terminal in sync when possible
+    local lf="${XDG_CONFIG_HOME:-$HOME/.config}/libfm/libfm.conf"
+    if [[ -f "$lf" ]]; then
+      desk="$(item_field "$id" desktop)"
+      [[ -n "$desk" ]] && sed -i "s|^std_app_terminal=.*|std_app_terminal=${desk}.desktop|" "$lf" 2>/dev/null || true
+    fi
+  fi
+  echo "$(kind_setting "$kind")=$id"
+}
+
+open_browser_id() {
+  local id="$1"; shift || true
+  if [[ "$id" == "firefox" && -x /usr/local/bin/etheris-browser ]]; then
+    # Avoid recursion: etheris-browser may call defaults for non-firefox.
+    # Call firefox warm path by temporarily forcing? Simpler: exec firefox helper internals.
+    # etheris-browser checks default — if default is firefox, OK.
+    if [[ "$(get_default browser)" == "firefox" ]]; then
+      exec /usr/local/bin/etheris-browser "$@"
+    fi
+  fi
+  local bin
+  bin="$(item_field "$id" bin)"
+  command -v "$bin" >/dev/null 2>&1 || { echo "not installed: $id" >&2; exit 1; }
+  if [[ $# -eq 0 ]]; then
+    exec "$bin"
+  fi
+  exec "$bin" "$@"
+}
+
+open_terminal_id() {
+  local id="$1"; shift || true
+  local bin
+  bin="$(item_field "$id" bin)"
+  command -v "$bin" >/dev/null 2>&1 || { echo "not installed: $id" >&2; exit 1; }
+  exec "$bin" "$@"
+}
+
+open_agent_id() {
+  local id="$1"
+  need_catalog
+  if ! is_ready "$id"; then
+    echo "not installed: $id (etheris-defaults install $id)" >&2
+    exit 1
+  fi
+  exec python3 - "$CATALOG" "$id" <<'PY'
+import json, os, sys
+cat = json.load(open(sys.argv[1], encoding="utf-8"))
+items = cat.get("items") or []
+it = next((x for x in items if x.get("id") == sys.argv[2]), None)
+if not it:
+    sys.exit(1)
+if it.get("source") == "web":
+    url = it.get("url") or "about:blank"
+    if os.path.exists("/usr/local/bin/etheris-browser"):
+        os.execv("/usr/local/bin/etheris-browser", ["etheris-browser", url])
+    os.execvp("xdg-open", ["xdg-open", url])
+launch = it.get("launch")
+if isinstance(launch, list) and launch:
+    os.execvp(launch[0], launch)
+bin_name = it.get("bin")
+if not bin_name:
+    sys.exit(1)
+os.execvp(bin_name, [bin_name])
+PY
+}
+
+cmd_open() {
+  local kind="${1:?kind}" id="${2:-}"
+  need_catalog
+  [[ -n "$id" ]] || id="$(get_default "$kind")"
+  case "$kind" in
+    browser) open_browser_id "$id" "${@:3}" ;;
+    terminal) open_terminal_id "$id" "${@:3}" ;;
+    agent) open_agent_id "$id" ;;
+    *) echo "unknown kind: $kind" >&2; exit 2 ;;
+  esac
+}
+
+cmd_ui() {
+  local tab="${1:-}"
+  if [[ -x /usr/local/bin/etheris-defaults-ui ]]; then
+    if ETHERIS_DEFAULTS_TAB="$tab" GSK_RENDERER="${GSK_RENDERER:-cairo}" \
+      /usr/local/bin/etheris-defaults-ui; then
+      exit 0
+    fi
+    echo "GTK UI failed; falling back to list" >&2
+  fi
+  cmd_list all
+}
+
+case "${1:-}" in
+  ""|ui|gui|manage) shift || true; cmd_ui "${1:-}" ;;
+  browsers|browser) shift || true; cmd_ui browser ;;
+  terminals|terminal) shift || true; cmd_ui terminal ;;
+  agents|agent) shift || true; cmd_ui agent ;;
+  list|ls) shift || true; cmd_list "${1:-all}" ;;
+  install) shift; cmd_install "${1:?id}" ;;
+  default|set-default) shift; cmd_default "${1:?kind}" "${2:?id}" ;;
+  get) shift; get_default "${1:?kind}" ;;
+  open|launch) shift; cmd_open "$@" ;;
+  ids) shift || true; need_catalog; py ids "${1:-all}" ;;
+  -h|--help|help) usage ;;
+  *)
+    if item_field "${1}" id >/dev/null 2>&1; then
+      kind="$(item_field "$1" category)"
+      cmd_open "$kind" "$@"
+    else
+      usage >&2; exit 2
+    fi
+    ;;
+esac

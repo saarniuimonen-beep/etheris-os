@@ -1,0 +1,709 @@
+#!/usr/bin/env bash
+# Etheris OS — CPU & GPU Performance Manager (safe profiles only).
+# Never overclocks, undervolts, or disables thermal protection.
+set -euo pipefail
+
+STATE_DIR=/var/lib/etheris
+STATE_FILE="$STATE_DIR/performance-profile"
+CAP_CACHE="$STATE_DIR/performance-capabilities.json"
+SYS_CONF=/etc/etheris/performance.conf
+USER_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
+
+PROFILES=(maximum balanced quiet powersave)
+PROFILE_LABELS=(
+  "maximum|Maximum Performance|Gaming, rendering, compile, AI"
+  "balanced|Balanced|Everyday responsiveness and efficiency"
+  "quiet|Quiet|Lower noise and milder boost behaviour"
+  "powersave|Power Saving|Prefer battery life and efficiency"
+)
+
+usage() {
+  cat <<'EOF'
+Etheris Performance Manager
+
+Usage:
+  etheris-perf status                 Profile, capabilities, live metrics
+  etheris-perf capabilities           Detect supported controls
+  etheris-perf profiles               List profiles
+  etheris-perf get                    Print active profile id
+  etheris-perf set <profile>          Apply + persist (pkexec if needed)
+  etheris-perf apply                  Re-apply saved profile
+  etheris-perf restore                Safe defaults → balanced
+  etheris-perf monitor [seconds]      Print metrics once (default) or every N s
+  etheris-perf help
+
+Profiles: maximum | balanced | quiet | powersave
+
+Safety:
+  • No overclock / undervolt
+  • No thermal-protection bypass
+  • Fan sysfs writes only when pwm enable nodes are present
+  • Unsupported controls are skipped and reported
+EOF
+}
+
+need_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+is_root() { [[ "$(id -u)" -eq 0 ]]; }
+
+elevate() {
+  # Re-exec as root when privileged writes are required.
+  if is_root; then
+    "$@"
+    return
+  fi
+  if need_cmd pkexec; then
+    pkexec "$0" "$@"
+  elif need_cmd sudo; then
+    sudo "$0" "$@"
+  else
+    echo "etheris-perf: root required (install polkit/pkexec or use sudo)" >&2
+    return 1
+  fi
+}
+
+normalize_profile() {
+  local p="${1,,}"
+  case "$p" in
+    maximum|max|performance|high) echo maximum ;;
+    balanced|balance|default|auto) echo balanced ;;
+    quiet|silent|low-noise) echo quiet ;;
+    powersave|power|power-saving|power_saving|battery|saver) echo powersave ;;
+    *) return 1 ;;
+  esac
+}
+
+profile_label() {
+  local id="$1" line
+  for line in "${PROFILE_LABELS[@]}"; do
+    if [[ "${line%%|*}" == "$id" ]]; then
+      echo "${line#*|}" | cut -d'|' -f1
+      return
+    fi
+  done
+  echo "$id"
+}
+
+read_user_profile() {
+  [[ -f "$USER_CONF" ]] || return 1
+  grep -E '^performance_profile=' "$USER_CONF" 2>/dev/null | tail -n1 | cut -d= -f2-
+}
+
+read_sys_profile() {
+  if [[ -f "$STATE_FILE" ]]; then
+    tr -d '[:space:]' <"$STATE_FILE"
+    return 0
+  fi
+  if [[ -f "$SYS_CONF" ]]; then
+    grep -E '^profile=' "$SYS_CONF" 2>/dev/null | tail -n1 | cut -d= -f2-
+    return 0
+  fi
+  return 1
+}
+
+current_profile() {
+  local p
+  p="$(read_user_profile 2>/dev/null || true)"
+  [[ -n "$p" ]] || p="$(read_sys_profile 2>/dev/null || true)"
+  p="$(normalize_profile "${p:-balanced}" 2>/dev/null || echo balanced)"
+  echo "$p"
+}
+
+persist_profile() {
+  local p="$1"
+  mkdir -p "$STATE_DIR" /etc/etheris
+  printf '%s\n' "$p" >"$STATE_FILE"
+  if [[ -f "$SYS_CONF" ]]; then
+    if grep -qE '^profile=' "$SYS_CONF"; then
+      sed -i "s|^profile=.*|profile=$p|" "$SYS_CONF"
+    else
+      echo "profile=$p" >>"$SYS_CONF"
+    fi
+  else
+    cat >"$SYS_CONF" <<EOF
+# Etheris Performance Manager
+# Profiles: maximum | balanced | quiet | powersave
+profile=$p
+auto_apply_on_boot=yes
+# Never set overclock=yes — unsupported by design
+overclock=no
+undervolt=no
+EOF
+  fi
+}
+
+persist_user_profile() {
+  local p="$1" conf dir
+  conf="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
+  # When elevated via pkexec, HOME may be root — still update calling user if SUDO_USER/PKEXEC_UID
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    conf="$(getent passwd "$SUDO_USER" | cut -d: -f6)/.config/etheris/settings.conf"
+  elif [[ -n "${PKEXEC_UID:-}" ]]; then
+    conf="$(getent passwd "$PKEXEC_UID" | cut -d: -f6)/.config/etheris/settings.conf"
+  fi
+  dir="$(dirname "$conf")"
+  mkdir -p "$dir"
+  if [[ -f "$conf" ]] && grep -qE '^performance_profile=' "$conf"; then
+    sed -i "s|^performance_profile=.*|performance_profile=$p|" "$conf"
+  else
+    echo "performance_profile=$p" >>"$conf"
+  fi
+}
+
+notify_profile() {
+  local p="$1" label
+  label="$(profile_label "$p")"
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    sudo -u "$SUDO_USER" DISPLAY="${DISPLAY:-}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+      XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u "$SUDO_USER")}" \
+      notify-send -a Etheris 'Performance' "Profile → ${label}" 2>/dev/null || true
+  else
+    notify-send -a Etheris 'Performance' "Profile → ${label}" 2>/dev/null || true
+  fi
+}
+
+# ---------- capability probes ----------
+
+has_file_w() { [[ -w "$1" ]]; }
+has_file_r() { [[ -r "$1" ]]; }
+
+first_cpu_gov_path() {
+  local d
+  for d in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+    [[ -d "$d" ]] || continue
+    echo "$d"
+    return 0
+  done
+  return 1
+}
+
+available_governors() {
+  local p
+  p="$(first_cpu_gov_path 2>/dev/null || true)"
+  [[ -n "$p" && -r "$p/scaling_available_governors" ]] || { echo ""; return; }
+  tr -s ' ' '\n' <"$p/scaling_available_governors" | sed '/^$/d'
+}
+
+has_governor() {
+  available_governors | grep -qx "$1"
+}
+
+epp_paths() {
+  find /sys/devices/system/cpu -path '*/cpufreq/energy_performance_preference' 2>/dev/null | head -n 64
+}
+
+platform_profiles() {
+  local f=/sys/firmware/acpi/platform_profile_choices
+  [[ -r "$f" ]] || return 1
+  tr -s ' ' '\n' <"$f" | sed '/^$/d'
+}
+
+amdgpu_cards() {
+  local d
+  for d in /sys/class/drm/card*/device; do
+    [[ -d "$d" ]] || continue
+    [[ -e "$d/power_dpm_force_performance_level" || -e "$d/power_dpm_state" ]] || continue
+    echo "$d"
+  done
+}
+
+nvidia_present() {
+  lsmod 2>/dev/null | grep -qE '^nvidia\b' || [[ -e /dev/nvidia0 ]]
+}
+
+intel_gpu_pm() {
+  # Best-effort: expose readable nodes only
+  local d
+  for d in /sys/class/drm/card*/device; do
+    [[ -d "$d" ]] || continue
+    if [[ -e "$d/gt_min_freq_mhz" || -e "$d/power/control" ]]; then
+      echo "$d"
+    fi
+  done
+}
+
+fan_pwm_nodes() {
+  local f
+  for f in /sys/class/hwmon/hwmon*/pwm[0-9]*_enable /sys/class/hwmon/hwmon*/pwm[0-9]*; do
+    [[ -e "$f" ]] || continue
+    echo "$f"
+  done
+}
+
+on_battery() {
+  local ps
+  for ps in /sys/class/power_supply/*; do
+    [[ -r "$ps/type" ]] || continue
+    [[ "$(cat "$ps/type")" == Battery ]] || continue
+    if [[ -r "$ps/status" ]]; then
+      case "$(cat "$ps/status")" in
+        Discharging|Not\ charging) return 0 ;;
+      esac
+    fi
+  done
+  return 1
+}
+
+cmd_capabilities() {
+  echo "=== Etheris performance capabilities ==="
+  echo "cpu_governors: $(available_governors | paste -sd',' - || echo none)"
+  if epp_paths | grep -q .; then
+    echo "cpu_epp: yes"
+    local sample
+    sample="$(epp_paths | head -1)"
+    [[ -r "${sample/_preference/_available_preferences}" ]] && \
+      echo "cpu_epp_choices: $(tr -s ' ' ',' <"${sample/_preference/_available_preferences}")"
+  else
+    echo "cpu_epp: no"
+  fi
+  if [[ -w /sys/devices/system/cpu/cpufreq/boost ]]; then
+    echo "cpu_boost_sysfs: yes (cpufreq/boost)"
+  elif [[ -w /sys/devices/system/cpu/intel_pstate/no_turbo ]]; then
+    echo "cpu_boost_sysfs: yes (intel_pstate/no_turbo)"
+  else
+    echo "cpu_boost_sysfs: no"
+  fi
+  if [[ -d /sys/devices/system/cpu/intel_pstate ]]; then
+    echo "cpu_driver_hint: intel_pstate"
+  elif [[ -d /sys/devices/system/cpu/amd_pstate ]]; then
+    echo "cpu_driver_hint: amd_pstate"
+  else
+    echo "cpu_driver_hint: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver 2>/dev/null || echo unknown)"
+  fi
+  if platform_profiles >/dev/null 2>&1; then
+    echo "platform_profile: yes ($(platform_profiles | paste -sd',' -))"
+  else
+    echo "platform_profile: no"
+  fi
+  local n
+  n="$(amdgpu_cards | wc -l)"
+  echo "amdgpu_power: $n card(s)"
+  if nvidia_present; then
+    echo "nvidia: yes"
+    need_cmd nvidia-smi && echo "nvidia_smi: yes" || echo "nvidia_smi: no"
+  else
+    echo "nvidia: no"
+  fi
+  n="$(intel_gpu_pm | wc -l)"
+  echo "intel_gpu_nodes: $n"
+  n="$(fan_pwm_nodes | wc -l)"
+  if (( n > 0 )); then
+    echo "fan_sysfs: experimental ($n nodes) — firmware limits still apply"
+  else
+    echo "fan_sysfs: unavailable"
+  fi
+  if on_battery; then echo "power_source: battery"; else echo "power_source: ac-or-unknown"; fi
+}
+
+# ---------- apply helpers ----------
+
+set_all_governors() {
+  local gov="$1" d
+  if need_cmd cpupower; then
+    cpupower frequency-set -g "$gov" >/dev/null 2>&1 || true
+  fi
+  for d in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor; do
+    [[ -w "$d" ]] || continue
+    echo "$gov" >"$d" 2>/dev/null || true
+  done
+}
+
+set_epp() {
+  local pref="$1" f avail
+  for f in $(epp_paths); do
+    avail="${f/_preference/_available_preferences}"
+    if [[ -r "$avail" ]] && ! grep -qw "$pref" "$avail"; then
+      # fall back to closest supported preference
+      case "$pref" in
+        performance)
+          grep -qw balance_performance "$avail" && pref=balance_performance || pref="$(awk '{print $1}' "$avail")"
+          ;;
+        power)
+          grep -qw balance_power "$avail" && pref=balance_power || pref="$(awk '{print $NF}' "$avail")"
+          ;;
+      esac
+    fi
+    [[ -w "$f" ]] && echo "$pref" >"$f" 2>/dev/null || true
+  done
+}
+
+set_boost() {
+  # $1 = on|off
+  local mode="$1"
+  if [[ -w /sys/devices/system/cpu/cpufreq/boost ]]; then
+    if [[ "$mode" == on ]]; then echo 1 >/sys/devices/system/cpu/cpufreq/boost
+    else echo 0 >/sys/devices/system/cpu/cpufreq/boost; fi
+    return
+  fi
+  if [[ -w /sys/devices/system/cpu/intel_pstate/no_turbo ]]; then
+    if [[ "$mode" == on ]]; then echo 0 >/sys/devices/system/cpu/intel_pstate/no_turbo
+    else echo 1 >/sys/devices/system/cpu/intel_pstate/no_turbo; fi
+  fi
+}
+
+set_platform_profile() {
+  local want="$1" choices f=/sys/firmware/acpi/platform_profile
+  [[ -w "$f" ]] || return 0
+  choices="$(platform_profiles 2>/dev/null | paste -sd' ' - || true)"
+  # Map Etheris profiles → ACPI names when present
+  case "$want" in
+    maximum)
+      if [[ " $choices " == *" performance "* ]]; then want=performance
+      elif [[ " $choices " == *" balanced "* ]]; then want=balanced
+      else return 0; fi
+      ;;
+    balanced)
+      [[ " $choices " == *" balanced "* ]] || return 0
+      ;;
+    quiet)
+      if [[ " $choices " == *" quiet "* ]]; then want=quiet
+      elif [[ " $choices " == *" balanced "* ]]; then want=balanced
+      else return 0; fi
+      ;;
+    powersave)
+      if [[ " $choices " == *" low-power "* ]]; then want=low-power
+      elif [[ " $choices " == *" quiet "* ]]; then want=quiet
+      elif [[ " $choices " == *" balanced "* ]]; then want=balanced
+      else return 0; fi
+      ;;
+  esac
+  echo "$want" >"$f" 2>/dev/null || true
+}
+
+set_amdgpu() {
+  # $1 level: high|auto|low
+  local level="$1" d state
+  case "$level" in
+    high) state=performance ;;
+    low) state=battery ;;
+    *) state=balanced ;;
+  esac
+  for d in $(amdgpu_cards); do
+    if [[ -w "$d/power_dpm_force_performance_level" ]]; then
+      # Valid: auto, low, high, manual, profile_*
+      echo "$level" >"$d/power_dpm_force_performance_level" 2>/dev/null || \
+        echo auto >"$d/power_dpm_force_performance_level" 2>/dev/null || true
+    fi
+    if [[ -w "$d/power_dpm_state" ]]; then
+      echo "$state" >"$d/power_dpm_state" 2>/dev/null || true
+    fi
+  done
+}
+
+set_nvidia() {
+  # Best-effort PowerMizer preference via nvidia-settings when available.
+  # 0=adaptive, 1=prefer native, 2=maximum performance (driver-dependent).
+  local mode="$1" pref
+  nvidia_present || return 0
+  case "$mode" in
+    maximum) pref=2 ;;
+    quiet|powersave) pref=0 ;;
+    *) pref=1 ;;
+  esac
+  if need_cmd nvidia-settings && [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" || -n "${SUDO_USER:-}" ]]; then
+    # Non-fatal; many headless/VM setups lack this
+    nvidia-settings -a "[gpu:0]/GPUPowerMizerMode=$pref" >/dev/null 2>&1 || true
+  fi
+  # Persistence mode only for maximum (keeps clocks ready); never force clocks
+  if need_cmd nvidia-smi; then
+    if [[ "$mode" == maximum ]]; then
+      nvidia-smi -pm 1 >/dev/null 2>&1 || true
+    else
+      nvidia-smi -pm 0 >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+set_intel_gpu() {
+  local mode="$1" d
+  for d in $(intel_gpu_pm); do
+    if [[ -w "$d/power/control" ]]; then
+      case "$mode" in
+        powersave|quiet) echo auto >"$d/power/control" 2>/dev/null || true ;;
+        maximum) echo on >"$d/power/control" 2>/dev/null || true ;;
+        *) echo auto >"$d/power/control" 2>/dev/null || true ;;
+      esac
+    fi
+  done
+}
+
+set_fan_hint() {
+  # Experimental: only toggle pwm*_enable when writable. Never invent curves.
+  # 0=full speed (avoid), 1=manual, 2=auto/firmware — prefer auto always unless maximum.
+  local mode="$1" f
+  local n=0
+  for f in /sys/class/hwmon/hwmon*/pwm[0-9]*_enable; do
+    [[ -w "$f" ]] || continue
+    n=$((n + 1))
+    case "$mode" in
+      maximum) echo 2 >"$f" 2>/dev/null || true ;; # keep firmware auto; never force 0
+      *) echo 2 >"$f" 2>/dev/null || true ;;
+    esac
+  done
+  (( n > 0 )) || true
+}
+
+apply_profile_root() {
+  local p="$1"
+  local gov epp boost amd nv
+  case "$p" in
+    maximum)
+      if has_governor performance; then gov=performance
+      elif has_governor schedutil; then gov=schedutil
+      else gov="$(available_governors | head -1)"; fi
+      epp=performance
+      boost=on
+      amd=high
+      nv=maximum
+      ;;
+    balanced)
+      if has_governor schedutil; then gov=schedutil
+      elif has_governor ondemand; then gov=ondemand
+      elif has_governor powersave; then gov=powersave
+      else gov="$(available_governors | head -1)"; fi
+      epp=balance_performance
+      boost=on
+      amd=auto
+      nv=balanced
+      ;;
+    quiet)
+      if has_governor schedutil; then gov=schedutil
+      elif has_governor powersave; then gov=powersave
+      else gov="$(available_governors | head -1)"; fi
+      epp=balance_power
+      boost=off
+      amd=auto
+      nv=quiet
+      ;;
+    powersave)
+      if has_governor powersave; then gov=powersave
+      elif has_governor schedutil; then gov=schedutil
+      else gov="$(available_governors | head -1)"; fi
+      epp=power
+      boost=off
+      amd=low
+      nv=powersave
+      ;;
+    *)
+      echo "Unknown profile: $p" >&2
+      return 1
+      ;;
+  esac
+
+  [[ -n "$gov" ]] && set_all_governors "$gov"
+  set_epp "$epp"
+  set_boost "$boost"
+  set_platform_profile "$p"
+  set_amdgpu "$amd"
+  set_nvidia "$nv"
+  set_intel_gpu "$p"
+  set_fan_hint "$p"
+
+  persist_profile "$p"
+  persist_user_profile "$p" || true
+  echo "Applied performance profile: $p (governor=${gov:-n/a})"
+}
+
+# ---------- metrics (honest / available only) ----------
+
+metric_cpu_freq() {
+  local sum=0 n=0 f
+  for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+    [[ -r "$f" ]] || continue
+    sum=$((sum + $(cat "$f")))
+    n=$((n + 1))
+  done
+  (( n > 0 )) || { echo unavailable; return; }
+  awk -v s="$sum" -v n="$n" 'BEGIN { printf "%.0f MHz", (s/n)/1000 }'
+}
+
+metric_cpu_gov() {
+  cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unavailable
+}
+
+metric_cpu_temp() {
+  local t z
+  for z in /sys/class/thermal/thermal_zone*/temp; do
+    [[ -r "$z" ]] || continue
+    t="$(cat "$z")"
+    awk -v m="$t" 'BEGIN { printf "%.1f °C", m/1000 }'
+    return
+  done
+  echo unavailable
+}
+
+metric_cpu_usage() {
+  # Single-sample approx from /proc/stat
+  local a idle total
+  read -r _ a < <(grep -E '^cpu ' /proc/stat)
+  # shellcheck disable=SC2086
+  set -- $a
+  idle=$4
+  total=0
+  for x in "$@"; do total=$((total + x)); done
+  sleep 0.15
+  read -r _ a < <(grep -E '^cpu ' /proc/stat)
+  # shellcheck disable=SC2086
+  set -- $a
+  local idle2=$4 total2=0
+  for x in "$@"; do total2=$((total2 + x)); done
+  local didle=$((idle2 - idle)) dtotal=$((total2 - total))
+  (( dtotal > 0 )) || { echo unavailable; return; }
+  awk -v i="$didle" -v t="$dtotal" 'BEGIN { printf "%.0f%%", (1 - i/t)*100 }'
+}
+
+metric_ram() {
+  awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} END {printf "%.1f / %.1f GiB used", (t-a)/1048576, t/1048576}' /proc/meminfo
+}
+
+metric_battery() {
+  local ps cap status
+  for ps in /sys/class/power_supply/*; do
+    [[ -r "$ps/type" && "$(cat "$ps/type")" == Battery ]] || continue
+    cap="$(cat "$ps/capacity" 2>/dev/null || echo '?')"
+    status="$(cat "$ps/status" 2>/dev/null || echo '?')"
+    echo "${cap}% (${status})"
+    return
+  done
+  echo "n/a (desktop or no battery sysfs)"
+}
+
+metric_gpu_amd() {
+  local d busy temp
+  d="$(amdgpu_cards | head -1 || true)"
+  [[ -n "$d" ]] || { echo unavailable; return; }
+  busy="$(cat "$d/gpu_busy_percent" 2>/dev/null || echo '?')"
+  if [[ -r "$d/hwmon/hwmon"*/temp1_input ]]; then
+    temp="$(cat "$d"/hwmon/hwmon*/temp1_input 2>/dev/null | head -1)"
+    temp="$(awk -v m="$temp" 'BEGIN { printf "%.0f°C", m/1000 }')"
+  else
+    temp='?'
+  fi
+  local lvl
+  lvl="$(cat "$d/power_dpm_force_performance_level" 2>/dev/null || echo '?')"
+  echo "busy=${busy}% temp=${temp} level=${lvl}"
+}
+
+metric_gpu_nvidia() {
+  nvidia_present || { echo unavailable; return; }
+  if need_cmd nvidia-smi; then
+    nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits 2>/dev/null \
+      | head -1 \
+      | awk -F', ' '{printf "util=%s%% vram=%s/%s MiB temp=%s°C power=%s W", $1,$2,$3,$4,$5}' \
+      || echo "nvidia present (query failed)"
+  else
+    echo "nvidia present (nvidia-smi unavailable)"
+  fi
+}
+
+print_metrics() {
+  local p
+  p="$(current_profile)"
+  echo "profile:    $p ($(profile_label "$p"))"
+  echo "cpu_usage:  $(metric_cpu_usage)"
+  echo "cpu_freq:   $(metric_cpu_freq)"
+  echo "cpu_gov:    $(metric_cpu_gov)"
+  echo "cpu_temp:   $(metric_cpu_temp)"
+  echo "ram:        $(metric_ram)"
+  echo "battery:    $(metric_battery)"
+  echo "gpu_amd:    $(metric_gpu_amd)"
+  echo "gpu_nvidia: $(metric_gpu_nvidia)"
+}
+
+cmd_status() {
+  local p
+  p="$(current_profile)"
+  echo "Etheris Performance Manager"
+  echo "  active:  $p — $(profile_label "$p")"
+  echo "  state:   ${STATE_FILE} $([[ -f $STATE_FILE ]] && echo present || echo missing)"
+  echo
+  cmd_capabilities
+  echo
+  echo "=== metrics ==="
+  print_metrics | sed 's/^/  /'
+  echo
+  echo "GPU details: etheris-gpu status"
+  echo "Drivers:     etheris-drivers status"
+}
+
+cmd_profiles() {
+  local line id label desc
+  printf '%-12s %-24s %s\n' ID LABEL DESCRIPTION
+  for line in "${PROFILE_LABELS[@]}"; do
+    id="${line%%|*}"
+    rest="${line#*|}"
+    label="${rest%%|*}"
+    desc="${rest#*|}"
+    printf '%-12s %-24s %s\n' "$id" "$label" "$desc"
+  done
+}
+
+cmd_set() {
+  local raw="${1:-}" p
+  p="$(normalize_profile "$raw")" || { echo "Invalid profile: $raw"; usage; return 1; }
+  if is_root; then
+    apply_profile_root "$p"
+  else
+    elevate set-root "$p" || return 1
+  fi
+  # User-side settings sync when not elevated path already did it
+  if ! is_root; then
+    mkdir -p "$(dirname "$USER_CONF")"
+    if [[ -f "$USER_CONF" ]] && grep -qE '^performance_profile=' "$USER_CONF"; then
+      sed -i "s|^performance_profile=.*|performance_profile=$p|" "$USER_CONF"
+    else
+      echo "performance_profile=$p" >>"$USER_CONF"
+    fi
+    notify_profile "$p"
+  else
+    notify_profile "$p"
+  fi
+}
+
+cmd_apply() {
+  local p
+  p="$(current_profile)"
+  cmd_set "$p"
+}
+
+cmd_monitor() {
+  local interval="${1:-0}"
+  if [[ "$interval" =~ ^[0-9]+$ ]] && (( interval > 0 )); then
+    while true; do
+      date -Is
+      print_metrics
+      echo "----"
+      sleep "$interval"
+    done
+  else
+    print_metrics
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    ""|status) cmd_status ;;
+    capabilities|caps|detect) cmd_capabilities ;;
+    profiles|list) cmd_profiles ;;
+    get) current_profile ;;
+    set)
+      shift
+      cmd_set "${1:-}"
+      ;;
+    set-root)
+      # Internal: already root via pkexec
+      is_root || { echo "set-root requires root"; exit 1; }
+      apply_profile_root "$(normalize_profile "${2:-}")"
+      ;;
+    apply) cmd_apply ;;
+    restore|reset) cmd_set balanced ;;
+    monitor|metrics)
+      shift
+      cmd_monitor "${1:-0}"
+      ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

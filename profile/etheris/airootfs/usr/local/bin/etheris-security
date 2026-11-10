@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Etheris OS — security/privacy status and light audit helpers
+set -euo pipefail
+
+cmd_help() {
+  cat <<'EOF'
+Etheris security helpers
+
+Usage:
+  etheris-security status     Privacy + firewall + services overview
+  etheris-security firewall   Show nftables ruleset / status
+  etheris-security audit      Local checklist (not a pentest)
+  etheris-security help
+
+This does NOT prove the OS is “secure”. See /usr/local/share/etheris/docs/SECURITY.md
+EOF
+}
+
+cmd_status() {
+  echo "Etheris security / privacy status"
+  echo
+  if [[ -f /etc/etheris/privacy.conf ]]; then
+    echo "Privacy policy file: /etc/etheris/privacy.conf"
+    grep -E '^[A-Z]' /etc/etheris/privacy.conf | sed 's/^/  /'
+  else
+    echo "  (privacy.conf missing)"
+  fi
+  echo
+  echo "Package signatures:"
+  if grep -qE '^SigLevel\s*=\s*Required' /etc/pacman.conf 2>/dev/null; then
+    echo "  pacman SigLevel includes Required (good)"
+  else
+    echo "  WARNING: check /etc/pacman.conf SigLevel"
+  fi
+  echo
+  echo "Firewall (nftables):"
+  if systemctl is-active --quiet nftables 2>/dev/null; then
+    echo "  nftables: active"
+  elif systemctl is-enabled --quiet nftables 2>/dev/null; then
+    echo "  nftables: enabled (not active in this context)"
+  else
+    echo "  nftables: NOT enabled"
+  fi
+  if command -v nft >/dev/null; then
+    nft list tables 2>/dev/null | sed 's/^/  /' || echo "  (cannot list tables — need root?)"
+  fi
+  echo
+  echo "Remote access:"
+  if systemctl is-enabled --quiet sshd 2>/dev/null || systemctl is-active --quiet sshd 2>/dev/null; then
+    echo "  WARNING: sshd enabled/active"
+  else
+    echo "  sshd: not enabled (expected default)"
+  fi
+  echo
+  echo "Listening sockets (may need root for full view):"
+  if command -v ss >/dev/null; then
+    ss -tulpn 2>/dev/null | head -30 | sed 's/^/  /' || true
+  fi
+}
+
+cmd_firewall() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    echo "Run: sudo etheris-security firewall"
+    exit 1
+  fi
+  systemctl status nftables --no-pager -l || true
+  echo
+  nft list ruleset
+  echo
+  echo "Configure: edit /etc/nftables.conf then: sudo systemctl restart nftables"
+  echo "Docs: /usr/local/share/etheris/docs/SECURITY.md"
+}
+
+cmd_audit() {
+  local ok=0 fail=0
+  pass() { echo "  OK  $*"; ok=$((ok+1)); }
+  bad() { echo "FAIL  $*"; fail=$((fail+1)); }
+
+  echo "Etheris local security checklist"
+  echo "(manual inspection helper — not a full audit)"
+  echo
+
+  grep -qE '^SigLevel\s*=\s*Required' /etc/pacman.conf 2>/dev/null \
+    && pass "pacman signature verification Required" \
+    || bad "pacman SigLevel not clearly Required"
+
+  [[ -f /etc/nftables.conf ]] && pass "nftables config present" || bad "nftables.conf missing"
+
+  if systemctl is-enabled nftables >/dev/null 2>&1; then
+    pass "nftables service enabled"
+  else
+    bad "nftables service not enabled"
+  fi
+
+  if systemctl is-enabled sshd >/dev/null 2>&1; then
+    bad "sshd is enabled (should be off by default)"
+  else
+    pass "sshd not enabled"
+  fi
+
+  if [[ -f /etc/sudoers.d/etheris ]]; then
+    if grep -q NOPASSWD /etc/sudoers.d/etheris; then
+      echo "  NOTE live ISO: NOPASSWD sudo for wheel (convenience — not for installed systems)"
+    fi
+    mode=$(stat -c '%a' /etc/sudoers.d/etheris 2>/dev/null || echo '?')
+    [[ "$mode" == "440" || "$mode" == "0440" ]] && pass "sudoers.d mode $mode" || bad "sudoers.d mode $mode"
+  fi
+
+  if [[ -f /etc/etheris/privacy.conf ]]; then
+    grep -q 'TELEMETRY=off' /etc/etheris/privacy.conf \
+      && pass "privacy.conf declares TELEMETRY=off" \
+      || bad "privacy.conf telemetry not off"
+  else
+    bad "privacy.conf missing"
+  fi
+
+  if [[ -f /etc/shadow ]]; then
+    if awk -F: '($2=="" || $2=="!" || $2=="*") && $1!~/^(root|nobody|.*nologin)/ {exit 1}' /etc/shadow; then
+      :
+    fi
+    # live user must have a hash
+    if awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow 2>/dev/null; then
+      pass "live user has password hash (not empty)"
+    else
+      # installed systems may not have etheris user
+      if id etheris >/dev/null 2>&1; then
+        bad "user etheris has no password hash"
+      else
+        pass "no shared live user on this system"
+      fi
+    fi
+  fi
+
+  echo
+  echo "Result: ${ok} OK, ${fail} FAIL"
+  echo "Limitations: see /usr/local/share/etheris/docs/SECURITY.md"
+  (( fail == 0 ))
+}
+
+case "${1:-status}" in
+  status) cmd_status ;;
+  firewall|fw) cmd_firewall ;;
+  audit) cmd_audit ;;
+  help|-h|--help) cmd_help ;;
+  *) cmd_help; exit 1 ;;
+esac

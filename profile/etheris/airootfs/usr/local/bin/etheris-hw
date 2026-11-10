@@ -1,0 +1,345 @@
+#!/usr/bin/env bash
+# Etheris OS — hardware report (CPU / GPU / APIs). No invented values.
+set -euo pipefail
+
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}/hardware"
+NV_DB="$SHARE/nvidia-pci.tsv"
+AMD_DB="$SHARE/amd-pci.tsv"
+INTEL_DB="$SHARE/intel-pci.tsv"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-hw              Full hardware report
+  etheris-hw cpu          CPU section only
+  etheris-hw gpu          GPU section only
+  etheris-hw json         Machine-readable summary (one JSON object)
+  etheris-hw help
+EOF
+}
+
+unavailable() { echo "unavailable"; }
+
+read_file() {
+  local f="$1"
+  [[ -r "$f" ]] || { unavailable; return; }
+  tr -d '\0' <"$f" | head -c 512
+}
+
+cpu_vendor() {
+  local v
+  v="$(grep -m1 -E '^vendor_id' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | xargs || true)"
+  case "$v" in
+    GenuineIntel) echo "Intel" ;;
+    AuthenticAMD) echo "AMD" ;;
+    "") unavailable ;;
+    *) echo "$v" ;;
+  esac
+}
+
+cpu_model() {
+  local m
+  m="$(grep -m1 -E '^model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | xargs || true)"
+  [[ -n "$m" ]] && echo "$m" || unavailable
+}
+
+cpu_cores_threads() {
+  local cores threads
+  cores="$(nproc --all 2>/dev/null || unavailable)"
+  threads="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || unavailable)"
+  echo "cores/online=${cores}  logical=${threads}"
+}
+
+cpu_freq() {
+  local f
+  f="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || true)"
+  if [[ -n "$f" ]]; then
+    awk -v kHz="$f" 'BEGIN { printf "%.0f MHz\n", kHz/1000 }'
+  else
+    unavailable
+  fi
+}
+
+cpu_governor() {
+  read_file /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+}
+
+cpu_flags_summary() {
+  local flags
+  flags="$(grep -m1 -E '^flags' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
+  [[ -n "$flags" ]] || { unavailable; return; }
+  local out=()
+  for f in lm sse2 sse4_2 avx avx2 avx512f svm vmx aes; do
+    [[ " $flags " == *" $f "* ]] && out+=("$f")
+  done
+  if ((${#out[@]})); then
+    printf '%s\n' "${out[*]}"
+  else
+    echo "(baseline flags present; see /proc/cpuinfo)"
+  fi
+}
+
+cpu_virt() {
+  local flags vendor
+  flags="$(grep -m1 -E '^flags' /proc/cpuinfo 2>/dev/null | cut -d: -f2- || true)"
+  vendor="$(cpu_vendor)"
+  if [[ "$vendor" == Intel && " $flags " == *" vmx "* ]]; then
+    echo "Intel VT-x (vmx) present (BIOS enable may still be required)"
+  elif [[ "$vendor" == AMD && " $flags " == *" svm "* ]]; then
+    echo "AMD-V/SVM present (BIOS enable may still be required)"
+  elif [[ -z "$flags" ]]; then
+    unavailable
+  else
+    echo "hardware virtualization flag not advertised"
+  fi
+}
+
+cpu_microcode() {
+  local rev path
+  rev="$(grep -m1 -E '^microcode' /proc/cpuinfo 2>/dev/null | cut -d: -f2- | xargs || true)"
+  path=""
+  [[ -r /sys/devices/system/cpu/cpu0/microcode/version ]] && path="$(cat /sys/devices/system/cpu/cpu0/microcode/version)"
+  if [[ -n "$rev" || -n "$path" ]]; then
+    echo "revision=${rev:-unavailable}  sysfs=${path:-unavailable}"
+  else
+    unavailable
+  fi
+  if pacman -Q intel-ucode &>/dev/null; then echo "package: intel-ucode installed"; fi
+  if pacman -Q amd-ucode &>/dev/null; then echo "package: amd-ucode installed"; fi
+}
+
+cpu_temp() {
+  local t
+  t="$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | head -1 || true)"
+  if [[ -n "$t" ]]; then
+    awk -v m="$t" 'BEGIN { printf "%.1f °C\n", m/1000 }'
+  else
+    unavailable
+  fi
+}
+
+lookup_tsv() {
+  local db="$1" did="$2"
+  [[ -r "$db" ]] || return 1
+  awk -F'\t' -v id="$did" 'BEGIN{IGNORECASE=1} $1==id {print; exit 0}' "$db"
+}
+
+nvidia_range_guess() {
+  # Lower-confidence fallback when pci.ids chip marker was missing.
+  local did="$1" n
+  n=$((16#$did))
+  # Pascal GP10x common windows
+  if (( (n >= 0x15f0 && n <= 0x15ff) || (n >= 0x1b00 && n <= 0x1bff) || (n >= 0x1c00 && n <= 0x1cff) || (n >= 0x1d00 && n <= 0x1d1f) )); then
+    echo -e "${did}\tpascal\t?\tsupported\tnvidia-580xx\t(range heuristic)"
+    return 0
+  fi
+  if (( n >= 0x1e00 && n <= 0x1fff || n >= 0x2180 && n <= 0x21ff )); then
+    echo -e "${did}\tturing\t?\tsupported\tnvidia-open\t(range heuristic)"
+    return 0
+  fi
+  if (( n >= 0x2200 && n <= 0x25ff )); then
+    echo -e "${did}\tampere\t?\tsupported\tnvidia-open\t(range heuristic)"
+    return 0
+  fi
+  if (( n >= 0x2600 && n <= 0x28ff )); then
+    echo -e "${did}\tada\t?\tsupported\tnvidia-open\t(range heuristic)"
+    return 0
+  fi
+  if (( n >= 0x2b00 && n <= 0x2fff )); then
+    echo -e "${did}\tblackwell\t?\tsupported\tnvidia-open\t(range heuristic)"
+    return 0
+  fi
+  return 1
+}
+
+pci_gpus() {
+  # Print: slot|vendor_id|device_id|vendor_name|device_name|kernel_driver|class
+  local d vend dev class driver pretty
+  for d in /sys/bus/pci/devices/*; do
+    [[ -r "$d/class" ]] || continue
+    class="$(cat "$d/class")"
+    # 0x03xxxx = display controller
+    [[ "$class" == 0x03* ]] || continue
+    vend="$(sed 's/^0x//' "$d/vendor")"
+    dev="$(sed 's/^0x//' "$d/device")"
+    driver="unbound"
+    [[ -e "$d/driver" ]] && driver="$(basename "$(readlink -f "$d/driver")")"
+    pretty="$(lspci -s "$(basename "$d")" -nn 2>/dev/null | sed 's/^[^ ]* //' || echo "PCI ${vend}:${dev}")"
+    printf '%s|%s|%s|%s|%s|%s\n' "$(basename "$d")" "$vend" "$dev" "$pretty" "$driver" "$class"
+  done
+}
+
+classify_gpu() {
+  local vend="$1" did="$2"
+  local row family support driver
+  case "$vend" in
+    10de)
+      row="$(lookup_tsv "$NV_DB" "$did" || true)"
+      if [[ -z "$row" ]]; then
+        row="$(nvidia_range_guess "$did" || true)"
+      fi
+      if [[ -n "$row" ]]; then
+        IFS=$'\t' read -r _ family _ support driver _ <<<"$row" || true
+        # TSV: id arch chip support driver name — re-parse safely
+        family="$(printf '%s\n' "$row" | cut -f2)"
+        support="$(printf '%s\n' "$row" | cut -f4)"
+        driver="$(printf '%s\n' "$row" | cut -f5)"
+        echo "NVIDIA|$family|$support|$driver"
+      else
+        echo "NVIDIA|unknown|unknown|review"
+      fi
+      ;;
+    1002)
+      row="$(lookup_tsv "$AMD_DB" "$did" || true)"
+      if [[ -n "$row" ]]; then
+        family="$(printf '%s\n' "$row" | cut -f2)"
+        support="$(printf '%s\n' "$row" | cut -f3)"
+        driver="$(printf '%s\n' "$row" | cut -f4)"
+        echo "AMD|$family|$support|$driver"
+      else
+        echo "AMD|unknown|supported|amdgpu"
+      fi
+      ;;
+    8086)
+      row="$(lookup_tsv "$INTEL_DB" "$did" || true)"
+      if [[ -n "$row" ]]; then
+        family="$(printf '%s\n' "$row" | cut -f2)"
+        support="$(printf '%s\n' "$row" | cut -f3)"
+        driver="$(printf '%s\n' "$row" | cut -f4)"
+        echo "Intel|$family|$support|$driver"
+      else
+        echo "Intel|unknown|supported|i915"
+      fi
+      ;;
+    *)
+      echo "Other|unknown|unknown|unknown"
+      ;;
+  esac
+}
+
+opengl_status() {
+  if command -v glxinfo >/dev/null 2>&1; then
+    glxinfo -B 2>/dev/null | awk -F': ' '/OpenGL renderer|OpenGL version/{print $1": "$2}' || unavailable
+  elif command -v eglinfo >/dev/null 2>&1; then
+    eglinfo 2>/dev/null | awk '/EGL client APIs|OpenGL_ES|OpenGL /{print; if(++n>=4) exit}' || unavailable
+  else
+    echo "tools unavailable (install mesa-utils for details)"
+  fi
+}
+
+vulkan_status() {
+  if command -v vulkaninfo >/dev/null 2>&1; then
+    if vulkaninfo --summary 2>/dev/null | head -n 40; then
+      :
+    else
+      echo "vulkaninfo present but failed (no ICD or no GPU support)"
+    fi
+  else
+    echo "vulkaninfo unavailable (install vulkan-tools for details)"
+  fi
+}
+
+hybrid_note() {
+  local count=0
+  while IFS= read -r _; do count=$((count+1)); done < <(pci_gpus)
+  if (( count > 1 )); then
+    echo "multiple GPUs detected ($count) — hybrid/offload may apply"
+  else
+    echo "single display GPU (or none enumerated)"
+  fi
+}
+
+cmd_cpu() {
+  echo "=== CPU ==="
+  echo "  manufacturer: $(cpu_vendor)"
+  echo "  model:        $(cpu_model)"
+  echo "  topology:     $(cpu_cores_threads)"
+  echo "  frequency:    $(cpu_freq)"
+  echo "  governor:     $(cpu_governor)"
+  echo "  ISA (sample): $(cpu_flags_summary)"
+  echo "  virt:         $(cpu_virt)"
+  echo "  microcode:    $(cpu_microcode | paste -sd ';' -)"
+  echo "  temperature:  $(cpu_temp)"
+  echo "  baseline:     x86_64 (Arch package ISA; no -march=native rebuilds)"
+}
+
+cmd_gpu() {
+  local line slot vend did pretty driver class cls mfr family support rec
+  echo "=== GPU ==="
+  echo "  hybrid: $(hybrid_note)"
+  local any=0
+  while IFS='|' read -r slot vend did pretty driver class; do
+    any=1
+    cls="$(classify_gpu "$vend" "$did")"
+    mfr="${cls%%|*}"; rest="${cls#*|}"
+    family="${rest%%|*}"; rest="${rest#*|}"
+    support="${rest%%|*}"; rec="${rest#*|}"
+    echo
+    echo "  device:     $pretty"
+    echo "  PCI ID:     ${vend}:${did}  ($slot)"
+    echo "  role:       display controller"
+    echo "  family:     $mfr / $family"
+    echo "  support:    $support"
+    echo "  kernel:     $driver"
+    echo "  recommend:  $rec"
+    if [[ "$family" == pascal ]]; then
+      echo "  note:       Pascal -> NVIDIA 580xx legacy branch (not nvidia-open)"
+    fi
+    if [[ "$did" == "1d01" || "$did" == "1d02" || "$did" == "1d03" ]]; then
+      echo "  note:       GT 10x0 Pascal ID recognized; not used as a min-spec bar"
+    fi
+  done < <(pci_gpus)
+  if (( any == 0 )); then
+    echo "  (no PCI display class devices found)"
+  fi
+  echo
+  echo "  OpenGL:"
+  opengl_status | sed 's/^/    /'
+  echo "  Vulkan:"
+  vulkan_status | sed 's/^/    /' | head -n 20
+}
+
+cmd_full() {
+  echo "Etheris OS hardware report"
+  echo "  kernel: $(uname -r)"
+  echo
+  cmd_cpu
+  echo
+  cmd_gpu
+  echo
+  echo "See also: etheris-drivers status | docs/HARDWARE.md"
+}
+
+cmd_json() {
+  # Minimal JSON without requiring jq write libs
+  local model vendor
+  model="$(cpu_model | sed 's/"/\\"/g')"
+  vendor="$(cpu_vendor | sed 's/"/\\"/g')"
+  echo -n "{\"cpu\":{\"vendor\":\"$vendor\",\"model\":\"$model\"},\"gpus\":["
+  local first=1
+  while IFS='|' read -r slot vend did pretty driver class; do
+    cls="$(classify_gpu "$vend" "$did")"
+    family="$(printf '%s\n' "$cls" | cut -d'|' -f2)"
+    support="$(printf '%s\n' "$cls" | cut -d'|' -f3)"
+    rec="$(printf '%s\n' "$cls" | cut -d'|' -f4)"
+    pretty_e="$(printf '%s' "$pretty" | sed 's/"/\\"/g')"
+    (( first )) || echo -n ","
+    first=0
+    printf '{"slot":"%s","vendor":"%s","device":"%s","name":"%s","kernel_driver":"%s","family":"%s","support":"%s","recommend":"%s"}' \
+      "$slot" "$vend" "$did" "$pretty_e" "$driver" "$family" "$support" "$rec"
+  done < <(pci_gpus)
+  echo "]}"
+}
+
+main() {
+  case "${1:-}" in
+    ""|all|report) cmd_full ;;
+    cpu) cmd_cpu ;;
+    gpu|gpus) cmd_gpu ;;
+    json) cmd_json ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

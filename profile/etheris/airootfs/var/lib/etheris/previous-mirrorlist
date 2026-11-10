@@ -1,0 +1,5 @@
+# Etheris OS channel=stable
+# Snapshot (UTC): 2026/10/24
+# Stable lag: 14 days (validated Arch Archive snapshot)
+# Managed by etheris-update — do not mix with unrelated mirrors.
+Server = https://archive.archlinux.org/repos/2026/10/24/$repo/os/$arch

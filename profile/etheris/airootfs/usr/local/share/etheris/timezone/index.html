@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Etheris · Timezone</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="panel">
+      <header class="panel-top">
+        <div class="brand-row">
+          <span class="brand">ETHERIS</span>
+          <span class="chip">Region</span>
+        </div>
+        <h1>Find your place</h1>
+        <p class="lead">Search a city or tap the globe. We’ll set the clock to that exact timezone.</p>
+      </header>
+
+      <label class="field">
+        <span>City or region</span>
+        <div class="search-wrap">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input id="search" type="search" placeholder="Helsinki, Tokyo, New York…" autocomplete="off" spellcheck="false" />
+        </div>
+      </label>
+      <ul id="suggestions" class="suggestions" hidden></ul>
+
+      <section class="selection" id="selection">
+        <div class="sel-top">
+          <div>
+            <div class="sel-label">Selected</div>
+            <div id="sel-name" class="sel-name">—</div>
+            <div id="sel-meta" class="sel-meta">Search or click the globe</div>
+          </div>
+          <div id="sel-flag" class="sel-flag">🌐</div>
+        </div>
+        <div class="sel-bottom">
+          <div id="sel-clock" class="sel-clock">--:--:--</div>
+          <div id="sel-offset" class="sel-offset"></div>
+        </div>
+      </section>
+
+      <label class="auto-card" for="auto-travel">
+        <div class="auto-text">
+          <strong>Auto when I travel</strong>
+          <span>Update timezone when you move to another country (uses network location).</span>
+        </div>
+        <input id="auto-travel" type="checkbox" checked />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <div class="actions">
+        <button id="btn-confirm" class="primary" disabled>Use this timezone</button>
+        <button id="btn-skip" class="ghost">Skip for now</button>
+      </div>
+      <p class="hint">Change anytime from Settings → Timezone, or run <code>etheris-timezone</code>.</p>
+    </aside>
+
+    <main id="globe-host" aria-label="3D Earth">
+      <div class="globe-vignette"></div>
+      <canvas id="globe"></canvas>
+      <div class="globe-caption">
+        <span>Drag to spin</span>
+        <span class="dot">·</span>
+        <span>Click a city</span>
+        <span class="dot">·</span>
+        <span>Scroll to zoom</span>
+      </div>
+    </main>
+  </div>
+  <script src="three.min.js"></script>
+  <script src="cities.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

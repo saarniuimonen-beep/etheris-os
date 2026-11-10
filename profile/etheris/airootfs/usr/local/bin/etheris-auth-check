@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Verify Etheris authentication is usable
+set -euo pipefail
+ok=0
+fail=0
+
+pass() { echo "  OK  $*"; ok=$((ok+1)); }
+fail() { echo "FAIL  $*"; fail=$((fail+1)); }
+
+echo "Etheris authentication check"
+echo
+
+# users
+if id etheris >/dev/null 2>&1; then pass "user 'etheris' exists ($(id etheris))"
+else fail "user 'etheris' missing"; fi
+
+if id etheris 2>/dev/null | grep -q wheel; then pass "etheris is in wheel"
+else fail "etheris not in wheel (sudo/polkit admin broken)"; fi
+
+# password hash present
+if awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow; then
+  pass "etheris has a password hash in /etc/shadow"
+else
+  fail "etheris has no usable password hash"
+fi
+
+# password verifies (when possible as root)
+if [[ "$(id -u)" -eq 0 ]] && command -v python3 >/dev/null; then
+  if python3 - <<'PY'
+import crypt, sys
+hash=None
+for line in open("/etc/shadow"):
+    if line.startswith("etheris:"):
+        hash=line.split(":")[1]; break
+sys.exit(0 if hash and crypt.crypt("etheris", hash)==hash else 1)
+PY
+  then pass "password 'etheris' matches shadow hash"
+  else fail "password 'etheris' does NOT match shadow hash"
+  fi
+fi
+
+# sudoers
+if [[ -f /etc/sudoers.d/etheris ]]; then
+  mode=$(stat -c '%a' /etc/sudoers.d/etheris 2>/dev/null || echo '?')
+  if [[ "$mode" == "440" || "$mode" == "0440" ]]; then
+    pass "sudoers.d/etheris mode is ${mode}"
+  else
+    fail "sudoers.d/etheris mode is ${mode} (must be 440)"
+  fi
+else
+  fail "sudoers.d/etheris missing"
+fi
+
+if command -v visudo >/dev/null; then
+  if visudo -cf /etc/sudoers >/dev/null 2>&1; then pass "visudo: /etc/sudoers OK"
+  else fail "visudo: /etc/sudoers INVALID"; fi
+fi
+
+# sudo works for etheris (nopasswd)
+if [[ "$(id -u)" -eq 0 ]]; then
+  if su - etheris -c 'sudo -n true' >/dev/null 2>&1; then
+    pass "etheris can sudo without password"
+  else
+    fail "etheris cannot sudo -n (check wheel + sudoers)"
+  fi
+fi
+
+# SDDM unit / config
+if [[ -f /etc/sddm.conf.d/etheris.conf ]] || [[ -f /usr/lib/systemd/system/sddm.service ]]; then
+  pass "SDDM present"
+else
+  fail "SDDM not found"
+fi
+
+if [[ -f /etc/polkit-1/rules.d/49-etheris-wheel.rules ]]; then
+  pass "polkit wheel rule installed"
+else
+  fail "polkit wheel rule missing"
+fi
+
+# sessions
+sess=0
+for d in /usr/share/wayland-sessions /usr/share/xsessions; do
+  [[ -d "$d" ]] || continue
+  sess=$((sess + $(find "$d" -name '*.desktop' 2>/dev/null | wc -l)))
+done
+if (( sess > 0 )); then pass "login sessions available (${sess} desktop files)"
+else fail "no .desktop sessions found for SDDM"; fi
+
+echo
+echo "Result: ${ok} OK, ${fail} FAIL"
+if (( fail > 0 )); then
+  echo "Run: sudo etheris-auth-setup"
+  exit 1
+fi
+echo "Login:  etheris / etheris"
+exit 0

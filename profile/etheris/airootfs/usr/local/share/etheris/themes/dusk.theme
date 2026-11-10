@@ -1,0 +1,7 @@
+# Etheris — Dusk
+NAME=dusk
+ACCENT=#fb7185
+BG=#1a1220
+FG=#fde8ef
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

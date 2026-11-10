@@ -1,0 +1,318 @@
+{
+  "categories": [
+    {
+      "id": "browser",
+      "name": "Browser",
+      "setting": "default_browser",
+      "fallback": "firefox",
+      "blurb": "Used by Super+B and web links."
+    },
+    {
+      "id": "terminal",
+      "name": "Terminal",
+      "setting": "default_terminal",
+      "fallback": "foot",
+      "blurb": "Used by Super+Return and “Open in Terminal”."
+    },
+    {
+      "id": "agent",
+      "name": "AI Agent",
+      "setting": "default_agent",
+      "fallback": "chatgpt",
+      "blurb": "Used by Super+I — chat UIs and local agents."
+    }
+  ],
+  "items": [
+    {
+      "id": "firefox",
+      "category": "browser",
+      "name": "Firefox",
+      "summary": "Shipped · warm-start enabled",
+      "source": "repo",
+      "packages": ["firefox"],
+      "bin": "firefox",
+      "desktop": "firefox",
+      "shipped": true,
+      "glyph": "🦊"
+    },
+    {
+      "id": "chromium",
+      "category": "browser",
+      "name": "Chromium",
+      "summary": "Open-source Chrome engine",
+      "source": "repo",
+      "packages": ["chromium"],
+      "bin": "chromium",
+      "desktop": "chromium",
+      "glyph": "🌀"
+    },
+    {
+      "id": "vivaldi",
+      "category": "browser",
+      "name": "Vivaldi",
+      "summary": "Feature-rich Chromium browser",
+      "source": "repo",
+      "packages": ["vivaldi", "vivaldi-ffmpeg-codecs"],
+      "bin": "vivaldi-stable",
+      "desktop": "vivaldi-stable",
+      "glyph": "Ｖ"
+    },
+    {
+      "id": "librewolf",
+      "category": "browser",
+      "name": "LibreWolf",
+      "summary": "Privacy-focused Firefox fork",
+      "source": "repo",
+      "packages": ["librewolf"],
+      "bin": "librewolf",
+      "desktop": "librewolf",
+      "glyph": "🐺"
+    },
+    {
+      "id": "epiphany",
+      "category": "browser",
+      "name": "GNOME Web",
+      "summary": "Lightweight WebKit browser",
+      "source": "repo",
+      "packages": ["epiphany"],
+      "bin": "epiphany",
+      "desktop": "org.gnome.Epiphany",
+      "glyph": "🌐"
+    },
+    {
+      "id": "falkon",
+      "category": "browser",
+      "name": "Falkon",
+      "summary": "KDE Chromium-based browser",
+      "source": "repo",
+      "packages": ["falkon"],
+      "bin": "falkon",
+      "desktop": "org.kde.falkon",
+      "glyph": "🦅"
+    },
+    {
+      "id": "qutebrowser",
+      "category": "browser",
+      "name": "qutebrowser",
+      "summary": "Keyboard-driven browser",
+      "source": "repo",
+      "packages": ["qutebrowser"],
+      "bin": "qutebrowser",
+      "desktop": "org.qutebrowser.qutebrowser",
+      "glyph": "⌨"
+    },
+    {
+      "id": "chrome",
+      "category": "browser",
+      "name": "Google Chrome",
+      "summary": "Official Chrome · AUR build",
+      "source": "aur",
+      "packages": ["google-chrome"],
+      "bin": "google-chrome-stable",
+      "desktop": "google-chrome",
+      "glyph": " cons"
+    },
+    {
+      "id": "edge",
+      "category": "browser",
+      "name": "Microsoft Edge",
+      "summary": "Official Edge · AUR build",
+      "source": "aur",
+      "packages": ["microsoft-edge-stable-bin"],
+      "bin": "microsoft-edge-stable",
+      "desktop": "microsoft-edge",
+      "glyph": " cons"
+    },
+    {
+      "id": "zen",
+      "category": "browser",
+      "name": "Zen Browser",
+      "summary": "Firefox-based · AUR build",
+      "source": "aur",
+      "packages": ["zen-browser-bin"],
+      "bin": "zen-browser",
+      "desktop": "zen-browser",
+      "glyph": "✦"
+    },
+    {
+      "id": "brave",
+      "category": "browser",
+      "name": "Brave",
+      "summary": "Privacy Chromium · AUR build",
+      "source": "aur",
+      "packages": ["brave-bin"],
+      "bin": "brave",
+      "desktop": "brave-browser",
+      "glyph": "🦁"
+    },
+    {
+      "id": "floorp",
+      "category": "browser",
+      "name": "Floorp",
+      "summary": "Firefox-based · AUR build",
+      "source": "aur",
+      "packages": ["floorp-bin"],
+      "bin": "floorp",
+      "desktop": "floorp",
+      "glyph": "フロア"
+    },
+    {
+      "id": "foot",
+      "category": "terminal",
+      "name": "foot",
+      "summary": "Shipped · fast Wayland terminal",
+      "source": "repo",
+      "packages": ["foot"],
+      "bin": "foot",
+      "desktop": "foot",
+      "shipped": true,
+      "glyph": "▭"
+    },
+    {
+      "id": "kitty",
+      "category": "terminal",
+      "name": "Kitty",
+      "summary": "GPU-accelerated terminal",
+      "source": "repo",
+      "packages": ["kitty"],
+      "bin": "kitty",
+      "desktop": "kitty",
+      "glyph": "🐱"
+    },
+    {
+      "id": "alacritty",
+      "category": "terminal",
+      "name": "Alacritty",
+      "summary": "OpenGL terminal emulator",
+      "source": "repo",
+      "packages": ["alacritty"],
+      "bin": "alacritty",
+      "desktop": "Alacritty",
+      "glyph": "A"
+    },
+    {
+      "id": "wezterm",
+      "category": "terminal",
+      "name": "WezTerm",
+      "summary": "GPU terminal with panes/tabs",
+      "source": "repo",
+      "packages": ["wezterm"],
+      "bin": "wezterm",
+      "desktop": "org.wezfurlong.wezterm",
+      "glyph": "W"
+    },
+    {
+      "id": "ghostty",
+      "category": "terminal",
+      "name": "Ghostty",
+      "summary": "Fast native terminal",
+      "source": "repo",
+      "packages": ["ghostty"],
+      "bin": "ghostty",
+      "desktop": "com.mitchellh.ghostty",
+      "glyph": "👻"
+    },
+    {
+      "id": "gnome-console",
+      "category": "terminal",
+      "name": "GNOME Console",
+      "summary": "Simple GTK terminal",
+      "source": "repo",
+      "packages": ["gnome-console"],
+      "bin": "kgx",
+      "desktop": "org.gnome.Console",
+      "glyph": "G"
+    },
+    {
+      "id": "konsole",
+      "category": "terminal",
+      "name": "Konsole",
+      "summary": "KDE terminal emulator",
+      "source": "repo",
+      "packages": ["konsole"],
+      "bin": "konsole",
+      "desktop": "org.kde.konsole",
+      "glyph": "K"
+    },
+    {
+      "id": "chatgpt",
+      "category": "agent",
+      "name": "ChatGPT",
+      "summary": "OpenAI chat in your browser",
+      "source": "web",
+      "url": "https://chatgpt.com/",
+      "glyph": "✦"
+    },
+    {
+      "id": "claude",
+      "category": "agent",
+      "name": "Claude",
+      "summary": "Anthropic chat in your browser",
+      "source": "web",
+      "url": "https://claude.ai/",
+      "glyph": "◈"
+    },
+    {
+      "id": "gemini",
+      "category": "agent",
+      "name": "Gemini",
+      "summary": "Google AI chat in your browser",
+      "source": "web",
+      "url": "https://gemini.google.com/",
+      "glyph": "✧"
+    },
+    {
+      "id": "copilot",
+      "category": "agent",
+      "name": "Microsoft Copilot",
+      "summary": "Copilot chat in your browser",
+      "source": "web",
+      "url": "https://copilot.microsoft.com/",
+      "glyph": "◈"
+    },
+    {
+      "id": "ollama",
+      "category": "agent",
+      "name": "Ollama",
+      "summary": "Local models · Arch package",
+      "source": "repo",
+      "packages": ["ollama"],
+      "bin": "ollama",
+      "launch": ["foot", "-e", "bash", "-lc", "ollama serve & sleep 1; ollama run llama3.2 || ollama run llama3 || bash"],
+      "glyph": "🦙"
+    },
+    {
+      "id": "aichat",
+      "category": "agent",
+      "name": "aichat",
+      "summary": "CLI multi-provider chat",
+      "source": "repo",
+      "packages": ["aichat"],
+      "bin": "aichat",
+      "launch": ["foot", "-e", "aichat"],
+      "glyph": "💬"
+    },
+    {
+      "id": "tgpt",
+      "category": "agent",
+      "name": "tgpt",
+      "summary": "Terminal GPT client",
+      "source": "repo",
+      "packages": ["tgpt"],
+      "bin": "tgpt",
+      "launch": ["foot", "-e", "tgpt", "-i"],
+      "glyph": "▶"
+    },
+    {
+      "id": "codex",
+      "category": "agent",
+      "name": "OpenAI Codex CLI",
+      "summary": "Coding agent in the terminal",
+      "source": "repo",
+      "packages": ["openai-codex"],
+      "bin": "codex",
+      "launch": ["foot", "-e", "codex"],
+      "glyph": "</>"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = lsb-release
+
+[Action]
+Description = Etheris: apply branded /etc/lsb-release
+When = PostTransaction
+Exec = /usr/local/bin/etheris-lsb-release-apply

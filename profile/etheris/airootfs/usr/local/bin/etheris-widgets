@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Etheris OS — optional desktop widgets (off by default).
+# Path A: lightweight GTK clock floating on the wallpaper. Not Quickshell.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+mkdir -p "$CONF_DIR"
+
+get_setting() {
+  local key="$1" def="${2:-}"
+  [[ -f "$SETTINGS" ]] || { echo "$def"; return; }
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  [[ -n "$v" ]] && echo "$v" || echo "$def"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  [[ -f "$SETTINGS" ]] || printf '%s\n' 'theme=ocean-glass' 'widgets=off' >"$SETTINGS"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+stop_widgets() {
+  pkill -f '/usr/local/bin/etheris-widget-clock' >/dev/null 2>&1 || true
+}
+
+start_clock() {
+  stop_widgets
+  nohup /usr/local/bin/etheris-widget-clock >/dev/null 2>&1 &
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  status)
+    echo "widgets=$(get_setting widgets off)"
+    pgrep -af etheris-widget-clock >/dev/null 2>&1 && echo "running=yes" || echo "running=no"
+    ;;
+  apply)
+    w="$(get_setting widgets off)"
+    case "$w" in
+      clock) start_clock ;;
+      off|none|"") stop_widgets ;;
+      *) echo "unknown widgets=$w (use off|clock)" >&2; stop_widgets; exit 2 ;;
+    esac
+    ;;
+  set)
+    val="${2:-}"
+    case "$val" in
+      off|clock) set_setting widgets "$val"; exec etheris-widgets apply ;;
+      *) echo "Usage: etheris-widgets set off|clock" >&2; exit 2 ;;
+    esac
+    ;;
+  stop) stop_widgets ;;
+  *)
+    echo "Usage: etheris-widgets status|apply|set off|clock|stop" >&2
+    exit 2
+    ;;
+esac

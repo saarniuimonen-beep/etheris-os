@@ -1,0 +1,23 @@
+# Etheris OS — minimal Sway seat for ReGreet (login only)
+# No Waybar / desktop chrome — greeter owns the viewport.
+
+xwayland disable
+output * bg /usr/local/share/etheris/wallpapers/ocean-glass.png fill
+
+# Seat input
+input type:touchpad {
+    tap enabled
+    natural_scroll enabled
+}
+input type:keyboard {
+    xkb_layout us
+}
+
+# Layer-shell friendly defaults
+default_border none
+default_floating_border none
+
+exec dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
+exec "regreet; swaymsg exit"
+
+bindsym Mod4+Shift+e exec swaynag -t warning -m 'Power?' -b 'Reboot' 'systemctl reboot' -b 'Shut down' 'systemctl poweroff' -b 'Cancel' ''

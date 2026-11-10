@@ -1,0 +1,7 @@
+# Etheris — Ember
+NAME=ember
+ACCENT=#fbbf24
+BG=#140f0a
+FG=#fff7ed
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

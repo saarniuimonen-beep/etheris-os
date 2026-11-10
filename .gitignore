@@ -1,0 +1,49 @@
+# ISOs / disk images — release assets only, never git
+*.iso
+*.qcow2
+*.img
+out/**/*.iso
+out/**/*.qcow2
+out/**/*.img
+
+# Build scratch
+work/
+out/archive/
+out/vms/
+out/qemu-smoke/
+out/build-*.log
+out/build-*.console.log
+out/*-apply/
+!out/*.tgz
+!out/SHA256SUMS
+!out/VERIFICATION*.md
+!out/MILESTONE*.md
+
+# Large verification dumps (screenshots/logs) — keep markdown summaries if small
+out/verification*/
+out/verification
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editors / OS
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Secrets / local
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+id_rsa
+id_ed25519
+
+# Pacman caches
+*.pkg.tar.*
+**/pacman-cache/

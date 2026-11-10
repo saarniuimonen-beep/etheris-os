@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+curl -fs http://10.0.2.2:8765/browser-fast-apply/usr/local/bin/ethereal-browser -o /tmp/ethereal-browser
+chmod +x /tmp/ethereal-browser
+sudo install -m0755 /tmp/ethereal-browser /usr/local/bin/ethereal-browser
+echo UPDATED

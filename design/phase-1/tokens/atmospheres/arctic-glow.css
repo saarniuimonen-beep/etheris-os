@@ -1,0 +1,27 @@
+/* Atmosphere: Arctic Glow (light sky glass) */
+[data-atmosphere="arctic-glow"] {
+  --eth-bg: #f0f7fc;
+  --eth-bg-elevated: #ffffff;
+  --eth-bg-deep: #dbeaf5;
+  --eth-fg: #0c2740;
+  --eth-fg-muted: #3d5a73;
+  --eth-fg-subtle: #6b8499;
+  --eth-accent: #0284c7;
+  --eth-accent-2: #0d9488;
+  --eth-accent-soft: rgba(2, 132, 199, 0.22);
+  --eth-border: rgba(2, 132, 199, 0.30);
+  --eth-panel: rgba(255, 255, 255, 0.78);
+  --eth-menu: rgba(255, 255, 255, 0.96);
+  --eth-input: rgba(226, 242, 252, 0.98);
+  --eth-success: #16a34a;
+  --eth-warning: #d97706;
+  --eth-danger: #e11d48;
+  --eth-focus: #38bdf8;
+  --eth-highlight: rgba(2, 132, 199, 0.08);
+  --eth-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 48%);
+  --eth-shadow-soft: 0 8px 28px rgba(12, 60, 100, 0.12);
+  --eth-shadow-float: 0 12px 40px rgba(12, 60, 100, 0.16);
+  --eth-wallpaper: url("../../preview/assets/arctic-glow.svg");
+  --eth-atmosphere-name: "Arctic Glow";
+  --eth-variant: light;
+}

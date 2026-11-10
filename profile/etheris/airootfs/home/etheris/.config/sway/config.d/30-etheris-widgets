@@ -1,0 +1,3 @@
+# Optional desktop widgets (WP-S5) — floating sticky clock
+for_window [app_id="os.etheris.widget.clock"] floating enable, sticky enable, border pixel 0, move position 48 64
+for_window [title="Etheris Clock"] floating enable, sticky enable, border pixel 0, move position 48 64

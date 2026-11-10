@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Restore Etheris /etc/lsb-release after the lsb-release package is installed.
+set -euo pipefail
+src=/usr/local/share/etheris/lsb-release
+dst=/etc/lsb-release
+[[ -f "$src" ]] || exit 0
+install -m 644 "$src" "$dst"

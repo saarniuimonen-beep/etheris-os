@@ -1,0 +1,19 @@
+/* Atmosphere: Aurora (teal–green luminous dark) */
+[data-atmosphere="aurora"] {
+  --eth-bg: #071820;
+  --eth-bg-elevated: #0e2a32;
+  --eth-bg-deep: #041016;
+  --eth-fg: #e6fbf7;
+  --eth-fg-muted: #9ecfc6;
+  --eth-accent: #2dd4bf;
+  --eth-accent-2: #5eead4;
+  --eth-accent-soft: rgba(45, 212, 191, 0.35);
+  --eth-border: rgba(45, 212, 191, 0.32);
+  --eth-panel: rgba(7, 24, 32, 0.74);
+  --eth-menu: rgba(7, 24, 32, 0.95);
+  --eth-input: rgba(14, 42, 50, 0.95);
+  --eth-focus: #99f6e4;
+  --eth-wallpaper: url("../../preview/assets/aurora.svg");
+  --eth-atmosphere-name: "Aurora";
+  --eth-variant: dark;
+}

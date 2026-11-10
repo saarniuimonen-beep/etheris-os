@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Back-compat wrapper → etheris-update (Stable channel refresh)
+set -euo pipefail
+echo "etheris-mirror-lag is deprecated; using etheris-update refresh"
+if [[ "${1:-}" == "--write" || "${1:-}" == "" ]]; then
+  exec etheris-update refresh
+fi
+# Allow legacy --days override by editing channels.conf instead
+echo "Edit /etc/etheris/channels.conf (STABLE_LAG_DAYS) then: sudo etheris-update refresh"
+exit 1

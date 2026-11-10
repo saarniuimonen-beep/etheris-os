@@ -1,0 +1,3 @@
+# Etheris live/admin user — wheel may sudo without retyping password
+Defaults:etheris !lecture
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

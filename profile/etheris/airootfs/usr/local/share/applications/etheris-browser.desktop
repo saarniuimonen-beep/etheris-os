@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Name=Web Browser
+GenericName=Web Browser
+Comment=Etheris web browser (warm Firefox)
+Exec=etheris-browser %u
+Icon=firefox
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+StartupWMClass=firefox
+Keywords=web;browser;internet;firefox;

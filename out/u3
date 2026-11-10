@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd /tmp
+rm -rf ui-launcher-apply && mkdir ui-launcher-apply && cd ui-launcher-apply
+curl -fs http://10.0.2.2:8765/ui-launcher-apply.tgz | tar xz
+exec sh ./apply.sh

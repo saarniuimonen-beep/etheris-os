@@ -1,0 +1,23 @@
+/* Etheris OS — Rofi Kickoff-style application launcher */
+configuration {
+  modi: "pinned:/usr/local/share/etheris/rofi/favorites.mode,drun,run,window";
+  show-icons: true;
+  icon-theme: "Papirus-Dark";
+  font: "Outfit 13";
+  terminal: "foot";
+  drun-display-format: "{name}";
+  hover-select: true;
+  me-select-entry: "";
+  me-accept-entry: [ MousePrimary ];
+  sidebar-mode: true;
+  cycle: true;
+  matching: "fuzzy";
+  sort: true;
+  display-pinned: "Pinned";
+  display-drun: "Apps";
+  display-run: "Run";
+  display-window: "Windows";
+  /* Brand prompt */
+  /* set via -p from etheris-launcher; fallback: */
+}
+@theme "etheris"

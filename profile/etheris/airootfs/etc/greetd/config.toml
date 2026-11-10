@@ -1,0 +1,9 @@
+[terminal]
+vt = 1
+
+[default_session]
+# Etheris Neo-Aero login — ReGreet (GTK4) under a minimal Sway seat.
+# Auth remains greetd + PAM. Fallback: etheris-greeter-tui
+# Live tip: user etheris / password etheris
+command = "sway --config /etc/greetd/sway-config"
+user = "greeter"

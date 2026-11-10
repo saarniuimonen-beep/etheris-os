@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Back-compat → polished Defaults UI (browser tab).
+export ETHERIS_DEFAULTS_TAB=browser
+exec /usr/local/bin/etheris-defaults-ui

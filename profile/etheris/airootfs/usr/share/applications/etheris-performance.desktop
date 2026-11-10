@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris Performance Manager
+GenericName=Performance profiles
+Comment=CPU and GPU performance profiles for Etheris
+Exec=etheris-performance
+Icon=preferences-system-power
+Terminal=false
+Categories=Settings;System;HardwareSettings;
+Keywords=cpu;gpu;power;performance;battery;quiet;
+StartupNotify=true

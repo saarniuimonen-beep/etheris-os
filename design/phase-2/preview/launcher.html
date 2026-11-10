@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Launcher — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .launcher { width: min(640px, 92vw); padding: 20px; }
+    .cats { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
+    .cats span { padding:6px 12px; border-radius:999px; border:1px solid var(--eth-border); font-size:11px; color:var(--eth-fg-muted); }
+    .cats span.on { background:var(--eth-accent-soft); color:var(--eth-fg); border-color:var(--eth-accent); }
+    .pins { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:16px; }
+    .pins figure { margin:0; text-align:center; font-size:11px; color:var(--eth-fg-muted); }
+    .pins .app-icon { margin:0 auto 6px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .row { display:flex; gap:12px; align-items:center; padding:10px 12px; border-radius:10px; border:1px solid transparent; }
+    .row:hover, .row:focus-within { background:var(--eth-accent-soft); border-color:var(--eth-border); }
+    .row .app-icon { width:36px; height:36px; border-radius:10px; }
+    .row strong { display:block; font-size:13px; color:var(--eth-fg); font-weight:500; }
+    .row small { color:var(--eth-fg-muted); font-size:11px; }
+    @media (max-width:560px) { .pins { grid-template-columns:repeat(3,1fr); } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html" aria-current="page">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="stage">
+    <header class="panel">
+      <img class="mark" src="assets/mark.svg" alt="" />
+      <span class="brand-word">etheris</span>
+      <span class="sep"></span>
+      <div class="ws"><span class="on"></span><span></span><span></span></div>
+      <span class="clock">Thu 20:18</span>
+    </header>
+    <div class="overlay-scrim">
+      <div class="glass launcher pop" role="dialog" aria-label="Application launcher">
+        <h2 style="margin:0 0 4px;font-size:18px">Applications</h2>
+        <p style="margin:0 0 14px;color:var(--eth-fg-muted);font-size:12px">Search focuses on open · Super+D · Esc closes (closes other overlays)</p>
+        <input class="input" type="search" placeholder="Search apps…" autofocus />
+        <div class="cats"><span class="on">Pinned</span><span>Recent</span><span>System</span><span>Internet</span><span>Media</span></div>
+        <div class="pins">
+          <figure><div class="app-icon">Term</div>Terminal</figure>
+          <figure><div class="app-icon">Files</div>Files</figure>
+          <figure><div class="app-icon">Web</div>Browser</figure>
+          <figure><div class="app-icon">Edit</div>Editor</figure>
+          <figure><div class="app-icon">Soft</div>Software</figure>
+          <figure><div class="app-icon">Set</div>Settings</figure>
+        </div>
+        <div class="grid">
+          <div class="row" tabindex="0"><div class="app-icon">Foot</div><div><strong>Foot</strong><small>Recently used</small></div></div>
+          <div class="row" tabindex="0"><div class="app-icon">PCM</div><div><strong>PCManFM</strong><small>File manager</small></div></div>
+          <div class="row" tabindex="0"><div class="app-icon">Pav</div><div><strong>Volume Control</strong><small>PipeWire</small></div></div>
+          <div class="row" tabindex="0"><div class="app-icon">Steam</div><div><strong>Steam</strong><small>Gaming</small></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

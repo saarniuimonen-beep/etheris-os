@@ -1,0 +1,8 @@
+# Etheris Defaults / Settings / Timezone — float as centered dialogs (not crushed by tiling)
+for_window [app_id="os.etheris.defaults"] floating enable, resize set 900 640, move position center
+for_window [title="Etheris Defaults"] floating enable, resize set 900 640, move position center
+for_window [app_id="os.etheris.settings"] floating enable, resize set 820 520, move position center
+for_window [title="Etheris Settings"] floating enable, resize set 820 520, move position center
+for_window [app_id="os.etheris.browsers"] floating enable, resize set 900 640, move position center
+for_window [app_id="os.etheris.timezone"] floating enable, resize set 1120 700, move position center
+for_window [title="Etheris · Timezone"] floating enable, resize set 1120 700, move position center

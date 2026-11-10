@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# Etheris OS — gaming readiness (Steam Play, Proton, official anti-cheat runtimes).
+# Does NOT bypass anti-cheat. Only Valve-published Steam components + local OS tweaks.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/etheris"
+STEAM_ROOT="${STEAM_ROOT:-$HOME/.local/share/Steam}"
+STAMP="$CONF_DIR/gaming-setup.done"
+RUNTIME_STAMP="$CONF_DIR/steam-runtimes.queued"
+ENV_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d"
+ENV_FILE="$ENV_DIR/99-etheris-gaming.conf"
+LOG="$STATE_DIR/gaming-setup.log"
+
+mkdir -p "$CONF_DIR" "$STATE_DIR" "$ENV_DIR" "$STEAM_ROOT/config" "$STEAM_ROOT/logs" "$HOME/.steam"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-gaming-setup          # apply once (no-op if already done)
+  etheris-gaming-setup force    # re-apply local OS tweaks
+  etheris-gaming-setup status
+  etheris-gaming-setup runtimes # queue Proton + official EAC/BattlEye runtimes in Steam
+  etheris-gaming-setup steamplay # enable Steam Play defaults in Steam config
+EOF
+}
+
+notify() {
+  local summary="$1" body="$2"
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "Etheris Gaming" "$summary" "$body" 2>/dev/null || true
+  fi
+  printf 'etheris-gaming-setup: %s — %s\n' "$summary" "$body" >&2
+}
+
+log() { printf '%s\n' "$*" >>"$LOG"; }
+
+# Official Steam tool appids (Valve).
+# 1493710 Proton Experimental · 2180100 Proton Hotfix · 2805730 Proton 9.0
+# 1628350 Steam Linux Runtime 3.0 (sniper)
+# 1826330 Proton EasyAntiCheat Runtime · 1161040 Proton BattlEye Runtime
+RUNTIME_IDS=(1493710 2180100 2805730 1628350 1826330 1161040)
+
+wait_for_steam() {
+  local i
+  for i in $(seq 1 90); do
+    if pgrep -x steam >/dev/null 2>&1 || pgrep -f '/steam(\.sh)?( |$)' >/dev/null 2>&1; then
+      sleep 8
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+queue_runtimes() {
+  if ! command -v steam >/dev/null 2>&1; then
+    echo "steam not installed" >&2
+    return 2
+  fi
+  {
+    echo "==== $(date -Is) queue runtimes ===="
+    if ! wait_for_steam; then
+      echo "Steam is not running — launching briefly to accept install URIs"
+      nohup steam -silent >/dev/null 2>&1 &
+      wait_for_steam || true
+    fi
+    local id
+    for id in "${RUNTIME_IDS[@]}"; do
+      echo "queue steam://install/${id}"
+      steam "steam://install/${id}" >/dev/null 2>&1 || true
+      sleep 1
+    done
+  } >>"$LOG" 2>&1
+  mkdir -p "$(dirname "$RUNTIME_STAMP")"
+  date -Is >"$RUNTIME_STAMP"
+  notify "Proton + anti-cheat runtimes" \
+    "Queued Proton Experimental/Hotfix/9.0, Steam Linux Runtime, EasyAntiCheat, and BattlEye (official). Open Steam → Library → Tools to confirm."
+}
+
+# Seed Steam Play so Windows titles can use Proton without hunting menus.
+enable_steamplay() {
+  python3 - "$STEAM_ROOT" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+cfg = root / "config" / "config.vdf"
+cfg.parent.mkdir(parents=True, exist_ok=True)
+text = cfg.read_text(encoding="utf-8", errors="ignore") if cfg.exists() else ""
+
+block = '''
+					"0"
+					{
+						"name"		"proton_experimental"
+						"config"		""
+						"priority"		"75"
+					}
+'''
+
+if "CompatToolMapping" in text:
+    if re.search(r'"0"\s*\{[^}]*"name"\s+"proton_', text, re.S):
+        print("steamplay: CompatToolMapping already has default tool")
+    else:
+        text2, n = re.subn(
+            r'("CompatToolMapping"\s*\{)',
+            r'\1' + block,
+            text,
+            count=1,
+        )
+        if n:
+            cfg.write_text(text2, encoding="utf-8")
+            print("steamplay: inserted default CompatToolMapping")
+        else:
+            print("steamplay: could not patch CompatToolMapping", file=sys.stderr)
+            sys.exit(1)
+else:
+    # Minimal InstallConfigStore with Steam Play default (appid 0 = all titles).
+    cfg.write_text(
+        f'''"InstallConfigStore"
+{{
+	"Software"
+	{{
+		"Valve"
+		{{
+			"Steam"
+			{{
+				"CompatToolMapping"
+				{{{block}				}}
+			}}
+		}}
+	}}
+}}
+''',
+        encoding="utf-8",
+    )
+    print("steamplay: wrote new config.vdf with Proton Experimental default")
+
+# Keep classic ~/.steam layout Steam expects
+steam = pathlib.Path.home() / ".steam"
+steam.mkdir(parents=True, exist_ok=True)
+for name, target in (
+    ("steam", root),
+    ("root", root),
+    ("steam.pid", root / "steam.pid"),
+):
+    link = steam / name
+    if link.is_symlink() or not link.exists():
+        try:
+            if link.is_symlink() or link.exists():
+                link.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            link.symlink_to(target)
+        except OSError:
+            pass
+PY
+}
+
+write_env() {
+  cat >"$ENV_FILE" <<'EOF'
+# Etheris gaming defaults (user session). Safe Proton helpers only.
+# Restart the session after first setup for environment.d to load.
+PROTON_LOG=0
+# Steam Input under Wayland/Sway (XWayland clients).
+SDL_JOYSTICK_HIDAPI=1
+# Prefer X11 for Steam/CEF stability on Sway.
+SDL_VIDEODRIVER=x11
+EOF
+}
+
+xdg_steam_handler() {
+  if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default steam.desktop x-scheme-handler/steam 2>/dev/null || true
+    xdg-mime default steam.desktop x-scheme-handler/steamlink 2>/dev/null || true
+  fi
+}
+
+status() {
+  echo "stamp=$([[ -f $STAMP ]] && echo yes || echo no)"
+  echo "runtimes_queued=$([[ -f $RUNTIME_STAMP ]] && echo yes || echo no)"
+  echo "env_file=$([[ -f $ENV_FILE ]] && echo yes || echo no)"
+  echo "max_map_count=$(sysctl -n vm.max_map_count 2>/dev/null || echo unknown)"
+  echo "steam=$(command -v steam >/dev/null && echo yes || echo no)"
+  echo "steam_devices=$(pacman -Q steam-devices 2>/dev/null | awk '{print $2}' || echo missing)"
+  echo "wine=$(command -v wine >/dev/null && wine --version 2>/dev/null || echo no)"
+  echo "winetricks=$(command -v winetricks >/dev/null && echo yes || echo no)"
+  echo "protontricks=$(command -v protontricks >/dev/null && echo yes || echo no)"
+  echo "umu=$(command -v umu-run >/dev/null && echo yes || echo no)"
+  echo "gamemode=$(command -v gamemoderun >/dev/null && echo yes || echo no)"
+  if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+    echo "gamemode_group=yes"
+  else
+    echo "gamemode_group=no"
+  fi
+  local eac be
+  eac="$(find "$STEAM_ROOT/steamapps/common" -maxdepth 1 -type d -iname '*EasyAntiCheat*' 2>/dev/null | head -n1 || true)"
+  be="$(find "$STEAM_ROOT/steamapps/common" -maxdepth 1 -type d -iname '*BattlEye*' 2>/dev/null | head -n1 || true)"
+  echo "eac_runtime=$([[ -n $eac ]] && echo yes || echo no)"
+  echo "battleye_runtime=$([[ -n $be ]] && echo yes || echo no)"
+}
+
+apply() {
+  local force="${1:-}"
+  if [[ -f "$STAMP" && "$force" != force ]]; then
+    echo "etheris-gaming-setup: already done ($STAMP)"
+    return 0
+  fi
+
+  {
+    echo "==== $(date -Is) gaming-setup ===="
+    write_env
+    echo "wrote $ENV_FILE"
+    enable_steamplay || echo "steamplay seed skipped"
+    xdg_steam_handler
+  } >>"$LOG" 2>&1
+
+  if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+    echo "note: user not in gamemode group yet (re-login after installer adds it)" >>"$LOG"
+  fi
+
+  # Reload controller udev rules when possible
+  if [[ -x /usr/bin/udevadm ]] && [[ -d /usr/lib/udev/rules.d ]]; then
+    sudo -n udevadm control --reload-rules 2>/dev/null || true
+    sudo -n udevadm trigger 2>/dev/null || true
+  fi
+
+  date -Is >"$STAMP"
+  notify "Gaming setup ready" \
+    "Steam Play defaults seeded. Launch Steam once, then run: etheris-gaming-setup runtimes. Anti-cheat works only when the publisher enables Linux/Proton."
+  echo "etheris-gaming-setup: applied"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  ""|apply) apply ;;
+  force) apply force ;;
+  status) status ;;
+  runtimes) queue_runtimes ;;
+  steamplay) enable_steamplay ;;
+  -h|--help|help) usage ;;
+  *) usage; exit 2 ;;
+esac

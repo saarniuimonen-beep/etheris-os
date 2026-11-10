@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd /tmp
+rm -rf defaults-apply && mkdir defaults-apply && cd defaults-apply
+curl -fs http://10.0.2.2:8765/defaults-apply.tgz | tar xz
+exec sh ./apply.sh

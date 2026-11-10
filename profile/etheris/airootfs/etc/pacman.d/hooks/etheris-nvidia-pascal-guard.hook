@@ -1,0 +1,16 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = nvidia
+Target = nvidia-open
+Target = nvidia-dkms
+Target = nvidia-open-dkms
+Target = nvidia-lts
+Target = nvidia-open-lts
+
+[Action]
+Description = Etheris: warn if NVIDIA open/proprietary upgrades hit a Pascal-pinned system
+When = PreTransaction
+Exec = /usr/local/bin/etheris-nvidia-pascal-guard
+AbortOnFail = false

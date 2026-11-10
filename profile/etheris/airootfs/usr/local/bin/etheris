@@ -1,0 +1,499 @@
+#!/usr/bin/env bash
+# Etheris OS control center (CLI)
+set -euo pipefail
+
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}"
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+THEMES_DIR="$SHARE/themes"
+WALL_DIR="$SHARE/wallpapers"
+
+mkdir -p "$CONF_DIR"
+[[ -f "$SETTINGS" ]] || cat >"$SETTINGS" <<'EOF'
+theme=ocean-glass
+wallpaper=/usr/local/share/etheris/wallpapers/ocean-glass.png
+accent=#38bdf8
+blur=off
+animations=off
+launcher_style=wide
+EOF
+
+get_setting() {
+  local key="$1"
+  grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2-
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+apply_wallpaper() {
+  local wall force="${1:-}" mode
+  wall="$(get_setting wallpaper)"
+  [[ -n "$wall" && -f "$wall" ]] || wall="$WALL_DIR/ocean-glass.png"
+  # Prefer PNG (instant decode); fall back to SVG if PNG missing
+  if [[ "$wall" == *.svg && -f "${wall%.svg}.png" ]]; then
+    wall="${wall%.svg}.png"
+  fi
+  mode="$(get_setting wallpaper_mode fill)"
+  case "$mode" in
+    fill|fit|stretch|center) ;;
+    *) mode=fill ;;
+  esac
+  # Skip restart when swaybg already running (fast re-apply / session start)
+  if [[ "$force" != "force" ]] && pgrep -x swaybg >/dev/null 2>&1; then
+    return 0
+  fi
+  pkill -x swaybg 2>/dev/null || true
+  swaybg -i "$wall" -m "$mode" >/dev/null 2>&1 &
+}
+
+apply_theme() {
+  # Neo-Aero: generate waybar/wofi/mako/foot/sway/GTK from design tokens
+  if [[ -x /usr/local/bin/etheris-theme-apply ]]; then
+    etheris-theme-apply >/dev/null 2>&1 || etheris-theme-apply || true
+  else
+    local theme accent
+    theme="$(get_setting theme)"
+    accent="$(get_setting accent)"
+    local tfile="$THEMES_DIR/${theme}.theme"
+    if [[ -f "$tfile" ]]; then
+      # shellcheck disable=SC1090
+      source "$tfile"
+      set_setting accent "${ACCENT:-$accent}"
+    fi
+    pkill -USR2 waybar 2>/dev/null || true
+  fi
+  apply_wallpaper
+  # Standard user folders for the file manager (Home, Downloads, Pictures, …)
+  if command -v xdg-user-dirs-update >/dev/null 2>&1; then
+    xdg-user-dirs-update >/dev/null 2>&1 || true
+  fi
+  mkdir -p \
+    "$HOME/Desktop" \
+    "$HOME/Documents" \
+    "$HOME/Downloads" \
+    "$HOME/Music" \
+    "$HOME/Pictures" \
+    "$HOME/Pictures/Wallpapers" \
+    "$HOME/Pictures/Screenshots" \
+    "$HOME/Videos" \
+    "$HOME/Templates" \
+    "$HOME/Public" \
+    "$HOME/Downloads/Etheris Transfers" \
+    "$HOME/Downloads/Bluetooth" \
+    2>/dev/null || true
+  # GTK Places sidebar for Etheris Files (PCManFM) — keep Neo-Aero Places list current
+  _bm="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks"
+  mkdir -p "$(dirname "$_bm")"
+  cat >"$_bm" <<EOF
+file://$HOME/Desktop Desktop
+file://$HOME/Documents Documents
+file://$HOME/Downloads Downloads
+file://$HOME/Music Music
+file://$HOME/Pictures Pictures
+file://$HOME/Pictures/Wallpapers Wallpapers
+file://$HOME/Pictures/Screenshots Screenshots
+file://$HOME/Videos Videos
+file://$HOME/Public Public
+file://$HOME/Downloads/Etheris%20Transfers Etheris Transfers
+EOF
+  # Bluetooth OBEX receive (user unit; no-op if bluez-obex missing)
+  systemctl --user enable --now obex.service >/dev/null 2>&1 || true
+  # Startup sound once per login (no-op if disabled / already played)
+  if [[ -x /usr/local/bin/etheris-sound ]]; then
+    etheris-sound play-startup >/dev/null 2>&1 || true
+  fi
+}
+
+cmd_help() {
+  cat <<'EOF'
+Etheris OS — etheris
+
+Usage:
+  etheris                 Interactive menu
+  etheris help            This help
+  etheris status          Theme / session info
+  etheris ram             Idle RAM check (target ≤500MB)
+  etheris auth            Verify login / sudo / polkit
+  etheris update …        Channel status / upgrades (see etheris-update)
+  etheris security …      Privacy / firewall / audit helpers
+  etheris desktops        List login sessions
+  etheris themes          Pick a theme
+  etheris theme <name>    Apply theme by name
+  etheris tokens regenerate  Rebuild tokens-*.conf from etheris.tokens.json
+  etheris wallpaper       Open Etheris wallpaper switcher
+  etheris wallpaper <f>   Set wallpaper file (force apply)
+  etheris apply-session   Apply wallpaper + theme (autostart)
+  etheris launcher        Application launcher (Super+D)
+  etheris control-center  Quick settings (Super+A)
+  etheris notifications   Notification center (Super+N)
+  etheris winctl …        Focused window controls (panel / Super+Shift+A)
+  etheris logout-menu     Lock / logout / power
+  etheris guide [--force] First-login guide (reopen with --force)
+  etheris welcome         Alias for guide
+  etheris shortcuts       Shortcut Center (also Super+/)
+  etheris sound …         Startup sound enable/preview/volume
+  etheris settings        Neo-Aero Settings (GTK) · Super+,
+  etheris defaults …      Default browser / terminal / AI agent
+  etheris timezone …      3D globe city / timezone picker
+  etheris timezone-auto … Travel-aware timezone updates
+  etheris browsers …      Alias → defaults (browser)
+  etheris oobe …          First-boot setup wizard status / run (installed)
+  etheris hardware …      CPU/GPU report (etheris-hw)
+  etheris drivers …       Driver recommendations (etheris-drivers)
+  etheris performance …   Performance profiles (etheris-perf)
+  etheris gpu …           GPU Manager (etheris-gpu)
+  etheris gaming          Gaming stack notes
+  etheris install         Install to disk (pick desktop first)
+  etheris edit            Open settings in editor
+  etheris list-themes
+  etheris list-wallpapers
+
+≤500MB idle: use session "Etheris (Sway)" only; keep Steam closed when measuring.
+Hyprland / Plasma / XFCE are optional and use more RAM.
+
+Live login: etheris / etheris
+EOF
+}
+
+# Used MiB from /proc/meminfo (MemTotal - MemAvailable)
+used_ram_mib() {
+  awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} END {printf "%d", (t-a)/1024}' /proc/meminfo
+}
+
+cmd_ram() {
+  local used target=500
+  used="$(used_ram_mib)"
+  echo "Etheris RAM check"
+  echo "  used:     ${used} MiB"
+  echo "  target:   ≤ ${target} MiB idle (Etheris Light)"
+  echo "  session:  ${XDG_CURRENT_DESKTOP:-unknown}"
+  if [[ -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]; then
+    local desk="${XDG_CURRENT_DESKTOP:-}${XDG_SESSION_DESKTOP:-}"
+    if [[ "$desk" == *labwc* || "$desk" == *Etheris* || "$desk" == *sway* || "$desk" == *Sway* ]]; then
+      if (( used <= target )); then
+        echo "  result:   OK — under ${target} MiB"
+      else
+        echo "  result:   OVER — close apps; avoid Plasma/Hyprland/XFCE for the 500MB target"
+      fi
+    else
+      echo "  result:   N/A — 500MB target applies to Etheris Light (Sway) only"
+    fi
+  else
+    echo "  result:   (not in a graphical session)"
+  fi
+  echo
+  free -h | awk 'NR<=2 {print "  "$0}'
+}
+
+cmd_status() {
+  echo "Etheris OS status"
+  echo "  theme:     $(get_setting theme)"
+  echo "  accent:    $(get_setting accent)"
+  echo "  wallpaper: $(get_setting wallpaper)"
+  echo "  blur:      $(get_setting blur)"
+  cmd_ram
+  echo
+  echo "  Available desktops at login:"
+  cmd_desktops | sed 's/^/    /'
+}
+
+cmd_desktops() {
+  local list=""
+  local d name
+  for d in /usr/share/wayland-sessions/*.desktop /usr/share/xsessions/*.desktop; do
+    [[ -f "$d" ]] || continue
+    name="$(grep -E '^Name=' "$d" | head -1 | cut -d= -f2-)"
+    [[ -n "$name" ]] || continue
+    list+="$name"$'\n'
+  done
+  if [[ -z "$list" ]]; then
+    echo "(no sessions found)"
+    return
+  fi
+  printf '%s' "$list" | awk 'NF && !seen[$0]++'
+}
+
+cmd_list_themes() {
+  ls -1 "$THEMES_DIR"/*.theme 2>/dev/null | xargs -r -n1 basename | sed 's/\.theme$//' || echo "(none)"
+}
+
+cmd_list_walls() {
+  ls -1 "$WALL_DIR" 2>/dev/null || echo "(none)"
+}
+
+cmd_theme() {
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    echo "Available themes:"
+    cmd_list_themes
+    echo
+    read -rp "Theme name: " name
+  fi
+  [[ -f "$THEMES_DIR/${name}.theme" ]] || { echo "Unknown theme: $name"; exit 1; }
+  set_setting theme "$name"
+  apply_theme
+  echo "Applied theme: $name"
+}
+
+cmd_tokens() {
+  local sub="${1:-}"
+  local gen
+  gen="$(command -v etheris-tokens-generate 2>/dev/null || true)"
+  [[ -n "$gen" ]] || gen="/usr/local/bin/etheris-tokens-generate"
+  case "$sub" in
+    regenerate|gen|generate)
+      shift || true
+      if [[ -x "$gen" ]]; then
+        ETHERIS_SHARE="$SHARE" "$gen" "$@"
+      else
+        echo "etheris-tokens-generate not found" >&2
+        return 1
+      fi
+      ;;
+    check)
+      if [[ -x "$gen" ]]; then
+        ETHERIS_SHARE="$SHARE" "$gen" --check
+      else
+        echo "etheris-tokens-generate not found" >&2
+        return 1
+      fi
+      ;;
+    ""|help|-h|--help)
+      echo "Usage: etheris tokens regenerate|check"
+      ;;
+    *)
+      echo "Unknown tokens subcommand: $sub" >&2
+      return 1
+      ;;
+  esac
+}
+
+cmd_wallpaper() {
+  local file="${1:-}"
+  if [[ -z "$file" ]]; then
+    if [[ -x /usr/local/bin/etheris-wallpaper ]]; then
+      exec etheris-wallpaper
+    fi
+    echo "Wallpapers in $WALL_DIR:"
+    cmd_list_walls
+    echo
+    read -rp "Filename or path: " file
+  fi
+  if [[ ! -f "$file" ]]; then
+    [[ -f "$WALL_DIR/$file" ]] && file="$WALL_DIR/$file"
+  fi
+  [[ -f "$file" ]] || { echo "Not found: $file"; exit 1; }
+  set_setting wallpaper "$file"
+  apply_wallpaper force
+  echo "Wallpaper set."
+}
+
+cmd_logout() {
+  # Neo-Aero glass power menu (GTK4); wofi fallback only if GTK deps missing (exit 2)
+  if [[ -x /usr/local/bin/etheris-power-menu ]]; then
+    /usr/local/bin/etheris-power-menu
+    local rc=$?
+    [[ "$rc" -eq 2 ]] || return "$rc"
+  fi
+  local choice
+  choice="$(printf 'Lock\nSleep\nLogout\nReboot\nShutdown\nCancel' | wofi --dmenu -p 'session › ' 2>/dev/null || true)"
+  case "$choice" in
+    Lock)
+      swaylock -f -c 0a1628 2>/dev/null || loginctl lock-session
+      ;;
+    Sleep) systemctl suspend ;;
+    Logout)
+      case "${XDG_CURRENT_DESKTOP:-}" in
+        *Hyprland*) hyprctl dispatch exit 2>/dev/null || true ;;
+        *KDE*|*Plasma*) qdbus org.kde.Shutdown /Shutdown logout 2>/dev/null || loginctl terminate-user "$USER" ;;
+        *XFCE*|*Xfce*) xfce4-session-logout -l 2>/dev/null || loginctl terminate-user "$USER" ;;
+        *) swaymsg exit 2>/dev/null || loginctl terminate-user "$USER" ;;
+      esac
+      ;;
+    Reboot) systemctl reboot ;;
+    Shutdown) systemctl poweroff ;;
+    *) ;;
+  esac
+}
+
+cmd_menu() {
+  local choice
+  choice="$(printf 'RAM check\nAuth check\nStatus\nHardware\nDrivers\nGaming\nDesktops\nThemes\nWallpaper\nTransfers\nAppearance (GTK)\nShortcut Center\nFirst-login guide\nSound settings\nSettings\nSteam\nTerminal\nFiles\nInstall to disk\nHelp\nLogout menu' | wofi --dmenu -p 'Etheris › ' 2>/dev/null || true)"
+  case "$choice" in
+    "RAM check") foot -e sh -c 'etheris ram; echo; read -r _' ;;
+    "Auth check") foot -e sh -c 'etheris auth; echo; read -r _' ;;
+    Status) foot -e sh -c 'etheris status; echo; read -r _' ;;
+    Hardware) foot -e sh -c 'etheris-hw; echo; read -r _' ;;
+    Drivers) foot -e sh -c 'etheris-drivers status; echo; read -r _' ;;
+    Gaming) foot -e sh -c 'etheris gaming; echo; read -r _' ;;
+    Desktops) foot -e sh -c 'etheris desktops; echo; echo "Pick Etheris Light for ≤500MB idle."; read -r _' ;;
+    Themes) etheris themes ;;
+    Wallpaper) etheris wallpaper ;;
+    Transfers) etheris-transfer & ;;
+    "Appearance (GTK)") nwg-look ;;
+    "Shortcut Center") etheris-shortcuts & ;;
+    "First-login guide") etheris-guide --force & ;;
+    "Sound settings") cmd_sound_menu ;;
+    Settings) cmd_settings_menu ;;
+    Steam) etheris-steam & ;;
+    Terminal) foot & ;;
+    Files) (command -v pcmanfm >/dev/null && pcmanfm || xdg-open "$HOME") & ;;
+    "Install to disk") foot -e etheris-install ;;
+    Help) cmd_help_menu ;;
+    "Logout menu") cmd_logout ;;
+  esac
+}
+
+cmd_sound_menu() {
+  local choice
+  choice="$(printf 'Status\nEnable startup sound\nDisable startup sound\nPreview\nVolume 20\nVolume 40\nVolume 70\nReset defaults' | wofi --dmenu -p 'sound › ' 2>/dev/null || true)"
+  case "$choice" in
+    Status) foot -e sh -c 'etheris-sound status; echo; read -r _' ;;
+    "Enable startup sound") etheris-sound enable ;;
+    "Disable startup sound") etheris-sound disable ;;
+    Preview) etheris-sound preview ;;
+    "Volume 20") etheris-sound volume 20 ;;
+    "Volume 40") etheris-sound volume 40 ;;
+    "Volume 70") etheris-sound volume 70 ;;
+    "Reset defaults") etheris-sound reset ;;
+  esac
+}
+
+cmd_settings_menu() {
+  if [[ -x /usr/local/bin/etheris-settings ]]; then
+    etheris-settings &
+    return 0
+  fi
+  local choice
+  choice="$(printf 'Sound\nKeyboard / Shortcut Center\nHelp and Getting Started\nThemes\nWallpaper\nWorkspace overview\nEdit settings.conf' | wofi --dmenu -p 'settings › ' 2>/dev/null || true)"
+  case "$choice" in
+    Sound) cmd_sound_menu ;;
+    "Keyboard / Shortcut Center") etheris-shortcuts & ;;
+    "Help and Getting Started") cmd_help_menu ;;
+    Themes) etheris themes ;;
+    Wallpaper) etheris wallpaper ;;
+    "Workspace overview") etheris-workspace-overview & ;;
+    "Edit settings.conf") ${EDITOR:-micro} "$SETTINGS" ;;
+  esac
+}
+
+cmd_help_menu() {
+  local choice
+  choice="$(printf 'First-login guide\nShortcut Center\nKeyboard docs\nSound docs\nCLI help' | wofi --dmenu -p 'help › ' 2>/dev/null || true)"
+  case "$choice" in
+    "First-login guide") etheris-guide --force & ;;
+    "Shortcut Center") etheris-shortcuts & ;;
+    "Keyboard docs") foot -e sh -c 'less /usr/local/share/etheris/docs/KEYBOARD.md; true' ;;
+    "Sound docs") foot -e sh -c 'less /usr/local/share/etheris/docs/SOUNDS.md 2>/dev/null || etheris-sound help; echo; read -r _' ;;
+    "CLI help") foot -e sh -c 'etheris help; echo; read -r _' ;;
+  esac
+}
+
+cmd_gaming() {
+  cat <<'EOF'
+Etheris gaming (summary)
+
+  Steam:          pre-installed (Arch multilib) — launch: etheris-steam
+  Wine:           wine + wine-mono + wine-gecko + winetricks
+  Proton:         via Steam Play (Experimental/Hotfix/9.0 queued on first launch)
+  Anti-cheat:     official Proton EAC + BattlEye runtimes (same queue)
+  Setup:          etheris-gaming-setup status | runtimes
+  Proton-GE:      optional third-party (user-installed; not official Arch)
+  GameMode:       gamemoderun %command%  (on demand)
+  MangoHud:       mangohud %command%
+  Gamescope:      optional compositor wrapper where compatible
+  protontricks:   Winetricks for Proton prefixes · umu-run for non-Steam
+  Controllers:    steam-devices udev + Bluetooth (bluetoothctl)
+
+Anti-cheat reality:
+  • Works when the publisher enables Linux/Proton for that title
+  • Kernel-only / Windows-only anti-cheat will still refuse Linux — no bypasses
+
+Other limits:
+  • NVIDIA Pascal needs 580xx AUR drivers — etheris-drivers pascal-guide
+  • VM tests ≠ physical GPU/gaming proof
+
+Docs: /usr/local/share/etheris/docs/GAMING.md
+EOF
+  if [[ -x /usr/local/bin/etheris-gaming-setup ]]; then
+    echo
+    etheris-gaming-setup status || true
+  fi
+}
+
+cmd_themes_picker() {
+  local name
+  name="$(cmd_list_themes | wofi --dmenu -p 'theme › ' 2>/dev/null || true)"
+  [[ -n "$name" ]] && cmd_theme "$name"
+}
+
+cmd_wallpaper_picker() {
+  if [[ -x /usr/local/bin/etheris-wallpaper ]]; then
+    exec etheris-wallpaper
+  fi
+  local name
+  name="$(cmd_list_walls | wofi --dmenu -p 'Etheris wallpaper › ' 2>/dev/null || true)"
+  [[ -n "$name" ]] && cmd_wallpaper "$name"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    ""|menu) cmd_menu ;;
+    help|-h|--help) cmd_help ;;
+    status) cmd_status ;;
+    ram|memory|idle) cmd_ram ;;
+    auth|auth-check) exec etheris-auth-check ;;
+    update|channel) exec etheris-update "$@" ;;
+    security) exec etheris-security "$@" ;;
+    immutable) exec etheris-immutable "$@" ;;
+    desktops|sessions) cmd_desktops ;;
+    themes) cmd_themes_picker ;;
+    theme) cmd_theme "${1:-}" ;;
+    tokens) cmd_tokens "$@" ;;
+    wallpaper)
+      if [[ -n "${1:-}" ]]; then
+        cmd_wallpaper "$1"
+      else
+        cmd_wallpaper_picker
+      fi
+      ;;
+    apply-session) apply_theme ;;
+    launcher|apps) exec etheris-overlay launcher "$@" ;;
+    control-center|cc|quick-settings) exec etheris-overlay control-center "$@" ;;
+    notifications|notif) exec etheris-overlay notifications "$@" ;;
+    winctl|window) exec etheris-winctl "$@" ;;
+    logout-menu) cmd_logout ;;
+    guide|welcome) exec etheris-guide "$@" ;;
+    shortcuts|shortcut-center|keys) exec etheris-shortcuts "$@" ;;
+    sound) exec etheris-sound "$@" ;;
+    settings|preferences) cmd_settings_menu ;;
+    defaults|default-apps) exec etheris-defaults "$@" ;;
+    timezone|tz|region) exec etheris-timezone "$@" ;;
+    timezone-auto|tz-auto) exec etheris-timezone-auto "$@" ;;
+    browsers|browser) exec etheris-defaults browser "$@" ;;
+    terminal|agent) exec etheris-defaults open "$cmd" "$@" ;;
+    overview|workspaces) etheris-workspace-overview ;;
+    oobe|first-boot) exec etheris-oobe "$@" ;;
+    hardware|hw) exec etheris-hw "$@" ;;
+    drivers|gpu-drivers) exec etheris-drivers "$@" ;;
+    performance|perf) exec etheris-perf "$@" ;;
+    gpu|gpu-manager) exec etheris-gpu "$@" ;;
+    gaming|steam-help) cmd_gaming ;;
+    install) exec sudo etheris-installer "$@" ;;
+    edit) ${EDITOR:-micro} "$SETTINGS" ;;
+    list-themes) cmd_list_themes ;;
+    list-wallpapers) cmd_list_walls ;;
+    *) echo "Unknown command: $cmd"; cmd_help; exit 1 ;;
+  esac
+}
+
+main "$@"

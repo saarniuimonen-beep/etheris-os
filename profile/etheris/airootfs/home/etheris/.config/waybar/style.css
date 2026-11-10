@@ -1,0 +1,127 @@
+* {
+  border: none;
+  border-radius: 0;
+  font-family: "Outfit", "JetBrainsMono Nerd Font", monospace;
+  font-size: 12px;
+  min-height: 0;
+}
+
+window#waybar {
+  background: rgba(10, 22, 40, 0.72);
+  color: #e8f4fc;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  padding: 0 4px;
+}
+
+#custom-logo {
+  color: #38bdf8;
+  padding: 0 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+#workspaces {
+  padding: 0 4px;
+}
+
+#workspaces button {
+  padding: 0 7px;
+  color: #6b8aa8;
+  border-radius: 999px;
+  margin: 3px 1px;
+  background: transparent;
+}
+
+#workspaces button:hover {
+  color: #e8f4fc;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#workspaces button.focused,
+#workspaces button.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.18);
+}
+
+#workspaces button.urgent {
+  color: #fb7185;
+  background: transparent;
+}
+
+#sway-mode {
+  color: #fbbf24;
+  padding: 0 8px;
+}
+
+#window {
+  color: #a8c4d8;
+  padding: 0 10px;
+  font-weight: 500;
+}
+
+#custom-winctl {
+  color: #a8c4d8;
+  padding: 0 10px;
+  margin: 3px 2px;
+  border-radius: 8px;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+#custom-winctl:hover {
+  color: #e8f4fc;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#clock {
+  color: #e8f4fc;
+  padding: 0 14px;
+  font-weight: 600;
+}
+
+#tray {
+  padding: 0 8px;
+}
+
+#pulseaudio,
+#network,
+#memory,
+#battery,
+#custom-cc,
+#custom-power,
+#custom-app-files,
+#custom-app-term,
+#custom-app-settings {
+  padding: 0 9px;
+  color: #a8c4d8;
+  border-radius: 8px;
+  margin: 3px 1px;
+}
+
+#pulseaudio:hover,
+#network:hover,
+#memory:hover,
+#battery:hover,
+#custom-cc:hover,
+#custom-power:hover,
+#custom-app-files:hover,
+#custom-app-term:hover,
+#custom-app-settings:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e8f4fc;
+}
+
+#battery.warning { color: #fbbf24; }
+#battery.critical { color: #fb7185; }
+#network.disconnected { color: #fb7185; }
+
+#custom-cc {
+  color: #e8f4fc;
+  padding: 0 10px;
+}
+
+#custom-power {
+  color: #38bdf8;
+  padding-right: 14px;
+}

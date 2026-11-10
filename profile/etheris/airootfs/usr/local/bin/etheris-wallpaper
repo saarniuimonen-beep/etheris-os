@@ -1,0 +1,734 @@
+#!/usr/bin/env python3
+"""Etheris OS — wallpaper switcher + image library (GTK4).
+
+Snappy FlowBox grid, async cached thumbnails, import/browse your own
+JPG/PNG/WebP/BMP/GIF/SVG files. Applies via swaybg through `etheris`.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Gio, Pango
+except (ImportError, ValueError) as exc:
+    print(f"etheris-wallpaper: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+SHARE = Path(os.environ.get("ETHERIS_SHARE", "/usr/local/share/etheris"))
+SYSTEM_WALLS = SHARE / "wallpapers"
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "etheris"
+SETTINGS = CONF / "settings.conf"
+USER_LIB = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "etheris" / "wallpapers"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "etheris" / "wallpaper-thumbs"
+PICTURES = Path.home() / "Pictures"
+PICTURES_WALLS = PICTURES / "Wallpapers"
+
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".svg", ".tif", ".tiff", ".jxl", ".avif"}
+THUMB = 168
+MAX_WORKERS = 4
+
+
+def load_settings() -> dict[str, str]:
+    data = {
+        "wallpaper": str(SYSTEM_WALLS / "ocean-glass.png"),
+        "wallpaper_mode": "fill",
+    }
+    if SETTINGS.is_file():
+        for line in SETTINGS.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip()
+    return data
+
+
+def save_setting(key: str, value: str) -> None:
+    CONF.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    found = False
+    if SETTINGS.is_file():
+        for line in SETTINGS.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    SETTINGS.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def ensure_libs() -> None:
+    USER_LIB.mkdir(parents=True, exist_ok=True)
+    CACHE.mkdir(parents=True, exist_ok=True)
+    PICTURES.mkdir(parents=True, exist_ok=True)
+    PICTURES_WALLS.mkdir(parents=True, exist_ok=True)
+
+
+def is_image(path: Path) -> bool:
+    return path.is_file() and path.suffix.lower() in IMAGE_EXTS
+
+
+def thumb_path_for(src: Path) -> Path:
+    try:
+        mtime = src.stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    key = hashlib.sha1(f"{src.resolve()}:{mtime}:{THUMB}".encode()).hexdigest()
+    return CACHE / f"{key}.jpg"
+
+
+def make_thumb(src: Path) -> Path | None:
+    dest = thumb_path_for(src)
+    if dest.is_file():
+        return dest
+    try:
+        if src.suffix.lower() == ".svg":
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(src), THUMB, THUMB, True)
+        else:
+            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(src), THUMB * 2, THUMB * 2, True)
+            w, h = pb.get_width(), pb.get_height()
+            scale = min(THUMB / max(w, 1), THUMB / max(h, 1), 1.0)
+            if scale < 1.0:
+                pb = pb.scale_simple(max(1, int(w * scale)), max(1, int(h * scale)), GdkPixbuf.InterpType.BILINEAR)
+        pb.savev(str(dest), "jpeg", ["quality"], ["82"])
+        return dest
+    except GLib.Error:
+        return None
+    except Exception:
+        return None
+
+
+def list_dir_entries(folder: Path) -> tuple[list[Path], list[Path]]:
+    dirs: list[Path] = []
+    images: list[Path] = []
+    try:
+        for p in sorted(folder.iterdir(), key=lambda x: x.name.lower()):
+            if p.name.startswith("."):
+                continue
+            if p.is_dir():
+                dirs.append(p)
+            elif is_image(p):
+                images.append(p)
+    except OSError:
+        pass
+    return dirs, images
+
+
+def collect_library(folder: Path, recursive: bool = False) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    if not recursive:
+        _, images = list_dir_entries(folder)
+        return images
+    out: list[Path] = []
+    try:
+        for p in folder.rglob("*"):
+            if p.is_file() and is_image(p):
+                out.append(p)
+    except OSError:
+        pass
+    return sorted(out, key=lambda x: x.name.lower())
+
+
+class WallpaperApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.wallpaper")
+        self.state = load_settings()
+        self.pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+        self._gen = 0
+        self._selected: Path | None = None
+        self._cwd: Path | None = None
+        self._source = "mine"
+        self._tiles: dict[str, Gtk.Button] = {}
+        self._pending = 0
+
+    def do_shutdown(self) -> None:  # noqa: N802
+        try:
+            self.pool.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            self.pool.shutdown(wait=False)
+        Gtk.Application.do_shutdown(self)
+
+    def do_activate(self) -> None:  # noqa: N802
+        ensure_libs()
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Wallpapers")
+        win.set_default_size(980, 640)
+        win.set_name("etheris-wallpaper")
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window#etheris-wallpaper { background: #0a1628; color: #e8f4fc; }
+            .topbar {
+              background: #122338; padding: 12px 14px;
+              border-bottom: 1px solid alpha(#38bdf8, 0.22);
+            }
+            .nav {
+              background: #0d1a2b; min-width: 188px; padding: 12px;
+              border-right: 1px solid alpha(#38bdf8, 0.18);
+            }
+            .nav button {
+              padding: 10px 12px; border-radius: 10px; margin: 2px 0;
+              background: transparent; color: #a8c4d8; border: none;
+            }
+            .nav button:checked, .nav button:hover {
+              background: alpha(#38bdf8, 0.22); color: #e8f4fc;
+            }
+            .pathbar {
+              padding: 8px 14px; background: alpha(#122338, 0.7);
+              border-bottom: 1px solid alpha(#38bdf8, 0.12);
+            }
+            .pathbar entry {
+              background: alpha(#0a1628, 0.8); color: #e8f4fc;
+              border: 1px solid alpha(#38bdf8, 0.22); border-radius: 10px;
+              padding: 8px 10px;
+            }
+            .tile {
+              background: alpha(#122338, 0.88);
+              border: 1px solid alpha(#38bdf8, 0.16);
+              border-radius: 14px; padding: 8px;
+            }
+            .tile:hover { border-color: alpha(#38bdf8, 0.45); }
+            .tile.selected {
+              border-color: #38bdf8;
+              background: alpha(#38bdf8, 0.16);
+            }
+            .tile label { color: #a8c4d8; font-size: 11px; }
+            .preview-frame {
+              background: alpha(#122338, 0.9);
+              border: 1px solid alpha(#38bdf8, 0.22);
+              border-radius: 14px; padding: 10px; min-width: 260px;
+            }
+            label.heading { font-size: 16px; font-weight: 600; color: #e8f4fc; }
+            label.caption { color: #a8c4d8; font-size: 12px; }
+            .status { color: #a8c4d8; font-size: 12px; padding: 6px 14px; }
+            button.action {
+              padding: 8px 14px; border-radius: 10px;
+              background: alpha(#38bdf8, 0.18); color: #e8f4fc;
+              border: 1px solid alpha(#38bdf8, 0.35);
+            }
+            button.action:hover { background: alpha(#38bdf8, 0.30); }
+            button.accent {
+              background: #38bdf8; color: #0a1628; font-weight: 600;
+              border: none; border-radius: 10px; padding: 8px 16px;
+            }
+            button.accent:hover { background: #7dd3fc; }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+
+        # Top bar
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        top.add_css_class("topbar")
+        brand = Gtk.Label(label="Etheris Wallpapers", xalign=0)
+        brand.add_css_class("heading")
+        brand.set_hexpand(True)
+        top.append(brand)
+
+        self.search = Gtk.SearchEntry()
+        self.search.set_placeholder_text("Filter…")
+        self.search.set_size_request(180, -1)
+        self.search.connect("search-changed", self._on_filter)
+        top.append(self.search)
+
+        add_btn = Gtk.Button(label="Add files")
+        add_btn.add_css_class("action")
+        add_btn.connect("clicked", self._on_add_files)
+        top.append(add_btn)
+
+        import_btn = Gtk.Button(label="Import folder")
+        import_btn.add_css_class("action")
+        import_btn.connect("clicked", self._on_import_folder)
+        top.append(import_btn)
+
+        refresh_btn = Gtk.Button(label="Refresh")
+        refresh_btn.add_css_class("action")
+        refresh_btn.connect("clicked", lambda *_: self._reload())
+        top.append(refresh_btn)
+        root.append(top)
+
+        # Body: nav | main | preview
+        body = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        body.set_vexpand(True)
+
+        nav = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        nav.add_css_class("nav")
+        self._nav_group: Gtk.ToggleButton | None = None
+        for key, label in [
+            ("mine", "My Wallpapers"),
+            ("pictures", "Pictures"),
+            ("system", "Etheris Library"),
+            ("browse", "Browse files"),
+        ]:
+            btn = Gtk.ToggleButton(label=label)
+            if self._nav_group is None:
+                self._nav_group = btn
+                btn.set_active(True)
+            else:
+                btn.set_group(self._nav_group)
+            btn.connect("toggled", self._on_nav, key)
+            nav.append(btn)
+
+        tip = Gtk.Label(
+            label="Drop images into My Wallpapers or Add files. JPG, PNG, WebP, GIF, BMP, SVG…",
+            xalign=0,
+            wrap=True,
+        )
+        tip.add_css_class("caption")
+        tip.set_margin_top(12)
+        nav.append(tip)
+        body.append(nav)
+
+        mid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        mid.set_hexpand(True)
+        mid.set_vexpand(True)
+
+        pathbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        pathbar.add_css_class("pathbar")
+        self.up_btn = Gtk.Button(label="↑ Up")
+        self.up_btn.add_css_class("action")
+        self.up_btn.connect("clicked", self._on_up)
+        pathbar.append(self.up_btn)
+        self.path_entry = Gtk.Entry()
+        self.path_entry.set_hexpand(True)
+        self.path_entry.set_placeholder_text("Folder path")
+        self.path_entry.connect("activate", self._on_path_activate)
+        pathbar.append(self.path_entry)
+        go = Gtk.Button(label="Open")
+        go.add_css_class("action")
+        go.connect("clicked", self._on_path_activate)
+        pathbar.append(go)
+        mid.append(pathbar)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_vexpand(True)
+        self.flow = Gtk.FlowBox()
+        self.flow.set_valign(Gtk.Align.START)
+        self.flow.set_max_children_per_line(6)
+        self.flow.set_min_children_per_line(2)
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_homogeneous(True)
+        self.flow.set_row_spacing(10)
+        self.flow.set_column_spacing(10)
+        self.flow.set_margin_top(12)
+        self.flow.set_margin_bottom(12)
+        self.flow.set_margin_start(12)
+        self.flow.set_margin_end(12)
+        self.flow.set_filter_func(self._filter_tile)
+        scroll.set_child(self.flow)
+        mid.append(scroll)
+
+        self.status = Gtk.Label(label="Ready", xalign=0)
+        self.status.add_css_class("status")
+        mid.append(self.status)
+        body.append(mid)
+
+        # Preview pane
+        prev = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        prev.add_css_class("preview-frame")
+        prev.set_margin_top(12)
+        prev.set_margin_bottom(12)
+        prev.set_margin_end(12)
+        pl = Gtk.Label(label="Preview", xalign=0)
+        pl.add_css_class("heading")
+        prev.append(pl)
+        self.preview = Gtk.Picture()
+        self.preview.set_size_request(240, 150)
+        self.preview.set_content_fit(Gtk.ContentFit.CONTAIN)
+        prev.append(self.preview)
+        self.prev_name = Gtk.Label(label="Select an image", xalign=0, wrap=True)
+        self.prev_name.add_css_class("caption")
+        prev.append(self.prev_name)
+
+        mode_l = Gtk.Label(label="Fit mode", xalign=0)
+        mode_l.add_css_class("caption")
+        prev.append(mode_l)
+        self.mode = Gtk.DropDown.new_from_strings(["fill", "fit", "stretch", "center"])
+        modes = ["fill", "fit", "stretch", "center"]
+        cur = self.state.get("wallpaper_mode", "fill")
+        try:
+            self.mode.set_selected(modes.index(cur))
+        except ValueError:
+            self.mode.set_selected(0)
+        prev.append(self.mode)
+
+        apply_btn = Gtk.Button(label="Set wallpaper")
+        apply_btn.add_css_class("accent")
+        apply_btn.connect("clicked", self._on_apply)
+        prev.append(apply_btn)
+
+        reveal = Gtk.Button(label="Show in folder")
+        reveal.add_css_class("action")
+        reveal.connect("clicked", self._on_reveal)
+        prev.append(reveal)
+
+        body.append(prev)
+        root.append(body)
+        win.set_child(root)
+
+        controller = Gtk.EventControllerKey()
+        controller.connect("key-pressed", self._on_key)
+        win.add_controller(controller)
+
+        # Drag-and-drop onto window
+        drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+        drop.connect("drop", self._on_drop)
+        win.add_controller(drop)
+
+        win.present()
+        self._source = "mine"
+        self._cwd = USER_LIB
+        self._reload()
+
+    def _set_status(self, text: str) -> None:
+        self.status.set_label(text)
+
+    def _on_key(self, _c, keyval, _code, _mod) -> bool:
+        if keyval == Gdk.KEY_Escape:
+            self.quit()
+            return True
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self._on_apply(None)
+            return True
+        return False
+
+    def _on_nav(self, btn: Gtk.ToggleButton, key: str) -> None:
+        if not btn.get_active():
+            return
+        self._source = key
+        if key == "mine":
+            self._cwd = USER_LIB
+        elif key == "pictures":
+            self._cwd = PICTURES if PICTURES.is_dir() else PICTURES_WALLS
+        elif key == "system":
+            self._cwd = SYSTEM_WALLS
+        else:
+            start = self._cwd if self._cwd and self._cwd.is_dir() else PICTURES
+            self._cwd = start
+        self._reload()
+
+    def _on_up(self, *_a) -> None:
+        if self._source == "system":
+            return
+        if self._cwd and self._cwd.parent != self._cwd:
+            self._cwd = self._cwd.parent
+            self._reload()
+
+    def _on_path_activate(self, *_a) -> None:
+        raw = self.path_entry.get_text().strip()
+        if not raw:
+            return
+        path = Path(raw).expanduser()
+        if path.is_dir():
+            self._source = "browse"
+            self._cwd = path
+            self._reload()
+        elif is_image(path):
+            self._select(path)
+            self._on_apply(None)
+        else:
+            self._set_status(f"Not found: {path}")
+
+    def _on_filter(self, *_a) -> None:
+        self.flow.invalidate_filter()
+
+    def _filter_tile(self, child: Gtk.FlowBoxChild) -> bool:
+        q = self.search.get_text().strip().lower()
+        if not q:
+            return True
+        w = child.get_child()
+        name = w.get_name() if w is not None else ""
+        return q in name.lower()
+
+    def _clear_grid(self) -> None:
+        while True:
+            child = self.flow.get_child_at_index(0)
+            if child is None:
+                break
+            self.flow.remove(child)
+        self._tiles.clear()
+
+    def _reload(self) -> None:
+        ensure_libs()
+        self._gen += 1
+        gen = self._gen
+        cwd = self._cwd or USER_LIB
+        self.path_entry.set_text(str(cwd))
+        self.up_btn.set_sensitive(self._source != "system")
+        self._clear_grid()
+        self._selected = None
+        self.prev_name.set_label("Select an image")
+        self.preview.set_paintable(None)
+
+        dirs: list[Path] = []
+        images: list[Path] = []
+        if self._source == "system":
+            images = collect_library(SYSTEM_WALLS, recursive=False)
+            # Prefer PNG when both png+svg exist
+            preferred: dict[str, Path] = {}
+            for p in images:
+                stem = p.stem
+                if stem not in preferred or p.suffix.lower() == ".png":
+                    preferred[stem] = p
+            images = sorted(preferred.values(), key=lambda p: p.name.lower())
+        else:
+            dirs, images = list_dir_entries(cwd)
+
+        for d in dirs:
+            self._add_folder_tile(d)
+        for img in images:
+            self._add_image_tile(img, gen)
+
+        total = len(dirs) + len(images)
+        where = { "mine": "My Wallpapers", "pictures": "Pictures", "system": "Etheris Library", "browse": "Browse" }.get(self._source, "")
+        self._set_status(f"{where} · {len(images)} images · {len(dirs)} folders · {total} items")
+
+    def _add_folder_tile(self, path: Path) -> None:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.set_size_request(THUMB + 16, THUMB + 36)
+        icon = Gtk.Image.new_from_icon_name("folder")
+        icon.set_pixel_size(64)
+        icon.set_halign(Gtk.Align.CENTER)
+        icon.set_valign(Gtk.Align.CENTER)
+        icon.set_vexpand(True)
+        box.append(icon)
+        lab = Gtk.Label(label=path.name, xalign=0.5)
+        lab.set_ellipsize(Pango.EllipsizeMode.END)
+        lab.set_max_width_chars(16)
+        box.append(lab)
+        btn = Gtk.Button()
+        btn.set_child(box)
+        btn.add_css_class("tile")
+        btn.set_name(f"dir:{path.name}")
+        btn.connect("clicked", lambda *_a, p=path: self._enter_dir(p))
+        self.flow.append(btn)
+
+    def _add_image_tile(self, path: Path, gen: int) -> None:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.set_size_request(THUMB + 16, THUMB + 36)
+        pic = Gtk.Picture()
+        pic.set_size_request(THUMB, THUMB)
+        pic.set_content_fit(Gtk.ContentFit.COVER)
+        pic.set_can_shrink(True)
+        box.append(pic)
+        lab = Gtk.Label(label=path.name, xalign=0.5)
+        lab.set_ellipsize(Pango.EllipsizeMode.END)
+        lab.set_max_width_chars(16)
+        box.append(lab)
+        btn = Gtk.Button()
+        btn.set_child(box)
+        btn.add_css_class("tile")
+        btn.set_name(path.name)
+        btn.connect("clicked", lambda *_a, p=path, b=btn: self._select(p, b))
+        btn.connect("activate", lambda *_a, p=path: self._apply_path(p))
+        gesture = Gtk.GestureClick()
+        gesture.set_button(0)
+
+        def on_pressed(_g, n_press, _x, _y, p=path):
+            if n_press >= 2:
+                self._apply_path(p)
+
+        gesture.connect("pressed", on_pressed)
+        btn.add_controller(gesture)
+        self.flow.append(btn)
+        self._tiles[str(path)] = btn
+        self._pending += 1
+        self.pool.submit(self._load_thumb, path, pic, gen)
+
+    def _load_thumb(self, path: Path, pic: Gtk.Picture, gen: int) -> None:
+        thumb = make_thumb(path)
+
+        def done() -> bool:
+            self._pending = max(0, self._pending - 1)
+            if gen != self._gen:
+                return False
+            if thumb and thumb.is_file():
+                try:
+                    tex = Gdk.Texture.new_from_filename(str(thumb))
+                    pic.set_paintable(tex)
+                except GLib.Error:
+                    pic.set_alternative_text(path.name)
+            if self._pending == 0:
+                self._set_status(self.status.get_label().split(" · loading")[0])
+            return False
+
+        GLib.idle_add(done)
+
+    def _enter_dir(self, path: Path) -> None:
+        self._source = "browse" if self._source == "system" else self._source
+        if self._source == "system":
+            return
+        self._cwd = path
+        self._reload()
+
+    def _select(self, path: Path, btn: Gtk.Button | None = None) -> None:
+        self._selected = path
+        for b in self._tiles.values():
+            b.remove_css_class("selected")
+        if btn is not None:
+            btn.add_css_class("selected")
+        elif str(path) in self._tiles:
+            self._tiles[str(path)].add_css_class("selected")
+        self.prev_name.set_label(str(path))
+        try:
+            # Prefer cached thumb for snappy preview; full image for smaller files
+            preview = path
+            if path.stat().st_size > 4_000_000:
+                t = thumb_path_for(path)
+                if t.is_file():
+                    preview = t
+            tex = Gdk.Texture.new_from_filename(str(preview))
+            self.preview.set_paintable(tex)
+        except Exception:
+            self.preview.set_paintable(None)
+
+    def _apply_path(self, path: Path) -> None:
+        self._selected = path
+        self._on_apply(None)
+
+    def _on_apply(self, _btn) -> None:
+        if self._selected is None or not self._selected.is_file():
+            self._set_status("Select an image first")
+            return
+        modes = ["fill", "fit", "stretch", "center"]
+        mode = modes[self.mode.get_selected()]
+        save_setting("wallpaper", str(self._selected.resolve()))
+        save_setting("wallpaper_mode", mode)
+        self.state["wallpaper"] = str(self._selected)
+        self.state["wallpaper_mode"] = mode
+        try:
+            subprocess.Popen(
+                ["etheris", "wallpaper", str(self._selected.resolve())],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            self._set_status(f"Apply failed: {exc}")
+            return
+        self._set_status(f"Applied · {self._selected.name} · {mode}")
+
+    def _on_reveal(self, *_a) -> None:
+        if self._selected is None:
+            return
+        folder = self._selected.parent
+        for cmd in (("xdg-open", str(folder)), ("pcmanfm", str(folder))):
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except OSError:
+                continue
+
+    def _copy_into_library(self, paths: list[Path]) -> int:
+        ensure_libs()
+        n = 0
+        for src in paths:
+            if not is_image(src):
+                continue
+            dest = USER_LIB / src.name
+            if dest.exists():
+                stem, suf = src.stem, src.suffix
+                i = 1
+                while dest.exists():
+                    dest = USER_LIB / f"{stem}-{i}{suf}"
+                    i += 1
+            try:
+                shutil.copy2(src, dest)
+                n += 1
+            except OSError:
+                continue
+        return n
+
+    def _on_add_files(self, *_a) -> None:
+        dialog = Gtk.FileDialog(title="Add wallpapers to Etheris")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        img = Gtk.FileFilter()
+        img.set_name("Images")
+        for pat in ("*.jpg", "*.jpeg", "*.png", "*.webp", "*.bmp", "*.gif", "*.svg", "*.tif", "*.tiff", "*.jxl", "*.avif"):
+            img.add_pattern(pat)
+        filters.append(img)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(img)
+
+        def done(dlg, result):
+            try:
+                files = dlg.open_multiple_finish(result)
+            except GLib.Error:
+                return
+            paths = []
+            for i in range(files.get_n_items()):
+                f = files.get_item(i)
+                paths.append(Path(f.get_path()))
+            n = self._copy_into_library(paths)
+            self._source = "mine"
+            self._cwd = USER_LIB
+            if self._nav_group:
+                # activate My Wallpapers visually if possible — reload library
+                pass
+            self._reload()
+            self._set_status(f"Imported {n} image(s) into My Wallpapers")
+
+        dialog.open_multiple(self.get_active_window(), None, done)
+
+    def _on_import_folder(self, *_a) -> None:
+        dialog = Gtk.FileDialog(title="Import folder of images")
+
+        def done(dlg, result):
+            try:
+                folder = dlg.select_folder_finish(result)
+            except GLib.Error:
+                return
+            src = Path(folder.get_path())
+            images = collect_library(src, recursive=True)
+            n = self._copy_into_library(images)
+            self._source = "mine"
+            self._cwd = USER_LIB
+            self._reload()
+            self._set_status(f"Imported {n} image(s) from {src.name}")
+
+        dialog.select_folder(self.get_active_window(), None, done)
+
+    def _on_drop(self, _target, value, _x, _y) -> bool:
+        paths: list[Path] = []
+        try:
+            for f in value.get_files():
+                p = Path(f.get_path())
+                if p.is_dir():
+                    paths.extend(collect_library(p, recursive=True))
+                elif is_image(p):
+                    paths.append(p)
+        except Exception:
+            return False
+        n = self._copy_into_library(paths)
+        self._source = "mine"
+        self._cwd = USER_LIB
+        self._reload()
+        self._set_status(f"Dropped {n} image(s) into My Wallpapers")
+        return True
+
+
+def main() -> int:
+    ensure_libs()
+    return WallpaperApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

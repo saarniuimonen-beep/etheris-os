@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shortcut Center
+Comment=Searchable keyboard shortcut reference for Etheris
+Exec=etheris-shortcuts
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;Utility;
+Keywords=etheris;keyboard;shortcuts;hotkeys;

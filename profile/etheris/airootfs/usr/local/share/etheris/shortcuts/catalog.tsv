@@ -1,0 +1,43 @@
+# category	keys	action	notes
+# Verified against default Etheris Sway config — do not list unbound actions.
+Window management	Alt+F4	Close focused window	Primary close
+Window management	Super+Q	Close focused window	
+Window management	Super+Shift+Q	Close focused window	Legacy
+Window management	Alt+Tab	Cycle windows on workspace	
+Window management	Alt+Shift+Tab	Cycle windows backwards	
+Window management	Super+F	Toggle fullscreen	
+Window management	Super+Shift+Space	Toggle floating	
+Window management	Super+H	Hide to scratchpad	Not taskbar minimize
+Window management	Super+Shift+H	Show / cycle scratchpad	
+Window management	Super+Left	Focus left	
+Window management	Super+Right	Focus right	
+Window management	Super+Up	Focus up	
+Window management	Super+Down	Focus down	
+Window management	Super+Shift+Left	Move window left	
+Window management	Super+Shift+Right	Move window right	
+Window management	Super+Shift+Up	Move window up	
+Window management	Super+Shift+Down	Move window down	
+Window management	Super+R	Resize mode	Arrows then Enter/Esc
+Workspaces	Super+1 … Super+9	Switch workspace	
+Workspaces	Super+Shift+1 … 9	Move window to workspace	
+Launching	Super+Return	Open terminal (foot)	
+Launching	Super+D	Application launcher (Rofi)	
+Launching	Super+Space	Application launcher (Rofi)	
+Launching	Super+E	File manager (Etheris Files)	
+Launching	Super+A	Control Center (incl. performance profile)	
+Launching	Super+N	Notification center	
+Launching	Super+W	Workspace / window overview	
+Launching	Super+,	Etheris Settings	
+Launching	Super+Shift+A	Focused window menu	close / scratch / float / fullscreen
+System	Super+Shift+E	Logout / power menu	
+System	Super+L	Lock screen	
+System	—	Performance Manager	etheris-performance / Settings → Performance
+System	—	GPU Manager	etheris-gpu-manager
+Screenshots	Print	Screenshot to clipboard	
+Screenshots	Shift+Print	Region screenshot to clipboard	
+Desktop navigation	Super+/	Open Shortcut Center	This window
+Media and audio	XF86AudioRaiseVolume	Volume up	
+Media and audio	XF86AudioLowerVolume	Volume down	
+Media and audio	XF86AudioMute	Mute toggle	
+Media and audio	XF86MonBrightnessUp	Brightness up	When supported
+Media and audio	XF86MonBrightnessDown	Brightness down	When supported

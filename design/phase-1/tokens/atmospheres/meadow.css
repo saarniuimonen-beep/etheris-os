@@ -1,0 +1,19 @@
+/* Atmosphere: Meadow (lime–spring dark) */
+[data-atmosphere="meadow"] {
+  --eth-bg: #0c1810;
+  --eth-bg-elevated: #15261a;
+  --eth-bg-deep: #07100a;
+  --eth-fg: #f0fce8;
+  --eth-fg-muted: #b4d4a0;
+  --eth-accent: #a3e635;
+  --eth-accent-2: #4ade80;
+  --eth-accent-soft: rgba(163, 230, 53, 0.32);
+  --eth-border: rgba(163, 230, 53, 0.30);
+  --eth-panel: rgba(12, 24, 16, 0.74);
+  --eth-menu: rgba(12, 24, 16, 0.95);
+  --eth-input: rgba(21, 38, 26, 0.95);
+  --eth-focus: #bef264;
+  --eth-wallpaper: url("../../preview/assets/meadow.svg");
+  --eth-atmosphere-name: "Meadow";
+  --eth-variant: dark;
+}

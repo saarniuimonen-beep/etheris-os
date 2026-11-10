@@ -1,0 +1,29 @@
+# Etheris OS — ReGreet Neo-Aero login
+skip_selection = false
+
+[background]
+path = "/usr/local/share/etheris/wallpapers/ocean-glass.png"
+fit = "Cover"
+
+[GTK]
+application_prefer_dark_theme = true
+cursor_theme_name = "Adwaita"
+cursor_blink = true
+font_name = "Outfit 13"
+icon_theme_name = "Papirus-Dark"
+theme_name = "Adwaita-dark"
+
+[commands]
+reboot = ["systemctl", "reboot"]
+poweroff = ["systemctl", "poweroff"]
+
+[appearance]
+greeting_msg = "Etheris OS"
+
+[widget.clock]
+format = "%A, %e %B%n%H:%M"
+resolution = "1s"
+label_width = 280
+justification = "center"
+valign = "top"
+halign = "center"

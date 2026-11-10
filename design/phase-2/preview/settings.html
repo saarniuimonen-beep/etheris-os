@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .settings {
+      position:absolute; top:56px; left:50%; transform:translateX(-50%);
+      width:calc(100% - 48px); max-width:980px; height:calc(100% - 80px);
+      display:grid; grid-template-columns:220px 1fr; overflow:hidden; z-index:20;
+    }
+    .nav { padding:18px 12px; border-right:1px solid var(--eth-border); background:color-mix(in srgb, var(--eth-bg-elevated) 75%, transparent); overflow:auto; }
+    .nav h1 { margin:0 0 10px; font-size:18px; padding:0 8px; }
+    .nav a { display:block; padding:9px 12px; border-radius:10px; color:var(--eth-fg-muted); margin-bottom:2px; font-size:13px; }
+    .nav a.on, .nav a:hover { background:var(--eth-accent-soft); color:var(--eth-fg); }
+    .main { padding:20px 24px; overflow:auto; }
+    .theme-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; margin:12px 0 20px; }
+    .theme-card { border-radius:12px; border:1px solid var(--eth-border); overflow:hidden; background:var(--eth-bg-elevated); }
+    .theme-card.selected { border-color:var(--eth-accent); box-shadow:var(--eth-focus-ring); }
+    .theme-card .swatch { height:64px; background-size:cover; background-position:center; }
+    .theme-card figcaption { padding:8px 10px; font-size:12px; font-weight:500; margin:0; }
+    .sections { display:grid; gap:8px; margin-top:16px; }
+    .sections div { padding:12px; border-radius:10px; border:1px solid var(--eth-border); background:var(--eth-highlight); font-size:13px; }
+    @media (max-width:720px) { .settings { grid-template-columns:1fr; } .nav { border-right:0; border-bottom:1px solid var(--eth-border); } }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html" aria-current="page">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="stage">
+    <section class="glass settings pop" aria-label="Settings">
+      <aside class="nav">
+        <h1>Settings</h1>
+        <input class="input" type="search" placeholder="Search settings" style="margin-bottom:10px" />
+        <a href="#">Network</a>
+        <a href="#">Bluetooth</a>
+        <a href="#">Displays</a>
+        <a href="#">Sound</a>
+        <a href="#">Keyboard</a>
+        <a class="on" href="#">Personalisation</a>
+        <a href="#">Privacy</a>
+        <a href="#">Power</a>
+        <a href="#">System</a>
+        <a href="#">About</a>
+      </aside>
+      <div class="main">
+        <h2 style="margin:0 0 6px;font-size:20px">Personalisation</h2>
+        <p style="margin:0 0 12px;color:var(--eth-fg-muted);font-size:13px">Atmospheres change colour + wallpaper only. Geometry stays Etheris.</p>
+        <h3 style="font-size:14px;margin:0 0 8px">Atmosphere</h3>
+        <div class="theme-grid">
+          <figure class="theme-card selected"><div class="swatch" style="background-image:url(assets/ocean-glass.svg)"></div><figcaption>Ocean Glass</figcaption></figure>
+          <figure class="theme-card"><div class="swatch" style="background-image:url(assets/aurora.svg)"></div><figcaption>Aurora</figcaption></figure>
+          <figure class="theme-card"><div class="swatch" style="background-image:url(assets/meadow.svg)"></div><figcaption>Meadow</figcaption></figure>
+          <figure class="theme-card"><div class="swatch" style="background-image:url(assets/arctic-glow.svg)"></div><figcaption>Arctic Glow</figcaption></figure>
+          <figure class="theme-card"><div class="swatch" style="background-image:url(assets/midnight-ocean.svg)"></div><figcaption>Midnight Ocean</figcaption></figure>
+        </div>
+        <h3 style="font-size:14px;margin:0 0 8px">Also in Settings</h3>
+        <div class="sections">
+          <div><strong>Displays</strong> — resolution, scale 100/125/150%, night light</div>
+          <div><strong>Sound</strong> — output/input devices, volume</div>
+          <div><strong>Keyboard</strong> — layout, compose, Super binds reference</div>
+          <div><strong>System</strong> — updates channel, about, recovery</div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

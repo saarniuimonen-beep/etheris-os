@@ -1,0 +1,7 @@
+# Neo-Aero — Arctic Glow (light)
+NAME=arctic-glow
+VARIANT=light
+ACCENT=#0284c7
+WALLPAPER=/usr/local/share/etheris/wallpapers/arctic-glow.png
+GTK_THEME=Adwaita
+ICON_THEME=Papirus

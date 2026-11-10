@@ -1,0 +1,42 @@
+#!/bin/sh
+# Etheris OS — default Sway session (with optional first-boot OOBE gate)
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=sway
+export XDG_SESSION_DESKTOP=sway
+export QT_QPA_PLATFORM=wayland
+export MOZ_ENABLE_WAYLAND=1
+export MALLOC_ARENA_MAX=2
+
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+  export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 700 "$XDG_RUNTIME_DIR"
+fi
+
+# Ensure user sway config exists
+if [ ! -f "${XDG_CONFIG_HOME:-$HOME/.config}/sway/config" ]; then
+  mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/sway"
+  cp -a /etc/skel/.config/sway/config "${XDG_CONFIG_HOME:-$HOME/.config}/sway/config" 2>/dev/null || true
+fi
+
+# Milestone 6 — first-boot OOBE (installed systems only; never on live ISO)
+oobe_cfg=/usr/local/share/etheris/oobe/sway.config
+if [ "${ETHERIS_SKIP_OOBE:-0}" != 1 ] \
+  && [ ! -d /run/archiso ] \
+  && [ -x /usr/local/bin/etheris-oobe ] \
+  && [ -f "$oobe_cfg" ]; then
+  # Skip if user already finished (fallback when system state wasn't writable)
+  ust=$(tr -d '[:space:]' <"${XDG_CONFIG_HOME:-$HOME/.config}/etheris/oobe/state" 2>/dev/null || true)
+  if [ "$ust" != "done" ]; then
+    st=$(tr -d '[:space:]' </var/lib/etheris/oobe/state 2>/dev/null || true)
+    case "$st" in
+      needed|in_progress)
+        export ETHERIS_OOBE_SESSION=1
+        exec sway -c "$oobe_cfg"
+        ;;
+    esac
+  fi
+fi
+
+export ETHERIS_OOBE_SESSION=0
+exec sway

@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Etheris OS — File Transfers hub (LAN + Bluetooth + network shares).
+
+Opens Warpinator for LAN send/receive, Blueman for Bluetooth OBEX,
+and the file manager for SMB/NFS/MTP. Ensures receive folders + OBEX.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-transfer: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+RECV_dir = Path.home() / "Downloads" / "Etheris Transfers"
+bt_dir = Path.home() / "Downloads" / "Bluetooth"
+
+
+def ensure_dirs() -> None:
+    recv_dir.mkdir(parents=True, exist_ok=True)
+    bt_dir.mkdir(parents=True, exist_ok=True)
+    (Path.home() / "Downloads").mkdir(parents=True, exist_ok=True)
+
+
+def run_bg(cmd: list[str]) -> None:
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def ensure_obex() -> str:
+    """Start user OBEX service for Bluetooth file receive."""
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", "obex.service"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if r.stdout.strip() == "active":
+            return "OBEX active"
+        subprocess.run(
+            ["systemctl", "--user", "enable", "--now", "obex.service"],
+            capture_output=True,
+            check=False,
+        )
+        return "OBEX started"
+    except OSError:
+        return "OBEX unavailable"
+
+
+def which(name: str) -> str | None:
+    return shutil.which(name)
+
+
+class TransferApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.transfer")
+
+    def do_activate(self) -> None:  # noqa: N802
+        ensure_dirs()
+        obex = ensure_obex()
+
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Transfers")
+        win.set_default_size(720, 480)
+        win.set_name("etheris-transfer")
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window#etheris-transfer { background: #0a1628; color: #e8f4fc; }
+            .hero {
+              padding: 20px 24px 8px 24px;
+              border-bottom: 1px solid alpha(#38bdf8, 0.22);
+              background: #122338;
+            }
+            label.heading { font-size: 20px; font-weight: 600; color: #e8f4fc; }
+            label.caption { color: #a8c4d8; font-size: 12px; }
+            .pane { padding: 16px 20px; }
+            .card {
+              background: alpha(#122338, 0.92);
+              border: 1px solid alpha(#38bdf8, 0.26);
+              border-radius: 14px; padding: 14px; margin-bottom: 10px;
+            }
+            .card label.title { font-size: 15px; font-weight: 600; color: #e8f4fc; }
+            button.action {
+              padding: 9px 14px; border-radius: 10px; margin-top: 8px;
+              background: alpha(#38bdf8, 0.18); color: #e8f4fc;
+              border: 1px solid alpha(#38bdf8, 0.35);
+            }
+            button.action:hover { background: alpha(#38bdf8, 0.30); }
+            button.accent {
+              background: #38bdf8; color: #0a1628; font-weight: 600;
+              border: none; border-radius: 10px; padding: 9px 16px; margin-top: 8px;
+            }
+            button.accent:hover { background: #7dd3fc; }
+            .status { color: #a8c4d8; font-size: 12px; padding: 4px 20px 14px 20px; }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        hero.add_css_class("hero")
+        t = Gtk.Label(label="Etheris Transfers", xalign=0)
+        t.add_css_class("heading")
+        c = Gtk.Label(
+            label="Send and receive files on your local network, over Bluetooth, or browse shared folders.",
+            xalign=0,
+            wrap=True,
+        )
+        c.add_css_class("caption")
+        hero.append(t)
+        hero.append(c)
+        root.append(hero)
+
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        pane.add_css_class("pane")
+        pane.set_vexpand(True)
+
+        # LAN — Warpinator
+        lan = self._card(
+            "Local network",
+            "Warpinator finds nearby devices on the same Wi‑Fi/LAN. Same group code on both sides.",
+        )
+        lan_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        open_lan = Gtk.Button(label="Open Warpinator")
+        open_lan.add_css_class("accent")
+        open_lan.set_sensitive(which("warpinator") is not None)
+        open_lan.connect("clicked", lambda *_: run_bg(["warpinator"]))
+        lan_row.append(open_lan)
+        open_recv = Gtk.Button(label="Open receive folder")
+        open_recv.add_css_class("action")
+        open_recv.connect("clicked", lambda *_: self._open_folder(recv_dir))
+        lan_row.append(open_recv)
+        lan.append(lan_row)
+        pane.append(lan)
+
+        # Bluetooth
+        bt = self._card(
+            "Bluetooth",
+            "Pair a phone or laptop, then send/receive with Blueman. OBEX must be running to receive.",
+        )
+        bt_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        open_bt = Gtk.Button(label="Bluetooth manager")
+        open_bt.add_css_class("accent")
+        open_bt.set_sensitive(which("blueman-manager") is not None)
+        open_bt.connect("clicked", self._on_bluetooth)
+        bt_row.append(open_bt)
+        send_bt = Gtk.Button(label="Send files…")
+        send_bt.add_css_class("action")
+        send_bt.set_sensitive(which("blueman-sendto") is not None)
+        send_bt.connect("clicked", lambda *_: run_bg(["blueman-sendto"]))
+        bt_row.append(send_bt)
+        open_bt_dir = Gtk.Button(label="Bluetooth folder")
+        open_bt_dir.add_css_class("action")
+        open_bt_dir.connect("clicked", lambda *_: self._open_folder(bt_dir))
+        bt_row.append(open_bt_dir)
+        bt.append(bt_row)
+        pane.append(bt)
+
+        # Network shares / phones
+        net = self._card(
+            "Shared folders & phones",
+            "Browse SMB/Windows shares, NFS, and MTP phones in the file manager (gvfs).",
+        )
+        net_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        files = Gtk.Button(label="Open Files")
+        files.add_css_class("accent")
+        files.connect("clicked", lambda *_: run_bg(["pcmanfm", "network:///"]))
+        net_row.append(files)
+        home = Gtk.Button(label="Home folder")
+        home.add_css_class("action")
+        home.connect("clicked", lambda *_: run_bg(["pcmanfm", str(Path.home())]))
+        net_row.append(home)
+        net.append(net_row)
+        pane.append(net)
+
+        tip = self._card(
+            "Tips",
+            "LAN: both devices need Etheris Transfers/Warpinator (or Warpinator elsewhere) on the same network.\n"
+            "Bluetooth: trust the device in Blueman → Local Services → enable file receiving.\n"
+            f"Received LAN files: {recv_dir}\n"
+            f"Status: {obex}",
+        )
+        pane.append(tip)
+
+        root.append(pane)
+        self.status = Gtk.Label(label=f"{obex} · Receive → {recv_dir}", xalign=0)
+        self.status.add_css_class("status")
+        root.append(self.status)
+
+        win.set_child(root)
+        win.present()
+
+        # Best-effort: point Warpinator download dir via dconf if schema exists
+        GLib.idle_add(self._configure_warpinator)
+
+    def _card(self, title: str, caption: str) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.add_css_class("card")
+        t = Gtk.Label(label=title, xalign=0)
+        t.add_css_class("title")
+        c = Gtk.Label(label=caption, xalign=0, wrap=True)
+        c.add_css_class("caption")
+        box.append(t)
+        box.append(c)
+        return box
+
+    def _open_folder(self, path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        for cmd in (("pcmanfm", str(path)), ("xdg-open", str(path))):
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except OSError:
+                continue
+
+    def _on_bluetooth(self, *_a) -> None:
+        ensure_obex()
+        # Applet helps with incoming transfer prompts; manager for pairing
+        if which("blueman-applet"):
+            run_bg(["blueman-applet"])
+        run_bg(["blueman-manager"])
+
+    def _configure_warpinator(self) -> bool:
+        ensure_dirs()
+        # Common Warpinator gsettings keys (ignore failures if schema missing)
+        tries = [
+            [
+                "gsettings",
+                "set",
+                "org.x.Warpinator.preferences",
+                "download-location",
+                str(recv_dir),
+            ],
+            [
+                "gsettings",
+                "set",
+                "org.x.Warpinator",
+                "download-location",
+                str(recv_dir),
+            ],
+        ]
+        for cmd in tries:
+            try:
+                subprocess.run(cmd, capture_output=True, check=False)
+            except OSError:
+                pass
+        return False
+
+
+def main() -> int:
+    # CLI shortcuts without opening the hub
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        ensure_dirs()
+        if arg in ("lan", "warpinator"):
+            ensure_obex()
+            os.execvp("warpinator", ["warpinator"])
+        if arg in ("bt", "bluetooth"):
+            ensure_obex()
+            if which("blueman-applet"):
+                run_bg(["blueman-applet"])
+            os.execvp("blueman-manager", ["blueman-manager"])
+        if arg in ("send", "sendto"):
+            ensure_obex()
+            os.execvp("blueman-sendto", ["blueman-sendto", *sys.argv[2:]])
+        if arg in ("files", "network"):
+            os.execvp("pcmanfm", ["pcmanfm", "network:///"])
+        if arg in ("-h", "--help", "help"):
+            print(
+                "Usage: etheris-transfer [lan|bluetooth|send|files]\n"
+                "  (no args)  open Etheris Transfers hub"
+            )
+            return 0
+    return TransferApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,11 @@
+NAME="Etheris OS"
+PRETTY_NAME="Etheris OS 0.1.0-alpha"
+ID=etheris
+ID_LIKE=arch
+BUILD_ID=rolling-lag30
+ANSI_COLOR="0;38;2;167;139;250"
+HOME_URL="file:///usr/local/share/etheris/docs/README.md"
+DOCUMENTATION_URL="file:///usr/local/share/etheris/docs/README.md"
+LOGO=etheris
+IMAGE_ID=etheris
+IMAGE_VERSION=0.1.0-alpha

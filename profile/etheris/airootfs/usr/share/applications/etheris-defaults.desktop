@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=Etheris Defaults
+GenericName=Default Apps
+Comment=Choose default browser, terminal, and AI agent
+Exec=etheris-defaults
+Icon=preferences-desktop-default-applications
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;
+Keywords=defaults;browser;terminal;ai;agent;chrome;firefox;foot;chatgpt;
+StartupNotify=true

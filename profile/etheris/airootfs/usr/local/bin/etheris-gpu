@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Etheris OS — GPU Manager (detection, drivers, performance link).
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Etheris GPU Manager
+
+Usage:
+  etheris-gpu                 Same as status
+  etheris-gpu status          Hardware + driver + performance snapshot
+  etheris-gpu hardware        etheris-hw gpu
+  etheris-gpu drivers …       Pass-through to etheris-drivers
+  etheris-gpu performance …   Pass-through to etheris-perf
+  etheris-gpu ui              Open GPU Manager (GTK)
+  etheris-gpu help
+
+Does not install proprietary drivers silently — use etheris-drivers recommend/apply.
+EOF
+}
+
+cmd_status() {
+  echo "Etheris GPU Manager"
+  echo
+  if command -v etheris-hw >/dev/null; then
+    etheris-hw gpu
+  else
+    echo "(etheris-hw missing)"
+  fi
+  echo
+  echo "=== Performance profile ==="
+  if command -v etheris-perf >/dev/null; then
+    echo "  active: $(etheris-perf get 2>/dev/null || echo unknown)"
+    etheris-perf monitor 2>/dev/null | grep -E 'gpu_|profile:' | sed 's/^/  /' || true
+  fi
+  echo
+  echo "=== Driver plan (no changes) ==="
+  if command -v etheris-drivers >/dev/null; then
+    etheris-drivers recommend 2>/dev/null | sed 's/^/  /' | head -n 40 || true
+  fi
+  echo
+  echo "Open UI:        etheris-gpu ui"
+  echo "Apply drivers:  sudo etheris-drivers apply"
+  echo "Profiles:       etheris-perf set balanced|maximum|quiet|powersave"
+}
+
+main() {
+  case "${1:-status}" in
+    status|"") cmd_status ;;
+    hardware|hw) exec etheris-hw gpu ;;
+    drivers)
+      shift
+      exec etheris-drivers "$@"
+      ;;
+    performance|perf)
+      shift
+      exec etheris-perf "$@"
+      ;;
+    ui|gui|manager)
+      if [[ -x /usr/local/bin/etheris-gpu-manager ]]; then
+        exec etheris-gpu-manager
+      fi
+      echo "etheris-gpu-manager not installed" >&2
+      exit 1
+      ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atmospheres — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    body { background:#02060c; }
+    .page { padding:24px; max-width:1200px; margin:0 auto; color:#e8f4fc; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+    .card { border-radius:16px; overflow:hidden; border:1px solid rgba(56,189,248,.25); background:#0a1628; box-shadow:0 8px 28px rgba(0,0,0,.35); }
+    .prev { height:150px; background-size:cover; background-position:center; position:relative; }
+    .mini { position:absolute; top:12px; left:50%; transform:translateX(-50%); padding:6px 12px; border-radius:999px; font-size:10px; border:1px solid; white-space:nowrap; }
+    .body { padding:14px 16px 18px; }
+    .sw { display:flex; gap:6px; }
+    .sw i { width:20px; height:20px; border-radius:6px; border:1px solid rgba(255,255,255,.2); }
+  </style>
+</head>
+<body>
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html" aria-current="page">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="page">
+    <h1 style="margin:0 0 8px;font-size:28px">Atmospheres</h1>
+    <p style="color:#a8c4d8;max-width:42em">Invariant: geometry, type, motion, panel layout, keyboard. Variable: colour tokens + wallpaper + light/dark GTK/Papirus.</p>
+    <div class="grid" style="margin-top:20px">
+      <article class="card"><div class="prev" style="background-image:url(assets/ocean-glass.svg)"><div class="mini" style="background:rgba(10,22,40,.72);border-color:rgba(56,189,248,.28)">Ocean Glass · default</div></div><div class="body"><h2 style="margin:0 0 4px;font-size:16px">Ocean Glass</h2><p style="margin:0 0 10px;font-size:12px;color:#a8c4d8">#38bdf8 / #2dd4bf</p><div class="sw"><i style="background:#0a1628"></i><i style="background:#38bdf8"></i><i style="background:#2dd4bf"></i><i style="background:#e8f4fc"></i></div></div></article>
+      <article class="card"><div class="prev" style="background-image:url(assets/aurora.svg)"><div class="mini" style="background:rgba(7,24,32,.74);border-color:rgba(45,212,191,.32);color:#e6fbf7">Aurora</div></div><div class="body"><h2 style="margin:0 0 4px;font-size:16px">Aurora</h2><p style="margin:0 0 10px;font-size:12px;color:#a8c4d8">#2dd4bf / #5eead4</p><div class="sw"><i style="background:#071820"></i><i style="background:#2dd4bf"></i><i style="background:#5eead4"></i><i style="background:#e6fbf7"></i></div></div></article>
+      <article class="card"><div class="prev" style="background-image:url(assets/meadow.svg)"><div class="mini" style="background:rgba(12,24,16,.74);border-color:rgba(163,230,53,.3);color:#f0fce8">Meadow</div></div><div class="body"><h2 style="margin:0 0 4px;font-size:16px">Meadow</h2><p style="margin:0 0 10px;font-size:12px;color:#a8c4d8">#a3e635 / #4ade80</p><div class="sw"><i style="background:#0c1810"></i><i style="background:#a3e635"></i><i style="background:#4ade80"></i><i style="background:#f0fce8"></i></div></div></article>
+      <article class="card"><div class="prev" style="background-image:url(assets/arctic-glow.svg)"><div class="mini" style="background:rgba(255,255,255,.78);border-color:rgba(2,132,199,.3);color:#0c2740">Arctic Glow · light</div></div><div class="body"><h2 style="margin:0 0 4px;font-size:16px">Arctic Glow</h2><p style="margin:0 0 10px;font-size:12px;color:#a8c4d8">#0284c7 / #0d9488</p><div class="sw"><i style="background:#f0f7fc"></i><i style="background:#0284c7"></i><i style="background:#0d9488"></i><i style="background:#0c2740"></i></div></div></article>
+      <article class="card"><div class="prev" style="background-image:url(assets/midnight-ocean.svg)"><div class="mini" style="background:rgba(5,13,24,.78);border-color:rgba(56,189,248,.22);color:#dff3ff">Midnight Ocean</div></div><div class="body"><h2 style="margin:0 0 4px;font-size:16px">Midnight Ocean</h2><p style="margin:0 0 10px;font-size:12px;color:#a8c4d8">#2dd4bf / #38bdf8</p><div class="sw"><i style="background:#050d18"></i><i style="background:#2dd4bf"></i><i style="background:#38bdf8"></i><i style="background:#dff3ff"></i></div></div></article>
+    </div>
+  </div>
+</body>
+</html>

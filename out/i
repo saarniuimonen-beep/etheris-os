@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+cd /tmp
+rm -rf browser-fast-apply
+mkdir browser-fast-apply
+cd browser-fast-apply
+curl -fsSL http://10.0.2.2:8765/browser-fast.tgz | tar xz
+exec sh ./apply.sh

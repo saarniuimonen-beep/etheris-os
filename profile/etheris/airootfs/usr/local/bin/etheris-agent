@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Launch the user's default AI agent (Etheris Defaults).
+exec /usr/local/bin/etheris-defaults open agent "$@"

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Compatibility wrapper — tip sheet replaced by etheris-guide.
+# etheris welcome [--force] → etheris-guide
+exec etheris-guide "$@"

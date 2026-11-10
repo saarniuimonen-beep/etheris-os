@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Etheris OS — focused-window controls (panel helper).
+# Honest substitute for missing Sway SSD buttons. See docs/WINDOW-DECORATIONS.md.
+set -euo pipefail
+
+action="${1:-}"
+usage() {
+  echo "Usage: etheris-winctl close|float|fullscreen|scratch|menu" >&2
+}
+
+case "$action" in
+  close|kill)
+    swaymsg kill >/dev/null
+    ;;
+  float|floating)
+    swaymsg floating toggle >/dev/null
+    ;;
+  fullscreen|max)
+    swaymsg fullscreen toggle >/dev/null
+    ;;
+  scratch|min)
+    # Scratchpad ≈ minimize for tiling WM
+    swaymsg move scratchpad >/dev/null
+    ;;
+  restore)
+    swaymsg scratchpad show >/dev/null
+    ;;
+  menu)
+    pick="$(printf '%s\n' \
+      'Close' \
+      'Float / tile' \
+      'Fullscreen' \
+      'Hide (scratchpad)' \
+      'Show scratchpad' \
+      'Cancel' \
+      | wofi --dmenu -p 'window › ' 2>/dev/null || true)"
+    case "$pick" in
+      Close) exec etheris-winctl close ;;
+      Float*) exec etheris-winctl float ;;
+      Fullscreen) exec etheris-winctl fullscreen ;;
+      Hide*) exec etheris-winctl scratch ;;
+      Show*) exec etheris-winctl restore ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  -h|--help|help|"")
+    usage
+    exit 2
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

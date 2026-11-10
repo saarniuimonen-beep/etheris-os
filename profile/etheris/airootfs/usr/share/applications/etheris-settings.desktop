@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris Settings
+Comment=Sound, keyboard shortcuts, help, themes
+Exec=etheris settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=etheris;settings;sound;keyboard;help;

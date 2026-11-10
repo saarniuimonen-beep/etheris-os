@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Etheris Rofi custom mode — pinned apps (Kickoff-style favorites).
+# Rofi script protocol: no args → list; with args → launch selection.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+PINS="$CONF_DIR/launcher-pins.conf"
+mkdir -p "$CONF_DIR"
+
+if [[ ! -f "$PINS" ]]; then
+  cat >"$PINS" <<'EOF'
+# One entry per line: desktop-id (without .desktop) or absolute command
+foot
+etheris-files
+etheris-browser
+etheris-defaults
+steam
+etheris-settings
+etheris-wallpaper
+etheris-transfer
+EOF
+fi
+
+resolve_desktop() {
+  local id="$1"
+  local desk
+  for desk in \
+    "$HOME/.local/share/applications/${id}.desktop" \
+    "/usr/local/share/applications/${id}.desktop" \
+    "/usr/share/applications/${id}.desktop"; do
+    [[ -f "$desk" ]] && { printf '%s\n' "$desk"; return 0; }
+  done
+  return 1
+}
+
+icon_for() {
+  local id="$1" desk icon
+  desk="$(resolve_desktop "$id" 2>/dev/null || true)"
+  if [[ -n "$desk" ]]; then
+    icon="$(grep -E '^Icon=' "$desk" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+    [[ -n "$icon" ]] && { printf '%s\n' "$icon"; return 0; }
+  fi
+  case "$id" in
+    foot|terminal|kitty|alacritty) echo utilities-terminal ;;
+    pcmanfm|thunar|nautilus|files) echo system-file-manager ;;
+    firefox|etheris-browser|chromium|brave|vivaldi|chrome|edge|zen) echo web-browser ;;
+    etheris-browsers|etheris-defaults) echo preferences-desktop-default-applications ;;
+    etheris-agent) echo applications-science ;;
+    etheris-terminal) echo utilities-terminal ;;
+    steam|etheris-steam) echo steam ;;
+    etheris-settings) echo preferences-system ;;
+    etheris-wallpaper) echo preferences-desktop-wallpaper ;;
+    etheris-files|pcmanfm) echo system-file-manager ;;
+    etheris-transfer) echo folder-remote ;;
+    *) echo application-x-executable ;;
+  esac
+}
+
+label_for() {
+  local id="$1" desk name
+  desk="$(resolve_desktop "$id" 2>/dev/null || true)"
+  if [[ -n "$desk" ]]; then
+    name="$(grep -E '^Name=' "$desk" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+    [[ -n "$name" ]] && { printf '%s\n' "$name"; return 0; }
+  fi
+  case "$id" in
+    foot) echo Terminal ;;
+    pcmanfm) echo Files ;;
+    etheris-settings) echo Etheris Settings ;;
+    etheris-wallpaper) echo Etheris Wallpapers ;;
+    etheris-files|pcmanfm) echo Etheris Files ;;
+    etheris-transfer) echo Etheris Transfers ;;
+    etheris-browser) echo Web Browser ;;
+    etheris-browsers|etheris-defaults) echo Etheris Defaults ;;
+    etheris-agent) echo AI Agent ;;
+    etheris-terminal) echo Terminal ;;
+    etheris-steam|steam) echo Steam ;;
+    *) printf '%s\n' "$id" ;;
+  esac
+}
+
+launch_id() {
+  local id="$1" desk
+  if [[ "$id" == /* ]]; then
+    nohup "$id" >/dev/null 2>&1 &
+    return 0
+  fi
+  desk="$(resolve_desktop "$id" 2>/dev/null || true)"
+  if [[ -n "$desk" ]]; then
+    nohup gtk-launch "$id" >/dev/null 2>&1 &
+    return 0
+  fi
+  if command -v "$id" >/dev/null 2>&1; then
+    nohup "$id" >/dev/null 2>&1 &
+  fi
+}
+
+# Selection → launch
+if [[ $# -gt 0 && -n "${1:-}" ]]; then
+  sel="$1"
+  # Match either label or raw id from pins
+  mapfile -t lines < <(grep -vE '^\s*(#|$)' "$PINS" 2>/dev/null || true)
+  for id in "${lines[@]}"; do
+    id="${id#"${id%%[![:space:]]*}"}"
+    id="${id%"${id##*[![:space:]]}"}"
+    [[ -z "$id" ]] && continue
+    label="$(label_for "$id")"
+    if [[ "$sel" == "$label" || "$sel" == "$id" ]]; then
+      launch_id "$id"
+      exit 0
+    fi
+  done
+  exit 0
+fi
+
+# List entries for Rofi
+mapfile -t lines < <(grep -vE '^\s*(#|$)' "$PINS" 2>/dev/null || true)
+for id in "${lines[@]}"; do
+  id="${id#"${id%%[![:space:]]*}"}"
+  id="${id%"${id##*[![:space:]]}"}"
+  [[ -z "$id" ]] && continue
+  label="$(label_for "$id")"
+  icon="$(icon_for "$id")"
+  printf '%s\0icon\x1f%s\n' "$label" "$icon"
+done

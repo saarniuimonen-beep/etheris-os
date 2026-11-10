@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Etheris OS — Shortcut Center (searchable reference of real binds)
+set -euo pipefail
+
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}"
+CATALOG="${ETHERIS_SHORTCUTS_CATALOG:-$SHARE/shortcuts/catalog.tsv}"
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<H
+Usage: etheris-shortcuts [filter]
+
+  Searchable keyboard shortcut reference for Etheris (Sway).
+  Open with Super+/ or: etheris shortcuts
+
+  Catalog: $CATALOG
+  Change binds by editing ~/.config/sway/config then reload Sway.
+H
+  exit 0
+fi
+
+FILTER="${*:-}"
+
+run_ui() {
+  local filter="$1" cat keys action notes q last blob f
+  while true; do
+    clear
+    echo
+    echo "  Etheris OS — Shortcut Center"
+    echo "  ────────────────────────────────────────"
+    echo "  Filter: ${filter:-<all>}   (type text + Enter; empty=all; q=quit)"
+    echo
+    last=""
+    while IFS=$'\t' read -r cat keys action notes; do
+      [[ "$cat" =~ ^# ]] && continue
+      [[ -z "$cat" ]] && continue
+      if [[ -n "$filter" ]]; then
+        blob="$(printf '%s %s %s %s' "$cat" "$keys" "$action" "$notes" | tr '[:upper:]' '[:lower:]')"
+        f="$(printf '%s' "$filter" | tr '[:upper:]' '[:lower:]')"
+        [[ "$blob" == *"$f"* ]] || continue
+      fi
+      if [[ "$cat" != "$last" ]]; then
+        echo
+        echo "  ▸ $cat"
+        last="$cat"
+      fi
+      printf "    %-28s  %s" "$keys" "$action"
+      [[ -n "${notes:-}" ]] && printf "  — %s" "$notes"
+      echo
+    done < "$CATALOG"
+    echo
+    echo "  Edit binds: ~/.config/sway/config"
+    echo "  Docs: $SHARE/docs/KEYBOARD.md"
+    echo
+    echo -n "  Search (Enter=refresh, q=quit): "
+    IFS= read -r q || q=q
+    case "$q" in
+      q|Q|quit|exit) exit 0 ;;
+      *) filter="$q" ;;
+    esac
+  done
+}
+
+[[ -f "$CATALOG" ]] || { echo "Shortcut catalog missing: $CATALOG" >&2; exit 1; }
+
+if [[ "${ETHERIS_SHORTCUTS_UI:-0}" == 1 ]]; then
+  run_ui "$FILTER"
+  exit 0
+fi
+
+if command -v foot >/dev/null 2>&1; then
+  exec foot -T "Etheris OS — Shortcut Center" -a etheris-shortcuts \
+    env ETHERIS_SHORTCUTS_UI=1 etheris-shortcuts ${FILTER:+"$FILTER"}
+fi
+
+run_ui "$FILTER"

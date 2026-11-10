@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Etheris OS — ensure live authentication always works at boot
+# Live ISO sets a documented shared password via chpasswd (see motd; do not log it).
+set -euo pipefail
+
+LIVE_USER="etheris"
+LIVE_UID=1000
+LIVE_GID=1000
+LIVE_PASS="etheris"
+LIVE_HOME="/home/${LIVE_USER}"
+
+log() { echo "etheris-auth-setup: $*"; }
+
+# System accounts from packages (sddm, dbus, polkit, …)
+if command -v systemd-sysusers >/dev/null 2>&1; then
+  systemd-sysusers || true
+fi
+
+# Create live user if missing (e.g. overlay race)
+if ! id "$LIVE_USER" >/dev/null 2>&1; then
+  log "creating user ${LIVE_USER}"
+  groupadd -f -g "$LIVE_GID" "$LIVE_USER" 2>/dev/null || true
+  useradd -m -u "$LIVE_UID" -g "$LIVE_GID" -s /usr/bin/bash \
+    -c "Etheris Live User" "$LIVE_USER" 2>/dev/null \
+    || useradd -m -s /usr/bin/bash -c "Etheris Live User" "$LIVE_USER"
+fi
+
+# Essential groups for seat, audio, admin, gaming (gamemode renice)
+for g in wheel audio video storage input render network power rfkill optical lp adm uucp users gamemode; do
+  groupadd -f "$g" 2>/dev/null || true
+  usermod -aG "$g" "$LIVE_USER" 2>/dev/null || true
+done
+
+# Home directory
+mkdir -p "$LIVE_HOME"
+if [[ -d /etc/skel && -z "$(ls -A "$LIVE_HOME" 2>/dev/null || true)" ]]; then
+  cp -a /etc/skel/. "$LIVE_HOME/" 2>/dev/null || true
+fi
+chown -R "${LIVE_USER}:${LIVE_USER}" "$LIVE_HOME" 2>/dev/null || true
+
+# Set known passwords (live ISO must be login-able)
+if command -v chpasswd >/dev/null 2>&1; then
+  printf 'root:%s\n%s:%s\n' "$LIVE_PASS" "$LIVE_USER" "$LIVE_PASS" | chpasswd
+  log "passwords set for root and ${LIVE_USER}"
+else
+  log "WARNING: chpasswd missing — relying on /etc/shadow from image"
+fi
+
+# sudoers drop-in must be mode 0440
+if [[ -f /etc/sudoers.d/etheris ]]; then
+  chown root:root /etc/sudoers.d/etheris
+  chmod 440 /etc/sudoers.d/etheris
+fi
+
+# Validate sudoers syntax when possible
+if command -v visudo >/dev/null 2>&1; then
+  if ! visudo -cf /etc/sudoers >/dev/null 2>&1; then
+    log "WARNING: /etc/sudoers failed visudo check"
+  fi
+  if [[ -f /etc/sudoers.d/etheris ]]; then
+    visudo -cf /etc/sudoers.d/etheris >/dev/null 2>&1 \
+      || log "WARNING: sudoers.d/etheris failed visudo check"
+  fi
+fi
+
+# Ensure shells file allows bash
+grep -qx '/usr/bin/bash' /etc/shells 2>/dev/null || echo /usr/bin/bash >> /etc/shells
+chsh -s /usr/bin/bash "$LIVE_USER" 2>/dev/null || true
+
+# SDDM must be able to read user list
+chmod 644 /etc/passwd 2>/dev/null || true
+chmod 600 /etc/shadow 2>/dev/null || true
+
+log "OK — live credentials: see /etc/motd (not printed here)"

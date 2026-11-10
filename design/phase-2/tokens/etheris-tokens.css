@@ -1,0 +1,124 @@
+/**
+ * Etheris OS Phase 2 — preview tokens (mirrors etheris.tokens.json)
+ * Not wired into the live OS.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  --eth-font-ui: "Outfit", ui-sans-serif, sans-serif;
+  --eth-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --eth-text-display: 40px;
+  --eth-text-title: 22px;
+  --eth-text-heading: 18px;
+  --eth-text-body: 14px;
+  --eth-text-caption: 12px;
+  --eth-text-micro: 11px;
+  --eth-space-1: 4px;
+  --eth-space-2: 8px;
+  --eth-space-3: 12px;
+  --eth-space-4: 16px;
+  --eth-space-5: 20px;
+  --eth-space-6: 24px;
+  --eth-space-8: 32px;
+  --eth-radius-control: 8px;
+  --eth-radius-panel: 14px;
+  --eth-radius-menu: 14px;
+  --eth-radius-dialog: 16px;
+  --eth-radius-window: 12px;
+  --eth-radius-pill: 999px;
+  --eth-shadow-soft: 0 8px 28px rgba(8, 24, 48, 0.28);
+  --eth-shadow-float: 0 12px 40px rgba(8, 24, 48, 0.36);
+  --eth-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  --eth-focus-ring: 0 0 0 3px var(--eth-accent-soft);
+  --eth-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --eth-dur-hover: 80ms;
+  --eth-dur-open: 180ms;
+  --eth-blur: 0px;
+  --eth-success: #4ade80;
+  --eth-warning: #fbbf24;
+  --eth-danger: #fb7185;
+  /* Ocean Glass default */
+  --eth-bg: #0a1628;
+  --eth-bg-elevated: #122338;
+  --eth-bg-deep: #061018;
+  --eth-fg: #e8f4fc;
+  --eth-fg-muted: #a8c4d8;
+  --eth-fg-subtle: #6b8aa3;
+  --eth-accent: #38bdf8;
+  --eth-accent-2: #2dd4bf;
+  --eth-accent-soft: rgba(56, 189, 248, 0.35);
+  --eth-border: rgba(56, 189, 248, 0.28);
+  --eth-panel: rgba(10, 22, 40, 0.72);
+  --eth-menu: rgba(10, 22, 40, 0.94);
+  --eth-input: rgba(18, 35, 56, 0.95);
+  --eth-focus: #7dd3fc;
+  --eth-highlight: rgba(255, 255, 255, 0.12);
+  --eth-gloss: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 42%);
+  --eth-wallpaper: url("../preview/assets/ocean-glass.svg");
+}
+
+[data-atmosphere="ocean-glass"] {
+  --eth-bg: #0a1628; --eth-bg-elevated: #122338; --eth-bg-deep: #061018;
+  --eth-fg: #e8f4fc; --eth-fg-muted: #a8c4d8; --eth-fg-subtle: #6b8aa3;
+  --eth-accent: #38bdf8; --eth-accent-2: #2dd4bf;
+  --eth-accent-soft: rgba(56, 189, 248, 0.35); --eth-border: rgba(56, 189, 248, 0.28);
+  --eth-panel: rgba(10, 22, 40, 0.72); --eth-menu: rgba(10, 22, 40, 0.94);
+  --eth-input: rgba(18, 35, 56, 0.95); --eth-focus: #7dd3fc;
+  --eth-wallpaper: url("../preview/assets/ocean-glass.svg");
+}
+[data-atmosphere="aurora"] {
+  --eth-bg: #071820; --eth-bg-elevated: #0e2a32; --eth-bg-deep: #041016;
+  --eth-fg: #e6fbf7; --eth-fg-muted: #9ecfc6; --eth-fg-subtle: #5f8f88;
+  --eth-accent: #2dd4bf; --eth-accent-2: #5eead4;
+  --eth-accent-soft: rgba(45, 212, 191, 0.35); --eth-border: rgba(45, 212, 191, 0.32);
+  --eth-panel: rgba(7, 24, 32, 0.74); --eth-menu: rgba(7, 24, 32, 0.95);
+  --eth-input: rgba(14, 42, 50, 0.95); --eth-focus: #99f6e4;
+  --eth-wallpaper: url("../preview/assets/aurora.svg");
+}
+[data-atmosphere="meadow"] {
+  --eth-bg: #0c1810; --eth-bg-elevated: #15261a; --eth-bg-deep: #07100a;
+  --eth-fg: #f0fce8; --eth-fg-muted: #b4d4a0; --eth-fg-subtle: #6f8f5c;
+  --eth-accent: #a3e635; --eth-accent-2: #4ade80;
+  --eth-accent-soft: rgba(163, 230, 53, 0.32); --eth-border: rgba(163, 230, 53, 0.3);
+  --eth-panel: rgba(12, 24, 16, 0.74); --eth-menu: rgba(12, 24, 16, 0.95);
+  --eth-input: rgba(21, 38, 26, 0.95); --eth-focus: #bef264;
+  --eth-wallpaper: url("../preview/assets/meadow.svg");
+}
+[data-atmosphere="arctic-glow"] {
+  --eth-bg: #f0f7fc; --eth-bg-elevated: #ffffff; --eth-bg-deep: #dbeaf5;
+  --eth-fg: #0c2740; --eth-fg-muted: #3d5a73; --eth-fg-subtle: #6b8499;
+  --eth-accent: #0284c7; --eth-accent-2: #0d9488;
+  --eth-accent-soft: rgba(2, 132, 199, 0.22); --eth-border: rgba(2, 132, 199, 0.3);
+  --eth-panel: rgba(255, 255, 255, 0.78); --eth-menu: rgba(255, 255, 255, 0.96);
+  --eth-input: rgba(226, 242, 252, 0.98); --eth-focus: #38bdf8;
+  --eth-highlight: rgba(2, 132, 199, 0.08);
+  --eth-success: #16a34a; --eth-warning: #d97706; --eth-danger: #e11d48;
+  --eth-shadow-soft: 0 8px 28px rgba(12, 60, 100, 0.12);
+  --eth-shadow-float: 0 12px 40px rgba(12, 60, 100, 0.16);
+  --eth-wallpaper: url("../preview/assets/arctic-glow.svg");
+}
+[data-atmosphere="midnight-ocean"] {
+  --eth-bg: #050d18; --eth-bg-elevated: #0b1a2c; --eth-bg-deep: #03080f;
+  --eth-fg: #dff3ff; --eth-fg-muted: #7fa8c4; --eth-fg-subtle: #4d6f88;
+  --eth-accent: #2dd4bf; --eth-accent-2: #38bdf8;
+  --eth-accent-soft: rgba(45, 212, 191, 0.3); --eth-border: rgba(56, 189, 248, 0.22);
+  --eth-panel: rgba(5, 13, 24, 0.78); --eth-menu: rgba(5, 13, 24, 0.96);
+  --eth-input: rgba(11, 26, 44, 0.96); --eth-focus: #5eead4;
+  --eth-wallpaper: url("../preview/assets/midnight-ocean.svg");
+}
+
+[data-transparency="reduced"] {
+  --eth-panel: var(--eth-bg-elevated);
+  --eth-menu: var(--eth-bg-elevated);
+  --eth-input: var(--eth-bg-elevated);
+}
+[data-motion="reduced"] {
+  --eth-dur-hover: 0ms;
+  --eth-dur-open: 0ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --eth-dur-hover: 0ms;
+    --eth-dur-open: 0ms;
+  }
+}

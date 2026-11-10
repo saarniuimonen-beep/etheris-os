@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Additional concepts — Etheris Design Phase 1</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .extras {
+      padding: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 20px;
+    }
+    .extras h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .extras .lead {
+      color: var(--eth-fg-muted);
+      margin: 0 0 8px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .concept {
+      padding: 16px;
+      min-height: 200px;
+    }
+    .concept h2 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+    .concept .tag {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--eth-accent);
+      margin-bottom: 12px;
+    }
+    .toast {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-highlight);
+      margin-bottom: 8px;
+    }
+    .toast .bar {
+      width: 3px;
+      border-radius: 2px;
+      background: var(--eth-accent);
+    }
+    .widgets {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .widget {
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-highlight);
+      font-size: 12px;
+    }
+    .widget strong {
+      display: block;
+      font-size: 20px;
+      margin-top: 4px;
+    }
+    .files {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 8px;
+      font-size: 12px;
+      min-height: 140px;
+    }
+    .files .side {
+      border-right: 1px solid var(--eth-border);
+      padding-right: 8px;
+      color: var(--eth-fg-muted);
+    }
+    .files .side div {
+      padding: 6px 8px;
+      border-radius: 8px;
+      margin-bottom: 2px;
+    }
+    .files .side .on {
+      background: var(--eth-accent-soft);
+      color: var(--eth-fg);
+    }
+    .guide-steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .guide-steps li {
+      counter-increment: step;
+      padding: 8px 0 8px 36px;
+      position: relative;
+      font-size: 13px;
+      color: var(--eth-fg-muted);
+      border-bottom: 1px solid var(--eth-border);
+    }
+    .guide-steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--eth-accent-soft);
+      color: var(--eth-fg);
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .splash {
+      height: 140px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 50% 40%, rgba(56, 189, 248, 0.25), transparent 55%),
+        var(--eth-bg-deep);
+      border: 1px solid var(--eth-border);
+    }
+    .keys {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .keys div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--eth-highlight);
+    }
+    .keys kbd {
+      font-family: var(--eth-font-mono);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--eth-border);
+      color: var(--eth-accent);
+    }
+    .wall-pick {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .wall-pick span {
+      aspect-ratio: 16/10;
+      border-radius: 8px;
+      background-size: cover;
+      border: 1px solid var(--eth-border);
+    }
+  </style>
+</head>
+<body class="stage-wrap" style="background:var(--eth-bg)">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a>
+      <a href="desktop.html">Desktop</a>
+      <a href="launcher.html">Launcher</a>
+      <a href="control-center.html">Control Center</a>
+      <a href="settings.html">Settings</a>
+      <a href="login.html">Login</a>
+      <a href="atmospheres.html">Atmospheres</a>
+      <a href="extras.html" aria-current="page">Extras</a>
+    </nav>
+    <div class="atm-picker">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+
+  <div class="extras">
+    <h1>Additional concepts</h1>
+    <p class="lead">Same Neo-Aero language — not scheduled for implementation in this phase.</p>
+
+    <div class="board">
+      <section class="glass concept">
+        <div class="tag">Notifications</div>
+        <h2>Notification center</h2>
+        <div class="toast"><div class="bar"></div><div><strong style="color:var(--eth-fg);font-size:13px">Update ready</strong><div style="font-size:12px;color:var(--eth-fg-muted)">Etheris OS · security snapshot</div></div></div>
+        <div class="toast"><div class="bar" style="background:var(--eth-accent-2)"></div><div><strong style="color:var(--eth-fg);font-size:13px">Battery</strong><div style="font-size:12px;color:var(--eth-fg-muted)">72% · discharging</div></div></div>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Widgets</div>
+        <h2>Desktop widgets</h2>
+        <div class="widgets">
+          <div class="widget">Weather<strong>12° · Clear</strong></div>
+          <div class="widget">Calendar<strong>8 Nov</strong></div>
+          <div class="widget">Music<strong>Paused</strong></div>
+          <div class="widget">RAM<strong>421 MiB</strong></div>
+        </div>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Files</div>
+        <h2>File manager</h2>
+        <div class="files">
+          <div class="side">
+            <div class="on">Home</div>
+            <div>Documents</div>
+            <div>Downloads</div>
+            <div>Pictures</div>
+          </div>
+          <div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div class="app-icon" style="width:56px;height:56px">docs</div>
+              <div class="app-icon" style="width:56px;height:56px">img</div>
+              <div class="app-icon" style="width:56px;height:56px">iso</div>
+            </div>
+            <p style="margin:12px 0 0;color:var(--eth-fg-muted);font-size:11px">PCManFM + Adwaita · token gtk.css later</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Onboarding</div>
+        <h2>First-login guide</h2>
+        <ol class="guide-steps">
+          <li>Open the terminal — Super+Return</li>
+          <li>Launch apps — Super+D</li>
+          <li>Try Atmospheres in Settings</li>
+          <li>Shortcut Center — Super+/</li>
+          <li>You’re ready</li>
+        </ol>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Boot</div>
+        <h2>Boot splash</h2>
+        <div class="splash">
+          <div style="text-align:center">
+            <img src="assets/mark.svg" width="40" height="40" alt="" />
+            <div style="font-weight:600;margin-top:8px">Etheris OS</div>
+            <div style="font-size:11px;color:var(--eth-fg-muted)">starting…</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Keyboard</div>
+        <h2>Shortcut Center</h2>
+        <div class="keys">
+          <div><span>Terminal</span><kbd>Super+Return</kbd></div>
+          <div><span>Launcher</span><kbd>Super+D</kbd></div>
+          <div><span>Power menu</span><kbd>Super+Shift+E</kbd></div>
+          <div><span>Shortcuts</span><kbd>Super+/</kbd></div>
+        </div>
+      </section>
+
+      <section class="glass concept">
+        <div class="tag">Personalisation</div>
+        <h2>Wallpaper &amp; Atmosphere</h2>
+        <div class="wall-pick">
+          <span style="background-image:url(assets/ocean-glass.svg)"></span>
+          <span style="background-image:url(assets/aurora.svg)"></span>
+          <span style="background-image:url(assets/meadow.svg)"></span>
+          <span style="background-image:url(assets/arctic-glow.svg)"></span>
+          <span style="background-image:url(assets/midnight-ocean.svg)"></span>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;color:var(--eth-fg-muted)">Full picker lives in Settings → Personalisation.</p>
+      </section>
+    </div>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

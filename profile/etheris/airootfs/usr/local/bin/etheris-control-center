@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+# Etheris OS — Control Center (Path A, WP-S2).
+# Quick settings via wofi; entry points Super+A / panel. GTK/Quickshell may replace later.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+mkdir -p "$CONF_DIR"
+[[ -f "$SETTINGS" ]] || cat >"$SETTINGS" <<'EOF'
+theme=ocean-glass
+animations=off
+tray=panel
+dnd=off
+panel_layout=floating
+shell=waybar
+EOF
+
+get_setting() {
+  local key="$1" def="${2:-}"
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  [[ -n "$v" ]] && echo "$v" || echo "$def"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+net_state="$(nmcli -t -f STATE,CONNECTIVITY g 2>/dev/null | head -1 | tr ':' '/' || echo unknown)"
+audio_raw="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || true)"
+audio_sink="$(awk '{print $2}' <<<"$audio_raw" 2>/dev/null || echo '?')"
+muted="no"
+grep -qi muted <<<"$audio_raw" && muted="yes"
+theme="$(get_setting theme ocean-glass)"
+anim="$(get_setting animations on)"
+tray="$(get_setting tray panel)"
+panel_layout="$(get_setting panel_layout floating)"
+case "$panel_layout" in
+  dock|bottom) panel_layout=dock ;;
+  *) panel_layout=floating ;;
+esac
+dnd="$(get_setting dnd off)"
+launcher_style="$(get_setting launcher_style wide)"
+case "$launcher_style" in
+  slim|narrow|thin|compact) launcher_style=slim ;;
+  *) launcher_style=wide ;;
+esac
+perf_profile="$(get_setting performance_profile balanced)"
+if command -v etheris-perf >/dev/null 2>&1; then
+  perf_profile="$(etheris-perf get 2>/dev/null || echo "$perf_profile")"
+fi
+case "$perf_profile" in
+  maximum|balanced|quiet|powersave) ;;
+  *) perf_profile=balanced ;;
+esac
+if command -v makoctl >/dev/null 2>&1; then
+  if makoctl mode 2>/dev/null | grep -qiE 'dnd|do-not-disturb'; then
+    dnd="on"
+  fi
+fi
+
+pick="$(printf '%s\n' \
+  "══ Quick settings ══" \
+  "Network (${net_state})" \
+  "Volume +5%" \
+  "Volume −5%" \
+  "Mute toggle (now muted=${muted}, vol ${audio_sink})" \
+  "Brightness +5%" \
+  "Brightness −5%" \
+  "Performance profile (${perf_profile})" \
+  "══ Session ══" \
+  "Notifications center" \
+  "Do not disturb (${dnd})" \
+  "Panel layout (${panel_layout})" \
+  "Tray policy (${tray})" \
+  "Theme (${theme})" \
+  "Wallpaper" \
+  "File transfers" \
+  "Defaults (browser / terminal / AI)" \
+  "Launcher style (${launcher_style})" \
+  "Animations (${anim})" \
+  "Workspace overview" \
+  "Etheris Settings" \
+  "Performance Manager" \
+  "GPU Manager" \
+  "Shortcut Center" \
+  "Power menu" \
+  "Cancel" \
+  | wofi --dmenu -p 'control center › ' -I 2>/dev/null || true)"
+
+[[ -n "$pick" && "$pick" != Cancel && "$pick" != ══* ]] || exit 0
+
+case "$pick" in
+  Network*)
+    if command -v nm-connection-editor >/dev/null 2>&1; then
+      exec nm-connection-editor
+    else
+      exec foot -e nmtui
+    fi
+    ;;
+  "Volume +5%")
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ >/dev/null 2>&1 || true
+    ;;
+  "Volume −5%"|"Volume -5%")
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- >/dev/null 2>&1 || true
+    ;;
+  Mute*)
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle >/dev/null 2>&1 || true
+    ;;
+  "Brightness +5%")
+    brightnessctl set +5% >/dev/null 2>&1 || true
+    ;;
+  "Brightness −5%"|"Brightness -5%")
+    brightnessctl set 5%- >/dev/null 2>&1 || true
+    ;;
+  "Performance profile"*)
+    case "$perf_profile" in
+      balanced) next=quiet ;;
+      quiet) next=powersave ;;
+      powersave) next=maximum ;;
+      *) next=balanced ;;
+    esac
+    # Sub-menu for explicit pick when wofi available
+    choice="$(printf '%s\n' \
+      "maximum — Maximum Performance" \
+      "balanced — Balanced" \
+      "quiet — Quiet" \
+      "powersave — Power Saving" \
+      "Cancel" \
+      | wofi --dmenu -p 'performance › ' 2>/dev/null || true)"
+    case "$choice" in
+      maximum*) next=maximum ;;
+      balanced*) next=balanced ;;
+      quiet*) next=quiet ;;
+      powersave*) next=powersave ;;
+      Cancel|"") exit 0 ;;
+    esac
+    if command -v etheris-perf >/dev/null 2>&1; then
+      etheris-perf set "$next" >/dev/null 2>&1 || true
+      set_setting performance_profile "$next"
+      notify-send -a Etheris 'Performance' "Profile → ${next}" 2>/dev/null || true
+    fi
+    ;;
+  "Notifications center")
+    exec etheris-overlay menu etheris-notifications
+    ;;
+  "Do not disturb"*)
+    if [[ "$dnd" == on ]]; then
+      makoctl mode -r dnd >/dev/null 2>&1 || true
+      set_setting dnd off
+      notify-send -a Etheris 'Notifications' 'Do not disturb off' 2>/dev/null || true
+    else
+      makoctl mode -a dnd >/dev/null 2>&1 || true
+      set_setting dnd on
+    fi
+    ;;
+  "Panel layout"*)
+    if [[ "$panel_layout" == dock ]]; then
+      next=floating
+    else
+      next=dock
+    fi
+    etheris-shell-layout panel "$next"
+    notify-send -a Etheris 'Panel' "Layout → ${next} (floating top · dock bottom)" 2>/dev/null || true
+    ;;
+  "Tray policy"*)
+    next=panel
+    case "$tray" in
+      panel) next=off ;;
+      off) next=cc ;;
+      cc) next=panel ;;
+      *) next=panel ;;
+    esac
+    etheris-shell-layout tray "$next"
+    notify-send -a Etheris 'Tray' "Policy → ${next} (panel|off|cc)" 2>/dev/null || true
+    ;;
+  Theme*)
+    exec etheris themes
+    ;;
+  Wallpaper)
+    if [[ -x /usr/local/bin/etheris-wallpaper ]]; then
+      exec etheris-wallpaper
+    fi
+    exec etheris wallpaper
+    ;;
+  "File transfers")
+    if [[ -x /usr/local/bin/etheris-transfer ]]; then
+      exec etheris-transfer
+    fi
+    ;;
+  Defaults*)
+    exec etheris-defaults
+    ;;
+  "Launcher style"*)
+    if [[ "$launcher_style" == slim ]]; then
+      set_setting launcher_style wide
+      notify-send -a Etheris 'Launcher' 'Style → Wide' 2>/dev/null || true
+    else
+      set_setting launcher_style slim
+      notify-send -a Etheris 'Launcher' 'Style → Slim' 2>/dev/null || true
+    fi
+    ;;
+  Animations*)
+    if [[ "$anim" == on ]]; then
+      set_setting animations off
+      notify-send -a Etheris 'Motion' 'Reduced motion preferred (saved).' 2>/dev/null || true
+    else
+      set_setting animations on
+      notify-send -a Etheris 'Motion' 'Animations enabled (saved).' 2>/dev/null || true
+    fi
+    ;;
+  "Workspace overview")
+    exec etheris-workspace-overview
+    ;;
+  "Etheris Settings")
+    if [[ -x /usr/local/bin/etheris-settings ]]; then
+      exec etheris-settings
+    fi
+    exec etheris settings
+    ;;
+  "Performance Manager")
+    if [[ -x /usr/local/bin/etheris-performance ]]; then
+      exec etheris-performance
+    fi
+    exec etheris-perf status
+    ;;
+  "GPU Manager")
+    if [[ -x /usr/local/bin/etheris-gpu-manager ]]; then
+      exec etheris-gpu-manager
+    fi
+    exec etheris-gpu status
+    ;;
+  "Shortcut Center")
+    exec etheris-shortcuts
+    ;;
+  "Power menu")
+    exec etheris-overlay power
+    ;;
+esac

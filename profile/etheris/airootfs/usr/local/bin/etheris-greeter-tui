@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Etheris OS — emergency TUI greeter (tuigreet) if ReGreet/Sway seat fails.
+exec tuigreet --time --remember --remember-user-session --asterisks \
+  --greeting 'Etheris OS — login (TUI fallback)' \
+  --sessions /usr/share/wayland-sessions:/usr/share/xsessions \
+  --cmd etheris-session

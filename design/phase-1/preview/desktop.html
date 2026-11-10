@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Desktop — Etheris Design Phase 1</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .desk-icons {
+      position: absolute;
+      top: 72px;
+      left: 28px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .desk-icons figure {
+      margin: 0;
+      width: 72px;
+      text-align: center;
+      color: var(--eth-fg);
+      font-size: 11px;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    }
+    .desk-icons .app-icon {
+      margin: 0 auto 6px;
+    }
+    .win-main {
+      top: 88px;
+      left: 18%;
+      width: min(560px, 70vw);
+      height: 360px;
+    }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a>
+      <a href="desktop.html" aria-current="page">Desktop</a>
+      <a href="launcher.html">Launcher</a>
+      <a href="control-center.html">Control Center</a>
+      <a href="settings.html">Settings</a>
+      <a href="login.html">Login</a>
+      <a href="atmospheres.html">Atmospheres</a>
+      <a href="extras.html">Extras</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+
+  <div class="stage" role="img" aria-label="Desktop concept">
+    <header class="panel">
+      <img class="mark" src="assets/mark.svg" alt="" />
+      <span class="brand-word">etheris</span>
+      <span class="sep"></span>
+      <div class="ws" aria-label="Workspaces">
+        <span class="on"></span><span></span><span></span><span></span>
+      </div>
+      <span class="pill">Wi‑Fi</span>
+      <span class="pill">72%</span>
+      <span class="clock">Thu 19:42</span>
+    </header>
+
+    <div class="desk-icons">
+      <figure><div class="app-icon">Files</div>Files</figure>
+      <figure><div class="app-icon">Term</div>Terminal</figure>
+      <figure><div class="app-icon">Web</div>Browser</figure>
+    </div>
+
+    <section class="window win-main">
+      <div class="window-title">
+        <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        Foot — etheris@host
+      </div>
+      <div class="window-body" style="font-family: var(--eth-font-mono); color: var(--eth-fg);">
+        <div style="opacity:0.7"># Etheris Light · Sway session</div>
+        <div>$ etheris theme <span style="color:var(--eth-accent)">ocean-glass</span></div>
+        <div style="color:var(--eth-accent-2)">applied · waybar · wofi · mako</div>
+        <div>$ etheris ram</div>
+        <div>idle ≈ 421 MiB</div>
+        <div style="margin-top:12px;color:var(--eth-fg-muted)">_</div>
+      </div>
+    </section>
+
+    <nav class="dock" aria-label="Pinned applications">
+      <div class="app-icon" title="Launcher">Apps</div>
+      <div class="app-icon">Files</div>
+      <div class="app-icon">Term</div>
+      <div class="app-icon">Edit</div>
+      <div class="app-icon">Web</div>
+      <div class="app-icon">Set</div>
+    </nav>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Desktop experience — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .page { padding:24px; max-width:1100px; margin:0 auto; display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); }
+    .concept { padding:16px; min-height:180px; }
+    .concept h2 { margin:0 0 4px; font-size:15px; }
+    .tag { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--eth-accent); margin-bottom:10px; }
+  </style>
+</head>
+<body class="hub-body">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html" aria-current="page">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div style="max-width:1100px;margin:0 auto;padding:24px 24px 0">
+    <h1 style="margin:0 0 6px">Complete desktop experience</h1>
+    <p style="color:var(--eth-fg-muted);margin:0 0 8px;max-width:40em">How pieces interact — see also INTERACTIONS.md. Widgets opt-in; notifications toast by default.</p>
+  </div>
+  <div class="page">
+    <section class="glass concept"><div class="tag">Notifications</div><h2>Notification center</h2><p style="font-size:12px;color:var(--eth-fg-muted)">Toasts via mako; history panel optional; exclusive vs Control Center.</p></section>
+    <section class="glass concept"><div class="tag">Opt-in</div><h2>Widgets</h2><p style="font-size:12px;color:var(--eth-fg-muted)">Clock / weather / RAM — max 3; none on default desktop; refresh ≥30s.</p></section>
+    <section class="glass concept"><div class="tag">Files</div><h2>File manager</h2><p style="font-size:12px;color:var(--eth-fg-muted)">PCManFM + Adwaita/Papirus; gtk.css tokens later.</p></section>
+    <section class="glass concept"><div class="tag">Onboarding</div><h2>First-login guide</h2><p style="font-size:12px;color:var(--eth-fg-muted)">5 steps; Stage 6 polish; already in OS as foot TUI.</p></section>
+    <section class="glass concept"><div class="tag">Boot</div><h2>Boot splash</h2><div style="height:100px;border-radius:12px;display:grid;place-items:center;background:var(--eth-bg-deep);border:1px solid var(--eth-border)"><div style="text-align:center"><img src="assets/mark.svg" width="36" alt="" /><div style="font-weight:600;margin-top:6px">Etheris OS</div></div></div></section>
+    <section class="glass concept"><div class="tag">Keyboard</div><h2>Shortcut Center</h2><p style="font-size:12px;color:var(--eth-fg-muted)">Super+/ · Esc closes · does not stack with launcher.</p></section>
+    <section class="glass concept"><div class="tag">Tray</div><h2>System tray</h2><p style="font-size:12px;color:var(--eth-fg-muted)">StatusNotifier in panel <em>or</em> CC section — never duplicated.</p></section>
+    <section class="glass concept"><div class="tag">WM</div><h2>Window &amp; workspaces</h2><p style="font-size:12px;color:var(--eth-fg-muted)">Sway owns tiling/floating; panel dots mirror workspaces; no GNOME overview clone.</p></section>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

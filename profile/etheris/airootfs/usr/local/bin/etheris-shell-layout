@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+# Etheris OS — apply shell layout preferences to Waybar (Path A).
+# panel_layout=floating → Neo-Aero top panel (default)
+# panel_layout=dock     → bottom island dock (different modules / chrome)
+# Never starts Quickshell. Safe to run from theme-apply / Settings / CC.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+WAYBAR_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/waybar/config.jsonc"
+WAYBAR_CSS="${XDG_CONFIG_HOME:-$HOME/.config}/waybar/style.css"
+mkdir -p "$CONF_DIR" "$(dirname "$WAYBAR_CFG")"
+
+get_setting() {
+  local key="$1" def="${2:-}"
+  [[ -f "$SETTINGS" ]] || { echo "$def"; return; }
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  [[ -n "$v" ]] && echo "$v" || echo "$def"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  [[ -f "$SETTINGS" ]] || printf '%s\n' 'theme=ocean-glass' >"$SETTINGS"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+normalize_layout() {
+  case "${1:-floating}" in
+    floating|top|panel) echo floating ;;
+    dock|bottom) echo dock ;;
+    *) echo floating ;;
+  esac
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-shell-layout status
+  etheris-shell-layout apply
+  etheris-shell-layout tray panel|off|cc
+  etheris-shell-layout panel floating|dock
+  etheris-shell-layout panel top|bottom   # aliases
+EOF
+}
+
+restart_waybar() {
+  pkill -x waybar 2>/dev/null || true
+  # Brief settle so the old exclusive zone releases before relaunch.
+  sleep 0.15
+  if command -v swaymsg >/dev/null 2>&1 && [[ -n "${SWAYSOCK:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+    swaymsg exec 'waybar' >/dev/null 2>&1 || waybar >/dev/null 2>&1 &
+  else
+    waybar >/dev/null 2>&1 &
+  fi
+}
+
+cmd="${1:-status}"
+shift || true
+
+case "$cmd" in
+  -h|--help|help) usage; exit 0 ;;
+  status)
+    echo "shell=$(get_setting shell waybar)"
+    echo "panel_layout=$(normalize_layout "$(get_setting panel_layout floating)")"
+    echo "tray=$(get_setting tray panel)"
+    echo "dnd=$(get_setting dnd off)"
+    echo "animations=$(get_setting animations off)"
+    echo "widgets=$(get_setting widgets off)"
+    ;;
+  tray)
+    val="${1:-}"
+    case "$val" in
+      panel|off|cc) set_setting tray "$val" ;;
+      *) echo "tray must be panel|off|cc" >&2; exit 2 ;;
+    esac
+    exec bash "$0" apply
+    ;;
+  panel)
+    val="$(normalize_layout "${1:-}")"
+    case "${1:-}" in
+      floating|top|panel|dock|bottom) ;;
+      *) echo "panel must be floating|dock (aliases: top|bottom)" >&2; exit 2 ;;
+    esac
+    set_setting panel_layout "$val"
+    exec bash "$0" apply
+    ;;
+  apply)
+    tray="$(get_setting tray panel)"
+    layout="$(normalize_layout "$(get_setting panel_layout floating)")"
+    # cc = tray icons live in Control Center only (hide panel tray)
+    tray_modules="$tray"
+    [[ "$tray" == cc ]] && tray_modules=off
+
+    python3 - "$WAYBAR_CFG" "$WAYBAR_CSS" "$tray_modules" "$layout" <<'PY'
+import json, pathlib, re, sys
+
+path = pathlib.Path(sys.argv[1])
+css_path = pathlib.Path(sys.argv[2])
+tray = sys.argv[3]
+layout = sys.argv[4]
+
+MODULE_DEFS = {
+    "custom/logo": {
+        "format": " Etheris ",
+        "tooltip": "Etheris OS — Super+D launcher",
+        "on-click": "etheris-overlay launcher",
+        "on-click-right": "etheris-overlay launcher pins",
+    },
+    "sway/workspaces": {
+        "disable-scroll": False,
+        "all-outputs": True,
+        "format": "{icon}",
+        "format-icons": {
+            "urgent": "◉",
+            "focused": "●",
+            "default": "○",
+        },
+        "persistent-workspaces": {"1": [], "2": [], "3": [], "4": []},
+    },
+    "sway/mode": {"format": " {} "},
+    "sway/window": {
+        "format": "{title}",
+        "max-length": 40,
+        "tooltip": True,
+    },
+    "custom/winctl": {
+        "format": "✕  −  ▭  ⛶",
+        "tooltip": "Window: left=close · middle=scratch(min) · right=fullscreen · Super+Shift+A menu",
+        "on-click": "etheris-winctl close",
+        "on-click-middle": "etheris-winctl scratch",
+        "on-click-right": "etheris-winctl fullscreen",
+        "on-scroll-up": "etheris-winctl float",
+        "on-scroll-down": "etheris-winctl restore",
+    },
+    "custom/overview": {
+        "format": "overview",
+        "tooltip": "Workspace overview — Super+W",
+        "on-click": "etheris-workspace-overview",
+    },
+    "custom/app-files": {
+        "format": "Files",
+        "tooltip": "Files",
+        "on-click": "pcmanfm",
+    },
+    "custom/app-term": {
+        "format": "Term",
+        "tooltip": "Terminal",
+        "on-click": "foot",
+    },
+    "custom/app-settings": {
+        "format": "Set",
+        "tooltip": "Etheris Settings — Super+,",
+        "on-click": "etheris-settings",
+    },
+    "clock": {
+        "format": "{:%H:%M}",
+        "tooltip-format": "{:%Y-%m-%d %a}",
+        "interval": 30,
+        "on-click": "etheris-overlay control-center",
+    },
+    "tray": {"icon-size": 15, "spacing": 8},
+    "memory": {
+        "format": "{used:0.1f}G",
+        "interval": 15,
+        "tooltip-format": "RAM {used:0.1f}G / {total:0.1f}G — ≤0.5G idle aspirational",
+    },
+    "pulseaudio": {
+        "format": "{volume}%",
+        "format-muted": "mute",
+        "on-click": "etheris-overlay menu pavucontrol",
+        "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    },
+    "network": {
+        "format-wifi": "{essid}",
+        "format-ethernet": "lan",
+        "format-disconnected": "off",
+        "interval": 15,
+        "on-click": "etheris-overlay menu foot -e nmtui",
+    },
+    "battery": {
+        "format": "{capacity}%",
+        "format-charging": "{capacity}%+",
+        "interval": 30,
+        "states": {"warning": 20, "critical": 10},
+    },
+    "custom/cc": {
+        "format": "☰",
+        "tooltip": "Control Center — Super+A",
+        "on-click": "etheris-overlay control-center",
+    },
+    "custom/power": {
+        "format": "⏻",
+        "tooltip": "Power menu — Super+Shift+E",
+        "on-click": "etheris-overlay power",
+    },
+}
+
+if layout == "dock":
+    # Bottom island: launcher + pins + workspaces + status (no title/winctl chrome).
+    left: list[str] = []
+    center = [
+        "custom/logo",
+        "custom/app-files",
+        "custom/app-term",
+        "custom/app-settings",
+        "sway/workspaces",
+        "custom/overview",
+        "clock",
+        "pulseaudio",
+        "network",
+        "battery",
+        "custom/cc",
+        "custom/power",
+    ]
+    right: list[str] = []
+    if tray == "panel":
+        # Keep tray near the status cluster (before cc/power).
+        center.insert(-2, "tray")
+    data = {
+        "layer": "top",
+        "position": "bottom",
+        "height": 52,
+        "margin-top": 0,
+        "margin-bottom": 14,
+        "margin-left": 140,
+        "margin-right": 140,
+        "spacing": 8,
+        "modules-left": left,
+        "modules-center": center,
+        "modules-right": right,
+    }
+else:
+    # Floating top Neo-Aero panel (default).
+    left = [
+        "custom/logo",
+        "sway/workspaces",
+        "custom/overview",
+        "sway/mode",
+        "sway/window",
+        "custom/winctl",
+    ]
+    center = ["clock"]
+    right = ["pulseaudio", "network", "memory", "battery", "custom/cc", "custom/power"]
+    if tray == "panel":
+        right = ["tray"] + right
+    data = {
+        "layer": "top",
+        "position": "top",
+        "height": 34,
+        "margin-top": 8,
+        "margin-bottom": 0,
+        "margin-left": 12,
+        "margin-right": 12,
+        "spacing": 6,
+        "modules-left": left,
+        "modules-center": center,
+        "modules-right": right,
+    }
+
+used = set(left + center + right)
+for key, conf in MODULE_DEFS.items():
+    if key in used:
+        data[key] = conf
+
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+MARKER_START = "/* etheris-panel-layout:begin */"
+MARKER_END = "/* etheris-panel-layout:end */"
+dock_css = f"""
+{MARKER_START}
+/* Bottom dock island — geometry only; colours stay on theme tokens */
+window#waybar {{
+  border-radius: 18px;
+  padding: 4px 12px;
+}}
+#custom-logo {{
+  padding: 0 14px;
+  font-size: 13px;
+}}
+#custom-app-files,
+#custom-app-term,
+#custom-app-settings {{
+  padding: 0 12px;
+  margin: 4px 2px;
+  border-radius: 12px;
+  font-weight: 500;
+}}
+#workspaces button {{
+  padding: 0 10px;
+  margin: 4px 2px;
+  min-width: 26px;
+}}
+#clock {{
+  padding: 0 16px;
+  font-size: 13px;
+}}
+#pulseaudio,
+#network,
+#battery,
+#custom-cc,
+#custom-power,
+#custom-overview {{
+  margin: 4px 2px;
+  padding: 0 10px;
+}}
+{MARKER_END}
+"""
+
+if css_path.is_file():
+    text = css_path.read_text(encoding="utf-8")
+    text = re.sub(
+        re.escape(MARKER_START) + r".*?" + re.escape(MARKER_END) + r"\n?",
+        "",
+        text,
+        flags=re.S,
+    ).rstrip() + "\n"
+    if layout == "dock":
+        text = text.rstrip() + "\n" + dock_css
+    css_path.write_text(text, encoding="utf-8")
+
+print(f"etheris-shell-layout: panel_layout={layout} tray={tray} -> {path}")
+PY
+    restart_waybar
+    if [[ -x /usr/local/bin/etheris-widgets ]]; then
+      etheris-widgets apply >/dev/null 2>&1 || true
+    fi
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

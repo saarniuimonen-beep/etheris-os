@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris Files
+GenericName=File Manager
+Comment=Browse files with Neo-Aero Etheris styling
+Exec=pcmanfm %U
+Icon=system-file-manager
+Terminal=false
+StartupNotify=true
+MimeType=inode/directory;
+Categories=System;FileTools;FileManager;Core;GTK;
+Keywords=Etheris;files;folder;manager;browse;pcmanfm;
+X-GNOME-FullName=Etheris Files

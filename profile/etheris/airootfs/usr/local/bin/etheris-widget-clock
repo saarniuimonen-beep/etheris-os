@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Etheris OS — optional Neo-Aero desktop clock widget (GTK4 floating).
+
+Sticky floating window; Sway rules in config.d/30-etheris-widgets.
+Honours animations=off (no opacity tricks). Exit cleanly if widgets disabled.
+"""
+from __future__ import annotations
+
+import os
+import signal
+import sys
+from datetime import datetime
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-widget-clock: GTK4 required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+
+def setting(key: str, default: str = "") -> str:
+    conf = os.path.expanduser("~/.config/etheris/settings.conf")
+    if not os.path.isfile(conf):
+        return default
+    try:
+        with open(conf, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        return default
+    return default
+
+
+class ClockApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.widget.clock")
+        self._label: Gtk.Label | None = None
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self)
+        win.set_title("Etheris Clock")
+        win.set_default_size(280, 120)
+        win.set_decorated(False)
+        # app_id for Sway for_window matching
+        try:
+            win.set_css_classes(["etheris-widget", "clock"])
+        except Exception:
+            pass
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window.etheris-widget {
+              background-color: alpha(#0a1628, 0.72);
+              border: 1px solid alpha(#38bdf8, 0.28);
+              border-radius: 14px;
+            }
+            label.time {
+              color: #e8f4fc;
+              font-size: 36px;
+              font-weight: 600;
+              padding: 8px 16px;
+            }
+            label.date {
+              color: #a8c4d8;
+              font-size: 13px;
+              padding: 0 16px 12px 16px;
+            }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        box.set_valign(Gtk.Align.CENTER)
+        self._label = Gtk.Label(label="--:--")
+        self._label.set_css_classes(["time"])
+        self._date = Gtk.Label(label="")
+        self._date.set_css_classes(["date"])
+        box.append(self._label)
+        box.append(self._date)
+        win.set_child(box)
+        win.present()
+        self._tick()
+        GLib.timeout_add_seconds(1, self._tick)
+
+    def _tick(self) -> bool:
+        now = datetime.now()
+        if self._label:
+            self._label.set_text(now.strftime("%H:%M"))
+        if getattr(self, "_date", None):
+            self._date.set_text(now.strftime("%A · %d %b %Y"))
+        return True
+
+
+def main() -> int:
+    if setting("widgets", "off") != "clock":
+        return 0
+    app = ClockApp()
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
+    return app.run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

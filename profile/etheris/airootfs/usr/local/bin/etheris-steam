@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Etheris OS — Steam launcher with live-space / network guards.
+# Stock `steam` fails quietly in menus when the live overlay is too small.
+set -euo pipefail
+
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/etheris"
+LOG="$LOG_DIR/steam.log"
+mkdir -p "$LOG_DIR"
+
+notify() {
+  local summary="$1" body="$2"
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a "Etheris Steam" -u critical "$summary" "$body" 2>/dev/null || true
+  fi
+  printf 'etheris-steam: %s — %s\n' "$summary" "$body" >&2
+}
+
+free_kib() {
+  # Prefer home filesystem (Steam writes under ~/.local/share/Steam)
+  df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+need_kib=$((400 * 1024)) # ~400 MiB headroom for bootstrap + update
+avail="$(free_kib || echo 0)"
+if [[ -z "$avail" || "$avail" -lt "$need_kib" ]]; then
+  mb=$(( ${avail:-0} / 1024 ))
+  if [[ -d /run/archiso ]]; then
+    notify "Steam needs more live disk space" \
+      "Only ~${mb} MiB free on the live overlay (need ≥400 MiB). Reboot with cow_spacesize=2G, or install to disk. See: etheris gaming"
+  else
+    notify "Steam needs free disk space" \
+      "Only ~${mb} MiB free under $HOME (need ≥400 MiB). Free space and try again."
+  fi
+  exit 2
+fi
+
+# Steam client routinely needs ~1.5–2 GiB RAM free to finish first update
+mem_avail_mib="$(awk '/MemAvailable:/ {printf "%d", $2/1024}' /proc/meminfo)"
+if [[ "${mem_avail_mib:-0}" -lt 1200 ]]; then
+  notify "Steam needs more RAM" \
+    "Only ~${mem_avail_mib} MiB RAM available (want ≥1200). Close apps, enable zram/swap, or give the VM ≥4 GiB."
+  # Continue anyway — warning only — unless critically low
+  if [[ "${mem_avail_mib:-0}" -lt 400 ]]; then
+    exit 5
+  fi
+fi
+
+# Quick online check (Steam bootstrap requires network)
+if ! getent hosts steamcommunity.com >/dev/null 2>&1 \
+  && ! getent hosts store.steampowered.com >/dev/null 2>&1; then
+  notify "Steam needs network" \
+    "DNS lookup for Steam failed. Connect to the internet (nmtui / NetworkManager) and retry."
+  exit 3
+fi
+
+# Prefer X11/XWayland for Steam UI reliability on Sway.
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-x11}"
+export STEAM_FORCE_DESKTOPUI_SCALING="${STEAM_FORCE_DESKTOPUI_SCALING:-1}"
+export SDL_JOYSTICK_HIDAPI="${SDL_JOYSTICK_HIDAPI:-1}"
+case "${ETHERIS_STEAM_SAFE:-auto}" in
+  1|on|yes)
+    export STEAM_USE_DYNAMIC_BANNERS=0
+    set -- -no-cef-sandbox "$@"
+    ;;
+  auto)
+    # Heuristic: QEMU/KVM guests often need safer CEF flags
+    if grep -qiE 'QEMU|VirtualBox|VMware|KVM' /sys/class/dmi/id/product_name 2>/dev/null \
+      || grep -qi hypervisor /proc/cpuinfo 2>/dev/null; then
+      export STEAM_USE_DYNAMIC_BANNERS=0
+      set -- -no-cef-sandbox "$@"
+    fi
+    ;;
+esac
+
+{
+  echo "==== $(date -Is) etheris-steam start ===="
+  echo "free_kib=$avail home=$HOME args=$*"
+  df -h "$HOME" / 2>/dev/null || true
+} >>"$LOG"
+
+if ! command -v steam >/dev/null 2>&1; then
+  notify "Steam is not installed" \
+    "Gaming stack missing. On installed systems: sudo pacman -S - < /usr/local/share/etheris/gaming-packages.list"
+  exit 4
+fi
+
+# One-shot Proton / controller env + Steam Play seed (idempotent)
+if [[ -x /usr/local/bin/etheris-gaming-setup ]]; then
+  etheris-gaming-setup >/dev/null 2>&1 || true
+fi
+
+# Ensure Steam can open its console log (avoids srt-logger spam / early abort)
+steam_root="$HOME/.local/share/Steam"
+mkdir -p "$steam_root/logs" "$HOME/.steam" "$steam_root/steamapps/common"
+touch "$steam_root/console-linux.txt" "$steam_root/logs/console-linux.txt" 2>/dev/null || true
+# Classic ~/.steam symlinks Steam expects
+ln -sfn "$steam_root" "$HOME/.steam/steam" 2>/dev/null || true
+ln -sfn "$steam_root" "$HOME/.steam/root" 2>/dev/null || true
+
+# First successful Steam launch: queue official Proton + anti-cheat runtimes once.
+runtime_stamp="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/steam-runtimes.queued"
+if [[ ! -f "$runtime_stamp" ]]; then
+  (
+    sleep 5
+    etheris-gaming-setup runtimes >>"$LOG" 2>&1 || true
+  ) &
+fi
+
+# Register steam:// handler for this user
+if command -v xdg-mime >/dev/null 2>&1; then
+  xdg-mime default steam.desktop x-scheme-handler/steam 2>/dev/null || true
+  xdg-mime default steam.desktop x-scheme-handler/steamlink 2>/dev/null || true
+fi
+
+nohup steam "$@" >>"$LOG" 2>&1 &
+echo $! >"$LOG_DIR/steam.pid"
+exit 0

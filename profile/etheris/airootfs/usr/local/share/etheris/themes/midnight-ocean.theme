@@ -1,0 +1,7 @@
+# Neo-Aero — Midnight Ocean
+NAME=midnight-ocean
+VARIANT=dark
+ACCENT=#2dd4bf
+WALLPAPER=/usr/local/share/etheris/wallpapers/midnight-ocean.png
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

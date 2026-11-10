@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# Etheris OS update manager — channel-based Arch snapshots (no custom mirror infra)
+set -euo pipefail
+
+CONF="${ETHERIS_CHANNELS_CONF:-/etc/etheris/channels.conf}"
+STATE_DIR="${ETHERIS_STATE_DIR:-/var/lib/etheris}"
+MIRRORLIST="${ETHERIS_MIRRORLIST:-/etc/pacman.d/mirrorlist}"
+VERSION_FILE="/usr/local/share/etheris/VERSION"
+
+mkdir -p "$STATE_DIR"
+
+# shellcheck disable=SC1090
+[[ -f "$CONF" ]] && source "$CONF"
+DEFAULT_CHANNEL="${DEFAULT_CHANNEL:-stable}"
+STABLE_LAG_DAYS="${STABLE_LAG_DAYS:-14}"
+RC_LAG_DAYS="${RC_LAG_DAYS:-7}"
+EDGE_MIRROR="${EDGE_MIRROR:-https://geo.mirror.pkgbuild.com/\$repo/os/\$arch}"
+SECURITY_LAG_DAYS="${SECURITY_LAG_DAYS:-3}"
+AUR_LAG_DAYS="${AUR_LAG_DAYS:-14}"
+
+need_root() {
+  [[ "$(id -u)" -eq 0 ]] || { echo "Run as root: sudo etheris-update $*" >&2; exit 1; }
+}
+
+utc_stamp_days_ago() {
+  local days="$1"
+  if date -u -d "today - ${days} days" +%Y/%m/%d >/dev/null 2>&1; then
+    date -u -d "today - ${days} days" +%Y/%m/%d
+  else
+    date -u -v-"${days}"d +%Y/%m/%d 2>/dev/null || date -u +%Y/%m/%d
+  fi
+}
+
+current_channel() {
+  if [[ -f "$STATE_DIR/channel" ]]; then
+    cat "$STATE_DIR/channel"
+  else
+    echo "$DEFAULT_CHANNEL"
+  fi
+}
+
+current_snapshot() {
+  [[ -f "$STATE_DIR/snapshot-date" ]] && cat "$STATE_DIR/snapshot-date" || echo "(unset)"
+}
+
+previous_snapshot() {
+  [[ -f "$STATE_DIR/previous-snapshot-date" ]] && cat "$STATE_DIR/previous-snapshot-date" || echo "(none)"
+}
+
+save_previous() {
+  if [[ -f "$MIRRORLIST" ]]; then
+    cp -a "$MIRRORLIST" "$STATE_DIR/previous-mirrorlist"
+  fi
+  if [[ -f "$STATE_DIR/snapshot-date" ]]; then
+    cp -a "$STATE_DIR/snapshot-date" "$STATE_DIR/previous-snapshot-date"
+  fi
+  if [[ -f "$STATE_DIR/channel" ]]; then
+    cp -a "$STATE_DIR/channel" "$STATE_DIR/previous-channel"
+  fi
+}
+
+write_archive_mirrorlist() {
+  local stamp="$1" channel="$2" lag_note="$3"
+  cat > "$MIRRORLIST" <<EOF
+# Etheris OS channel=${channel}
+# Snapshot (UTC): ${stamp}
+# ${lag_note}
+# Managed by etheris-update — do not mix with unrelated mirrors.
+Server = https://archive.archlinux.org/repos/${stamp}/\$repo/os/\$arch
+EOF
+  printf '%s\n' "$stamp" > "$STATE_DIR/snapshot-date"
+  printf '%s\n' "$channel" > "$STATE_DIR/channel"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/last-refresh"
+}
+
+write_edge_mirrorlist() {
+  cat > "$MIRRORLIST" <<EOF
+# Etheris OS channel=edge
+# WARNING: tracks current official Arch — packages may break.
+# Managed by etheris-update
+Server = ${EDGE_MIRROR}
+Server = https://mirror.rackspace.com/archlinux/\$repo/os/\$arch
+EOF
+  printf 'edge/rolling\n' > "$STATE_DIR/snapshot-date"
+  printf 'edge\n' > "$STATE_DIR/channel"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/last-refresh"
+}
+
+apply_channel_mirrors() {
+  local channel="$1"
+  case "$channel" in
+    stable)
+      local stamp
+      stamp="$(utc_stamp_days_ago "$STABLE_LAG_DAYS")"
+      write_archive_mirrorlist "$stamp" stable "Stable lag: ${STABLE_LAG_DAYS} days (validated Arch Archive snapshot)"
+      ;;
+    rc)
+      local stamp
+      stamp="$(utc_stamp_days_ago "$RC_LAG_DAYS")"
+      write_archive_mirrorlist "$stamp" rc "RC lag: ${RC_LAG_DAYS} days — testing channel, report issues before Stable promotion"
+      ;;
+    edge)
+      write_edge_mirrorlist
+      ;;
+    *)
+      echo "Unknown channel: $channel (stable|rc|edge)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+cmd_status() {
+  local ver ch snap prev
+  ver="$(cat "$VERSION_FILE" 2>/dev/null || echo unknown)"
+  ch="$(current_channel)"
+  snap="$(current_snapshot)"
+  prev="$(previous_snapshot)"
+  cat <<EOF
+Etheris OS update status
+  version:     ${ver}
+  channel:     ${ch}
+  snapshot:    ${snap}
+  previous:    ${prev}
+  last refresh:$(cat "$STATE_DIR/last-refresh" 2>/dev/null || echo '(never)')
+  mirrorlist:  ${MIRRORLIST}
+  config:      ${CONF}
+
+Channels:
+  stable  Arch Archive, ${STABLE_LAG_DAYS}-day lag (default)
+  rc      Arch Archive, ${RC_LAG_DAYS}-day lag (testers)
+  edge    Official Arch rolling (WARNING: may break)
+
+AUR: optional — use etheris-aur (lag ${AUR_LAG_DAYS}d). Not an official binary repo.
+EOF
+  if [[ "$ch" == edge ]]; then
+    echo
+    echo "WARNING: You are on edge. Expect incompatibilities. Prefer stable for daily use."
+  fi
+}
+
+cmd_check() {
+  echo "Syncing package databases for channel $(current_channel)…"
+  if [[ "$(id -u)" -eq 0 ]]; then
+    pacman -Sy || { echo "pacman -Sy failed"; return 1; }
+    echo
+    echo "Pending upgrades:"
+    pacman -Qu || echo "  (none — system matches current snapshot databases)"
+  else
+    echo "Re-run as root to query pacman: sudo etheris-update check"
+    echo "Current snapshot: $(current_snapshot)"
+  fi
+}
+
+cmd_channel() {
+  local target="${1:-}"
+  if [[ -z "$target" ]]; then
+    echo "Current channel: $(current_channel)"
+    echo "Usage: etheris-update channel <stable|rc|edge>"
+    return 0
+  fi
+  need_root channel
+  case "$target" in
+    stable|rc|edge) ;;
+    *) echo "Invalid channel: $target"; exit 1 ;;
+  esac
+  if [[ "$target" == edge ]]; then
+    echo "WARNING: edge tracks live Arch with minimal delay."
+    echo "This can introduce breakage. Prefer stable."
+    read -r -p "Type EDGE to confirm: " ans
+    [[ "$ans" == EDGE ]] || { echo "Aborted"; exit 1; }
+  fi
+  if [[ "$target" == rc ]]; then
+    echo "RC channel is for testing upcoming Etheris changes."
+    read -r -p "Type RC to confirm: " ans
+    [[ "$ans" == RC ]] || { echo "Aborted"; exit 1; }
+  fi
+  save_previous
+  apply_channel_mirrors "$target"
+  echo "Channel set to ${target}; snapshot $(current_snapshot)"
+  echo "Next: sudo etheris-update upgrade"
+}
+
+cmd_refresh() {
+  # Recompute snapshot for current channel (weekly timer / manual)
+  need_root refresh
+  local ch
+  ch="$(current_channel)"
+  save_previous
+  apply_channel_mirrors "$ch"
+  echo "Refreshed ${ch} → snapshot $(current_snapshot)"
+}
+
+cmd_upgrade() {
+  need_root upgrade
+  local ch
+  ch="$(current_channel)"
+  echo "Upgrading as a single pacman transaction on channel=${ch} snapshot=$(current_snapshot)"
+  pacman -Syu --noconfirm
+  echo "Upgrade finished."
+  echo "If something is wrong: sudo etheris-update recover"
+}
+
+cmd_security() {
+  # Emergency: move Stable/RC to a fresher coherent Archive snapshot
+  need_root security
+  local ch stamp
+  ch="$(current_channel)"
+  if [[ "$ch" == edge ]]; then
+    echo "Already on edge — run: sudo etheris-update upgrade"
+    exit 0
+  fi
+  cat <<EOF
+SECURITY UPDATE PATH
+  Keeps a coherent Arch Archive snapshot (no mixed package dates).
+  Advances ${ch} to ~${SECURITY_LAG_DAYS} days behind today.
+  Previous snapshot saved for: etheris-update recover
+EOF
+  read -r -p "Type SECURITY to continue: " ans
+  [[ "$ans" == SECURITY ]] || { echo "Aborted"; exit 1; }
+  save_previous
+  stamp="$(utc_stamp_days_ago "$SECURITY_LAG_DAYS")"
+  write_archive_mirrorlist "$stamp" "$ch" "SECURITY snapshot (${SECURITY_LAG_DAYS}d lag) — validate deps after upgrade"
+  printf 'security\n' > "$STATE_DIR/last-security-mode"
+  echo "Security snapshot ${stamp} applied."
+  echo "Running upgrade…"
+  pacman -Syu --noconfirm
+  echo "Done. Review: pacman -Q linux; journalctl -p err -b"
+}
+
+cmd_recover() {
+  need_root recover
+  [[ -f "$STATE_DIR/previous-mirrorlist" ]] || { echo "No previous snapshot saved"; exit 1; }
+  echo "Previous snapshot: $(previous_snapshot)"
+  echo "Previous channel:  $(cat "$STATE_DIR/previous-channel" 2>/dev/null || echo unknown)"
+  read -r -p "Type RECOVER to restore previous known-good mirrors: " ans
+  [[ "$ans" == RECOVER ]] || { echo "Aborted"; exit 1; }
+  # Save current as previous before restore (swap)
+  local tmp="$STATE_DIR/.recover-tmp"
+  mkdir -p "$tmp"
+  cp -a "$MIRRORLIST" "$tmp/mirrorlist" 2>/dev/null || true
+  cp -a "$STATE_DIR/snapshot-date" "$tmp/snapshot-date" 2>/dev/null || true
+  cp -a "$STATE_DIR/channel" "$tmp/channel" 2>/dev/null || true
+
+  cp -a "$STATE_DIR/previous-mirrorlist" "$MIRRORLIST"
+  [[ -f "$STATE_DIR/previous-snapshot-date" ]] && cp -a "$STATE_DIR/previous-snapshot-date" "$STATE_DIR/snapshot-date"
+  [[ -f "$STATE_DIR/previous-channel" ]] && cp -a "$STATE_DIR/previous-channel" "$STATE_DIR/channel"
+
+  cp -a "$tmp/mirrorlist" "$STATE_DIR/previous-mirrorlist" 2>/dev/null || true
+  cp -a "$tmp/snapshot-date" "$STATE_DIR/previous-snapshot-date" 2>/dev/null || true
+  cp -a "$tmp/channel" "$STATE_DIR/previous-channel" 2>/dev/null || true
+  rm -rf "$tmp"
+
+  echo "Restored mirrors. Syncing & aligning packages to previous snapshot…"
+  echo "NOTE: downgrades may be required for a coherent state."
+  pacman -Sy
+  if pacman -Suu --noconfirm; then
+    echo "Recovery upgrade/downgrade transaction completed."
+  else
+    echo "ERROR: pacman transaction failed. Mirrors were restored; fix manually."
+    echo "  mirrorlist → $MIRRORLIST"
+    echo "  snapshot   → $(current_snapshot)"
+    exit 1
+  fi
+}
+
+cmd_help() {
+  cat <<EOF
+Etheris update manager (channel-based Arch Archive snapshots)
+
+Usage:
+  etheris-update status              Show channel, snapshot, previous
+  etheris-update check               Show pending updates
+  etheris-update channel [name]      Show or switch channel (stable|rc|edge)
+  etheris-update refresh             Recompute snapshot for current channel
+  etheris-update upgrade             pacman -Syu as one transaction
+  etheris-update security            Emergency fresher coherent snapshot
+  etheris-update recover             Restore previous known-good mirrors
+
+Default channel: stable (${STABLE_LAG_DAYS}-day lag)
+
+This does NOT run a custom Etheris package mirror — only retargets pacman.
+Long-term multi-year support repos are deferred until ISO/install are reliable.
+EOF
+}
+
+main() {
+  # Bootstrap state on first run if missing
+  if [[ ! -f "$STATE_DIR/channel" && "$(id -u)" -eq 0 ]]; then
+    apply_channel_mirrors "$DEFAULT_CHANNEL" || true
+  fi
+
+  case "${1:-status}" in
+    status|show) cmd_status ;;
+    check|fu) shift; cmd_check "$@" ;;
+    channel|ch) shift; cmd_channel "$@" ;;
+    refresh) cmd_refresh ;;
+    upgrade|update) cmd_upgrade ;;
+    security|sec) cmd_security ;;
+    recover|rollback) cmd_recover ;;
+    help|-h|--help) cmd_help ;;
+    *) echo "Unknown: $1"; cmd_help; exit 1 ;;
+  esac
+}
+
+main "$@"

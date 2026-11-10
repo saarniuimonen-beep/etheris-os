@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris Transfers
+Comment=Send and receive files over LAN, Bluetooth, or network shares
+Exec=etheris-transfer
+Icon=folder-remote
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=Etheris;transfer;share;warpinator;bluetooth;smb;files;
+StartupNotify=true

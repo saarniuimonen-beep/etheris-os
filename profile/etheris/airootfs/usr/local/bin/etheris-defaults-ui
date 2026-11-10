@@ -1,0 +1,497 @@
+#!/usr/bin/env python3
+"""Etheris OS — Defaults manager (GTK4). Browser · Terminal · AI Agent."""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import threading
+from pathlib import Path
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk, Pango
+except (ImportError, ValueError) as exc:
+    print(f"etheris-defaults-ui: GTK4 required ({exc})", file=__import__("sys").stderr)
+    raise SystemExit(2) from exc
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
+SHARE = Path(os.environ.get("ETHERIS_SHARE", "/usr/local/share/etheris"))
+CATALOG = SHARE / "defaults" / "catalog.json"
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "etheris"
+SETTINGS = CONF / "settings.conf"
+
+CSS = b"""
+window {
+  background: #06101c;
+  color: #e8f4fc;
+}
+.shell { background: #06101c; }
+
+.rail {
+  background: alpha(#0a1829, 0.98);
+  border-right: 1px solid alpha(#38bdf8, 0.14);
+  padding: 20px 14px;
+  min-width: 200px;
+}
+.rail .brand-mark {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: #38bdf8;
+  margin: 2px 10px 2px;
+}
+.rail .brand {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+  margin: 0 10px 18px;
+}
+.rail button {
+  padding: 12px 14px;
+  margin: 3px 2px;
+  border-radius: 14px;
+  background: transparent;
+  color: #8eabc4;
+  border: 1px solid transparent;
+  font-weight: 560;
+}
+.rail button:hover {
+  background: alpha(#38bdf8, 0.08);
+  color: #d7ebf8;
+}
+.rail button:checked {
+  background: alpha(#38bdf8, 0.18);
+  color: #f0f9ff;
+  border-color: alpha(#38bdf8, 0.35);
+}
+.rail .hint {
+  color: #6f8aa3;
+  font-size: 11.5px;
+  margin: 20px 10px 0;
+  line-height: 1.35;
+}
+
+.main { padding: 22px 26px 14px; }
+
+.hero {
+  background: alpha(#102338, 0.88);
+  border: 1px solid alpha(#38bdf8, 0.20);
+  border-radius: 20px;
+  padding: 0;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.hero-accent {
+  min-height: 3px;
+  background: #38bdf8;
+}
+.hero-body { padding: 16px 18px 16px; }
+label.hero-title { font-size: 24px; font-weight: 750; letter-spacing: -0.2px; }
+label.hero-sub { color: #8eabc4; font-size: 12.5px; margin-top: 4px; }
+label.pill {
+  background: alpha(#2dd4bf, 0.16);
+  color: #99f6e4;
+  border: 1px solid alpha(#2dd4bf, 0.28);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.card {
+  background: alpha(#0c1d31, 0.94);
+  border: 1px solid alpha(#38bdf8, 0.12);
+  border-radius: 18px;
+  padding: 12px 14px;
+  margin: 0 0 10px 0;
+}
+.card.default {
+  border-color: alpha(#38bdf8, 0.48);
+  background: alpha(#123047, 0.96);
+}
+.glyph {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 16px;
+  background: alpha(#38bdf8, 0.10);
+  border: 1px solid alpha(#38bdf8, 0.16);
+  color: #e8f4fc;
+  font-size: 18px;
+  font-weight: 700;
+}
+label.name { font-size: 14.5px; font-weight: 650; }
+label.summary { color: #8eabc4; font-size: 12px; }
+label.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: alpha(#64748b, 0.24);
+  color: #cbd5e1;
+}
+label.badge.default { background: alpha(#38bdf8, 0.24); color: #bae6fd; }
+label.badge.shipped { background: alpha(#2dd4bf, 0.18); color: #99f6e4; }
+label.badge.aur { background: alpha(#fbbf24, 0.16); color: #fde68a; }
+label.badge.web { background: alpha(#67e8f9, 0.14); color: #a5f3fc; }
+button.action {
+  padding: 8px 13px;
+  border-radius: 12px;
+  border: 1px solid alpha(#38bdf8, 0.16);
+  background: alpha(#38bdf8, 0.10);
+  color: #e8f4fc;
+  font-weight: 550;
+}
+button.action:hover {
+  background: alpha(#38bdf8, 0.22);
+}
+button.primary {
+  background: #38bdf8;
+  color: #06101c;
+  font-weight: 750;
+  border: none;
+}
+button.primary:hover {
+  background: #7dd3fc;
+}
+label.status {
+  color: #7dd3fc;
+  font-size: 12px;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+"""
+
+
+def load_catalog() -> tuple[list[dict], list[dict]]:
+    if not CATALOG.is_file():
+        return [], []
+    data = json.loads(CATALOG.read_text(encoding="utf-8"))
+    return list(data.get("categories") or []), list(data.get("items") or [])
+
+
+def load_settings() -> dict[str, str]:
+    out: dict[str, str] = {}
+    if SETTINGS.is_file():
+        for line in SETTINGS.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def item_ready(item: dict) -> bool:
+    if item.get("source") == "web":
+        return True
+    bin_name = item.get("bin") or ""
+    return bool(bin_name and shutil.which(bin_name))
+
+
+class DefaultsApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.defaults")
+        self.categories, self.items = load_catalog()
+        self.settings = load_settings()
+        self.current = os.environ.get("ETHERIS_DEFAULTS_TAB") or (
+            self.categories[0]["id"] if self.categories else "browser"
+        )
+        if self.current not in {c["id"] for c in self.categories}:
+            self.current = self.categories[0]["id"] if self.categories else "browser"
+        self.status: Gtk.Label | None = None
+        self.hero_title: Gtk.Label | None = None
+        self.hero_sub: Gtk.Label | None = None
+        self.hero_pill: Gtk.Label | None = None
+        self.cards: Gtk.Box | None = None
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Defaults")
+        win.set_default_size(920, 640)
+
+        css = Gtk.CssProvider()
+        css.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        shell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        shell.add_css_class("shell")
+        shell.append(self._build_rail())
+        shell.append(self._build_main())
+        win.set_child(shell)
+        self._show_category(self.current)
+        win.present()
+
+    def _build_rail(self) -> Gtk.Widget:
+        rail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        rail.add_css_class("rail")
+        mark = Gtk.Label(label="ETHERIS", xalign=0)
+        mark.add_css_class("brand-mark")
+        brand = Gtk.Label(label="Defaults", xalign=0)
+        brand.add_css_class("brand")
+        rail.append(mark)
+        rail.append(brand)
+
+        group: Gtk.ToggleButton | None = None
+        for cat in self.categories:
+            btn = Gtk.ToggleButton(label=cat["name"], hexpand=True)
+            if group is None:
+                group = btn
+            else:
+                btn.set_group(group)
+            if cat["id"] == self.current:
+                btn.set_active(True)
+            btn.connect("toggled", self._on_nav, cat["id"])
+            rail.append(btn)
+
+        tip = Gtk.Label(
+            label="Super+B browser\nSuper+Return terminal\nSuper+I AI agent",
+            xalign=0,
+            wrap=True,
+        )
+        tip.add_css_class("hint")
+        rail.append(tip)
+        return rail
+
+    def _build_main(self) -> Gtk.Widget:
+        main = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=0,
+            hexpand=True,
+            vexpand=True,
+        )
+        main.add_css_class("main")
+
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        hero.add_css_class("hero")
+        accent = Gtk.Box()
+        accent.add_css_class("hero-accent")
+        hero.append(accent)
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        body.add_css_class("hero-body")
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.hero_title = Gtk.Label(label="", xalign=0, hexpand=True)
+        self.hero_title.add_css_class("hero-title")
+        self.hero_pill = Gtk.Label(label="")
+        self.hero_pill.add_css_class("pill")
+        self.hero_pill.set_valign(Gtk.Align.CENTER)
+        top.append(self.hero_title)
+        top.append(self.hero_pill)
+        body.append(top)
+        self.hero_sub = Gtk.Label(label="", xalign=0, wrap=True)
+        self.hero_sub.add_css_class("hero-sub")
+        body.append(self.hero_sub)
+        hero.append(body)
+        main.append(hero)
+
+        scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        scroll.set_child(self.cards)
+        main.append(scroll)
+
+        self.status = Gtk.Label(label="", xalign=0)
+        self.status.add_css_class("status")
+        main.append(self.status)
+        return main
+
+    def _on_nav(self, btn: Gtk.ToggleButton, cat_id: str) -> None:
+        if btn.get_active():
+            self._show_category(cat_id)
+
+    def _category(self, cat_id: str) -> dict:
+        for c in self.categories:
+            if c["id"] == cat_id:
+                return c
+        return {
+            "id": cat_id,
+            "name": cat_id,
+            "setting": f"default_{cat_id}",
+            "fallback": "",
+            "blurb": "",
+        }
+
+    def _default_id(self, cat: dict) -> str:
+        key = cat.get("setting") or f"default_{cat['id']}"
+        return self.settings.get(key) or cat.get("fallback") or ""
+
+    def _set_status(self, text: str) -> None:
+        if self.status:
+            self.status.set_text(text)
+
+    def _show_category(self, cat_id: str) -> None:
+        self.current = cat_id
+        self.settings = load_settings()
+        cat = self._category(cat_id)
+        default_id = self._default_id(cat)
+        default_name = next(
+            (i["name"] for i in self.items if i["id"] == default_id),
+            default_id or "—",
+        )
+
+        assert self.hero_title and self.hero_sub and self.hero_pill and self.cards
+        self.hero_title.set_text(cat.get("name", cat_id))
+        self.hero_sub.set_text(cat.get("blurb") or "")
+        self.hero_pill.set_text(f"Default · {default_name}")
+
+        while (child := self.cards.get_first_child()) is not None:
+            self.cards.remove(child)
+
+        for item in self.items:
+            if item.get("category", "browser") != cat_id:
+                continue
+            self.cards.append(self._card(item, default_id))
+
+    def _card(self, item: dict, default_id: str) -> Gtk.Widget:
+        ready = item_ready(item)
+        is_default = item["id"] == default_id and ready
+
+        card = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        card.add_css_class("card")
+        if is_default:
+            card.add_css_class("default")
+
+        glyph = Gtk.Label(label=(item.get("glyph") or item["id"][:1].upper()))
+        glyph.add_css_class("glyph")
+        glyph.set_halign(Gtk.Align.CENTER)
+        glyph.set_valign(Gtk.Align.CENTER)
+        card.append(glyph)
+
+        mid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, hexpand=True)
+        name_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        name = Gtk.Label(label=item.get("name", item["id"]), xalign=0)
+        name.add_css_class("name")
+        name.set_ellipsize(Pango.EllipsizeMode.END)
+        name_row.append(name)
+
+        badges = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        if is_default:
+            b = Gtk.Label(label="DEFAULT")
+            b.add_css_class("badge")
+            b.add_css_class("default")
+            badges.append(b)
+        elif item.get("shipped") and ready:
+            b = Gtk.Label(label="SHIPPED")
+            b.add_css_class("badge")
+            b.add_css_class("shipped")
+            badges.append(b)
+        src = item.get("source", "")
+        if src == "aur":
+            b = Gtk.Label(label="AUR")
+            b.add_css_class("badge")
+            b.add_css_class("aur")
+            badges.append(b)
+        elif src == "web":
+            b = Gtk.Label(label="WEB")
+            b.add_css_class("badge")
+            b.add_css_class("web")
+            badges.append(b)
+        name_row.append(badges)
+        mid.append(name_row)
+
+        summary = Gtk.Label(label=item.get("summary", ""), xalign=0, wrap=True)
+        summary.add_css_class("summary")
+        mid.append(summary)
+        card.append(mid)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        actions.set_valign(Gtk.Align.CENTER)
+        if ready:
+            open_b = Gtk.Button(label="Open")
+            open_b.add_css_class("action")
+            open_b.connect("clicked", self._on_open, item)
+            actions.append(open_b)
+            if not is_default:
+                def_b = Gtk.Button(label="Make default")
+                def_b.add_css_class("action")
+                def_b.add_css_class("primary")
+                def_b.connect("clicked", self._on_default, item)
+                actions.append(def_b)
+        else:
+            label = "Install" if src == "repo" else "Install · AUR"
+            inst = Gtk.Button(label=label)
+            inst.add_css_class("action")
+            inst.add_css_class("primary")
+            inst.connect("clicked", self._on_install, item)
+            actions.append(inst)
+        card.append(actions)
+        return card
+
+    def _on_open(self, _btn: Gtk.Button, item: dict) -> None:
+        subprocess.Popen(
+            ["etheris-defaults", "open", item["category"], item["id"]],
+            start_new_session=True,
+        )
+
+    def _on_default(self, _btn: Gtk.Button, item: dict) -> None:
+        subprocess.run(
+            ["etheris-defaults", "default", item["category"], item["id"]],
+            check=False,
+        )
+        self.settings = load_settings()
+        self._set_status(f"Default {item['category']}: {item['name']}")
+        self._show_category(self.current)
+
+    def _alert(self, title: str, body: str) -> None:
+        win = self.get_active_window()
+        dialog = Gtk.AlertDialog()
+        dialog.set_message(title)
+        dialog.set_detail(body[:4000] if body else "")
+        dialog.set_modal(True)
+        dialog.set_buttons(["OK"])
+        if win is not None:
+            dialog.show(win)
+        else:
+            print(f"{title}: {body}", flush=True)
+
+    def _on_install(self, btn: Gtk.Button, item: dict) -> None:
+        btn.set_sensitive(False)
+        self._set_status(f"Installing {item['name']}… (approve the polkit prompt if shown)")
+
+        def worker() -> None:
+            env = os.environ.copy()
+            # Defaults UI installs should not be blocked by AUR lag policy.
+            env["ETHERIS_AUR_LAG_DAYS"] = "0"
+            # Prefer non-interactive elevation; etheris-defaults uses pkexec.
+            env.setdefault("DEBIAN_FRONTEND", "noninteractive")
+            proc = subprocess.run(
+                ["etheris-defaults", "install", item["id"]],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            ok = proc.returncode == 0
+            out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+
+            def done() -> None:
+                if ok:
+                    self._set_status(f"Installed {item['name']}")
+                    self._show_category(self.current)
+                else:
+                    self._set_status(f"Install failed for {item['name']}")
+                    btn.set_sensitive(True)
+                    detail = out or (
+                        f"Command failed ({proc.returncode}). "
+                        f"Try in a terminal:\n  etheris-defaults install {item['id']}"
+                    )
+                    self._alert(f"Could not install {item['name']}", detail)
+                    if out:
+                        print(out, flush=True)
+
+            GLib.idle_add(done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+def main() -> int:
+    return DefaultsApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

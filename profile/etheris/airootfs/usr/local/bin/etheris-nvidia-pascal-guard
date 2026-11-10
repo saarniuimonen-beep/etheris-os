@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Pacman hook helper: warn when official NVIDIA packages are about to install on a Pascal-pinned system.
+set -euo pipefail
+PIN=/var/lib/etheris/nvidia-pascal-pin
+if [[ -f "$PIN" ]]; then
+  cat >&2 <<'EOF'
+Etheris WARNING: This system is pinned for NVIDIA Pascal/legacy 580xx.
+Installing nvidia / nvidia-open can leave Pascal GPUs without working graphics.
+Prefer: etheris-drivers pascal-guide
+Abort this transaction if you did not intend to replace 580xx.
+EOF
+fi
+exit 0

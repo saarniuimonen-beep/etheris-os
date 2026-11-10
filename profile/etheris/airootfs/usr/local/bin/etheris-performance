@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Etheris OS — Performance Manager (GTK4). Four safe profiles + live metrics."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-performance: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+PROFILES = [
+    ("maximum", "Maximum Performance", "Gaming, rendering, compiling, AI — prefer higher performance states."),
+    ("balanced", "Balanced", "Default everyday mode — responsive with sensible efficiency."),
+    ("quiet", "Quiet", "Milder boost and quieter-oriented GPU power where supported."),
+    ("powersave", "Power Saving", "Prefer efficiency on battery-powered systems."),
+]
+
+
+def run_out(cmd: list[str], timeout: float = 8.0) -> str:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        return (r.stdout or r.stderr or "").strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def current_profile() -> str:
+    out = run_out(["etheris-perf", "get"])
+    return out.strip() or "balanced"
+
+
+class PerfApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.performance")
+        self._busy = False
+        self._status = Gtk.Label(xalign=0, wrap=True)
+        self._metrics = Gtk.Label(xalign=0, wrap=True)
+        self._caps = Gtk.Label(xalign=0, wrap=True)
+        self._profile_buttons: dict[str, Gtk.ToggleButton] = {}
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Performance Manager")
+        win.set_default_size(720, 560)
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window { background: #07111f; color: #e8f4fc; }
+            .card {
+              background: alpha(#0f2136, 0.92);
+              border: 1px solid alpha(#38bdf8, 0.18);
+              border-radius: 16px; padding: 14px 16px; margin-bottom: 10px;
+            }
+            label.heading { font-size: 15px; font-weight: 650; }
+            label.caption { color: #9db6cc; font-size: 12px; }
+            .profile {
+              padding: 12px 14px; border-radius: 12px; margin: 4px 0;
+              background: alpha(#0d1b2e, 0.9); color: #e8f4fc; border: 1px solid alpha(#38bdf8, 0.14);
+            }
+            .profile:checked {
+              background: alpha(#38bdf8, 0.22); border-color: alpha(#38bdf8, 0.45);
+            }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.set_margin_top(18)
+        pane.set_margin_bottom(18)
+        pane.set_margin_start(20)
+        pane.set_margin_end(20)
+
+        title = Gtk.Label(label="Performance profiles", xalign=0)
+        title.add_css_class("heading")
+        pane.append(title)
+        cap = Gtk.Label(
+            label="Profiles use manufacturer-supported CPU/GPU power interfaces only. "
+            "Etheris never overclocks, undervolts, or disables thermal protection.",
+            xalign=0,
+            wrap=True,
+        )
+        cap.add_css_class("caption")
+        pane.append(cap)
+
+        group: Gtk.ToggleButton | None = None
+        active = current_profile()
+        for pid, label, desc in PROFILES:
+            btn = Gtk.ToggleButton()
+            btn.add_css_class("profile")
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            t = Gtk.Label(label=label, xalign=0)
+            t.add_css_class("heading")
+            d = Gtk.Label(label=desc, xalign=0, wrap=True)
+            d.add_css_class("caption")
+            box.append(t)
+            box.append(d)
+            btn.set_child(box)
+            if group is None:
+                group = btn
+            else:
+                btn.set_group(group)
+            if pid == active:
+                btn.set_active(True)
+            btn.connect("toggled", self._on_profile, pid)
+            self._profile_buttons[pid] = btn
+            pane.append(btn)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        refresh = Gtk.Button(label="Refresh")
+        refresh.connect("clicked", lambda *_: self._refresh())
+        restore = Gtk.Button(label="Restore Balanced")
+        restore.connect("clicked", self._restore)
+        gpu = Gtk.Button(label="Open GPU Manager")
+        gpu.connect("clicked", lambda *_: self._spawn(["etheris-gpu-manager"]))
+        actions.append(refresh)
+        actions.append(restore)
+        actions.append(gpu)
+        pane.append(actions)
+
+        self._status.add_css_class("caption")
+        self._metrics.add_css_class("caption")
+        self._caps.add_css_class("caption")
+        for label, widget in (
+            ("Status", self._status),
+            ("Metrics", self._metrics),
+            ("Capabilities", self._caps),
+        ):
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            card.add_css_class("card")
+            h = Gtk.Label(label=label, xalign=0)
+            h.add_css_class("heading")
+            card.append(h)
+            card.append(widget)
+            pane.append(card)
+
+        scroll.set_child(pane)
+        outer.append(scroll)
+        win.set_child(outer)
+        win.present()
+        self._refresh()
+        GLib.timeout_add_seconds(5, self._tick)
+
+    def _spawn(self, argv: list[str]) -> None:
+        try:
+            subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    def _on_profile(self, btn: Gtk.ToggleButton, pid: str) -> None:
+        if not btn.get_active() or self._busy:
+            return
+        self._busy = True
+        self._status.set_text(f"Applying {pid}…")
+
+        def work() -> None:
+            r = subprocess.run(
+                ["etheris-perf", "set", pid],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            msg = (r.stdout or r.stderr or "").strip() or f"Profile set: {pid}"
+            GLib.idle_add(self._after_set, msg)
+
+        subprocess.Popen  # keep import side quiet
+        import threading
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_set(self, msg: str) -> bool:
+        self._busy = False
+        self._status.set_text(msg)
+        self._refresh()
+        return False
+
+    def _restore(self, *_args) -> None:
+        btn = self._profile_buttons.get("balanced")
+        if btn:
+            btn.set_active(True)
+
+    def _refresh(self) -> None:
+        active = current_profile()
+        btn = self._profile_buttons.get(active)
+        if btn and not btn.get_active():
+            self._busy = True
+            btn.set_active(True)
+            self._busy = False
+        self._status.set_text(f"Active profile: {active}")
+        self._metrics.set_text(run_out(["etheris-perf", "monitor"]) or "metrics unavailable")
+        self._caps.set_text(run_out(["etheris-perf", "capabilities"]) or "capabilities unavailable")
+
+    def _tick(self) -> bool:
+        if not self._busy:
+            self._metrics.set_text(run_out(["etheris-perf", "monitor"]) or "metrics unavailable")
+        return True
+
+
+def main() -> int:
+    return PerfApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

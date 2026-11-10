@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Desktop — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .win-main { top: 96px; left: 14%; width: min(580px, 72vw); height: 380px; }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html" aria-current="page">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="stage" role="img" aria-label="Final desktop concept">
+    <header class="panel">
+      <img class="mark" src="assets/mark.svg" alt="" />
+      <span class="brand-word">etheris</span>
+      <span class="sep"></span>
+      <div class="ws" aria-label="Workspaces"><span class="on"></span><span></span><span></span><span></span></div>
+      <span class="pill">Wi‑Fi</span>
+      <span class="pill">♪ 64%</span>
+      <span class="pill">72%</span>
+      <span class="pill cc">Quick</span>
+      <span class="clock">Thu 20:18</span>
+    </header>
+    <section class="window win-main">
+      <div class="window-title">Foot — demo@etheris</div>
+      <div class="window-body" style="font-family:var(--eth-font-mono);color:var(--eth-fg)">
+        <div style="opacity:.7"># Default Light desktop — panel only</div>
+        <div>$ etheris theme <span style="color:var(--eth-accent)">ocean-glass</span></div>
+        <div style="color:var(--eth-accent-2)">ok · soft reload</div>
+        <div>$ etheris ram</div>
+        <div>idle aspirational ≤500 MiB</div>
+      </div>
+    </section>
+    <p class="note-banner">Phase 2 decision: no dock, desktop icons, or widgets on the default desktop. Optional via Personalisation later.</p>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

@@ -1,0 +1,635 @@
+#!/usr/bin/env python3
+"""Etheris OS — first-login timezone picker with a 3D globe (WebKit + Three.js)."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import unquote
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
+SHARE = Path(os.environ.get("ETHERIS_SHARE", "/usr/local/share/etheris"))
+TZ_SHARE = SHARE / "timezone"
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "etheris"
+FLAG = CONF / "timezone-done"
+ZONE_TAB = Path("/usr/share/zoneinfo/zone1970.tab")
+ZONE_TAB_ALT = Path("/usr/share/zoneinfo/zone.tab")
+
+COORD_RE = re.compile(
+    r"^(?P<lat_sign>[+-])(?P<lat>\d{2})(?P<latm>\d{2})(?P<lats>\d{2})?"
+    r"(?P<lon_sign>[+-])(?P<lon>\d{3})(?P<lonm>\d{2})(?P<lons>\d{2})?$"
+)
+
+
+def parse_coord(raw: str) -> tuple[float, float] | None:
+    m = COORD_RE.match(raw.strip())
+    if not m:
+        return None
+    lat = int(m.group("lat")) + int(m.group("latm")) / 60.0
+    if m.group("lats"):
+        lat += int(m.group("lats")) / 3600.0
+    lon = int(m.group("lon")) + int(m.group("lonm")) / 60.0
+    if m.group("lons"):
+        lon += int(m.group("lons")) / 3600.0
+    if m.group("lat_sign") == "-":
+        lat = -lat
+    if m.group("lon_sign") == "-":
+        lon = -lon
+    return lat, lon
+
+
+def pretty_name(tz: str, comment: str) -> str:
+    # Prefer the zone path city ("Tokyo", "New York") — zone1970 comments are
+    # often multi-country blurbs or obscure observatory names.
+    base = tz.split("/")[-1].replace("_", " ")
+    if base and base.upper() != "UTC":
+        return base
+    if comment:
+        return comment.split(",")[0].strip() or tz
+    return tz
+
+
+def load_cities() -> list[dict]:
+    path = ZONE_TAB if ZONE_TAB.is_file() else ZONE_TAB_ALT
+    cities: list[dict] = []
+    seen: set[str] = set()
+    if not path.is_file():
+        return cities
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        country, coord, tz = parts[0], parts[1], parts[2]
+        comment = parts[3] if len(parts) > 3 else ""
+        parsed = parse_coord(coord)
+        if not parsed:
+            continue
+        lat, lon = parsed
+        key = f"{tz}|{lat:.3f}|{lon:.3f}"
+        if key in seen:
+            continue
+        seen.add(key)
+        primary_cc = (country.split(",")[0] or "").strip().upper()
+        cities.append(
+            {
+                "name": pretty_name(tz, comment),
+                "tz": tz,
+                "lat": round(lat, 4),
+                "lon": round(lon, 4),
+                "country": primary_cc,
+                "countries": country,
+            }
+        )
+    cities.sort(key=lambda c: (c["name"].lower(), c["tz"]))
+    # Pin common hubs near the top so first-login isn't a scroll marathon.
+    pin = {
+        "Europe/Helsinki",
+        "Europe/London",
+        "Europe/Berlin",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "America/Chicago",
+        "Asia/Tokyo",
+        "Asia/Shanghai",
+        "Asia/Singapore",
+        "Australia/Sydney",
+        "UTC",
+    }
+    pinned = [c for c in cities if c["tz"] in pin]
+    rest = [c for c in cities if c["tz"] not in pin]
+    return pinned + rest
+
+
+def already_done() -> bool:
+    return FLAG.is_file()
+
+
+def mark_done() -> None:
+    CONF.mkdir(parents=True, exist_ok=True)
+    FLAG.write_text("done\n", encoding="utf-8")
+
+
+def set_settings(**values: str) -> None:
+    CONF.mkdir(parents=True, exist_ok=True)
+    settings = CONF / "settings.conf"
+    data: dict[str, str] = {}
+    order: list[str] = []
+    if settings.is_file():
+        for line in settings.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.strip().startswith("#") or "=" not in line:
+                order.append(line)
+                continue
+            k, v = line.split("=", 1)
+            data[k.strip()] = v.strip()
+            order.append(k.strip())
+    for k, v in values.items():
+        if k not in data:
+            order.append(k)
+        data[k] = v
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in order:
+        if "=" not in item and item not in data:
+            out.append(item)
+            continue
+        key = item.split("=", 1)[0] if "=" in item else item
+        if key in seen or key not in data:
+            continue
+        out.append(f"{key}={data[key]}")
+        seen.add(key)
+    for k, v in data.items():
+        if k not in seen:
+            out.append(f"{k}={v}")
+    settings.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def apply_timezone(tz: str, *, country: str = "", auto: bool | None = None) -> None:
+    zone = Path("/usr/share/zoneinfo") / tz
+    if not zone.exists():
+        raise SystemExit(f"unknown timezone: {tz}")
+    for cmd in (
+        ["timedatectl", "set-timezone", tz],
+        ["timedatectl", "set-ntp", "true"],
+    ):
+        try:
+            subprocess.run(cmd, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            subprocess.run(["sudo", "-n", *cmd], check=False)
+
+    payload: dict[str, str] = {"timezone": tz}
+    if country:
+        payload["timezone_country"] = country.upper()
+    if auto is not None:
+        payload["timezone_auto"] = "on" if auto else "off"
+    set_settings(**payload)
+
+
+def prepare_runtime(cities: list[dict]) -> Path:
+    runtime = Path(tempfile.mkdtemp(prefix="etheris-timezone-"))
+    for name in ("index.html", "style.css", "app.js", "three.min.js", "earth.jpg"):
+        src = TZ_SHARE / name
+        if src.is_file():
+            shutil.copy2(src, runtime / name)
+    (runtime / "cities.js").write_text(
+        "window.ETHERIS_CITIES = " + json.dumps(cities, ensure_ascii=False) + ";\n",
+        encoding="utf-8",
+    )
+    return runtime
+
+
+class _QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self, fmt: str, *args) -> None:  # noqa: A003
+        return
+
+
+def start_http(runtime: Path) -> tuple[ThreadingHTTPServer, str]:
+    handler = partial(_QuietHandler, directory=str(runtime))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    return server, f"http://{host}:{port}/index.html"
+
+
+NEO_CSS = b"""
+window.tz-win {
+  background: linear-gradient(160deg, #07111f 0%, #0a1628 55%, #06101c 100%);
+  color: #e8f0ff;
+}
+.tz-shell { padding: 22px 24px 18px; }
+.tz-brand {
+  font-size: 11px; letter-spacing: 0.22em; color: #7eb8ff;
+  font-weight: 700; margin-bottom: 4px;
+}
+.tz-title {
+  font-size: 26px; font-weight: 700; color: #f2f7ff; margin-bottom: 4px;
+}
+.tz-sub {
+  font-size: 13px; color: rgba(200, 220, 255, 0.62); margin-bottom: 14px;
+}
+.tz-search {
+  background: rgba(10, 22, 40, 0.92);
+  border: 1px solid rgba(110, 170, 255, 0.28);
+  border-radius: 12px;
+  color: #eaf2ff;
+  padding: 10px 14px;
+  min-height: 40px;
+}
+.tz-search:focus { border-color: rgba(110, 190, 255, 0.7); }
+.tz-scroll {
+  background: rgba(6, 14, 26, 0.55);
+  border: 1px solid rgba(110, 170, 255, 0.18);
+  border-radius: 14px;
+  margin-top: 12px;
+}
+.tz-list {
+  background: transparent;
+}
+.tz-list row {
+  background: transparent;
+  border-radius: 10px;
+  margin: 3px 6px;
+  padding: 2px;
+}
+.tz-list row:hover {
+  background: rgba(90, 150, 255, 0.12);
+}
+.tz-list row:selected {
+  background: rgba(70, 140, 255, 0.28);
+}
+.tz-city { font-size: 14px; font-weight: 600; color: #f0f6ff; }
+.tz-meta { font-size: 11px; color: rgba(180, 205, 240, 0.7); }
+.tz-auto {
+  background: rgba(8, 18, 32, 0.7);
+  border: 1px solid rgba(110, 170, 255, 0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-top: 12px;
+}
+.tz-auto-title { font-size: 13px; font-weight: 600; color: #e8f0ff; }
+.tz-auto-sub { font-size: 11px; color: rgba(180, 205, 240, 0.65); }
+.tz-actions { margin-top: 14px; }
+.tz-btn-primary {
+  background: linear-gradient(135deg, #3d8dff, #2a6fd4);
+  color: white; font-weight: 700; border-radius: 11px;
+  padding: 10px 18px; border: none;
+}
+.tz-btn-primary:hover { background: linear-gradient(135deg, #5aa0ff, #3d8dff); }
+.tz-btn-ghost {
+  background: rgba(20, 36, 58, 0.7);
+  color: #c8d8f0; border-radius: 11px;
+  padding: 10px 16px;
+  border: 1px solid rgba(110, 170, 255, 0.22);
+}
+.tz-btn-ghost:hover { background: rgba(40, 70, 110, 0.55); }
+"""
+
+
+def run_webkit(runtime: Path) -> dict[str, str | None] | None:
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("WebKit", "6.0")
+        from gi.repository import Gtk, WebKit
+    except (ImportError, ValueError) as exc:
+        print(f"etheris-timezone: WebKitGTK unavailable ({exc})", file=sys.stderr)
+        return None
+
+    # Probe WebView construction early — virtio guests often lack usable GL.
+    try:
+        probe = WebKit.WebView()
+        st = probe.get_settings()
+        try:
+            st.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.NEVER)
+        except Exception:
+            pass
+        del probe
+    except Exception as exc:
+        print(f"etheris-timezone: WebView probe failed ({exc})", file=sys.stderr)
+        return None
+
+    result: dict[str, str | None] = {"value": None, "auto": "1", "country": ""}
+    server, url = start_http(runtime)
+
+    def finish(value: str) -> None:
+        if result["value"] is None:
+            result["value"] = value
+        app.quit()
+
+    def handle_payload(payload: dict) -> None:
+        action = payload.get("action")
+        if "auto" in payload:
+            result["auto"] = "1" if payload.get("auto") else "0"
+        if payload.get("country"):
+            result["country"] = str(payload.get("country") or "")
+        if action == "confirm" and payload.get("tz"):
+            finish(str(payload["tz"]))
+        elif action == "skip":
+            finish("skip")
+
+    app = Gtk.Application(application_id="os.etheris.timezone.web")
+
+    def on_activate(_app: Gtk.Application) -> None:
+        win = Gtk.ApplicationWindow(application=app, title="Etheris · Timezone")
+        win.set_default_size(1120, 700)
+        win.add_css_class("tz-win")
+
+        css = Gtk.CssProvider()
+        css.load_from_data(b"window.tz-win { background: #06101c; }")
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        ucm = WebKit.UserContentManager()
+        try:
+            ucm.register_script_message_handler("etheris")
+
+            def on_msg(_ucm, message) -> None:
+                try:
+                    jsc = message.get_js_value()
+                    raw = jsc.to_json(0) if hasattr(jsc, "to_json") else jsc.to_string()
+                    payload = json.loads(raw)
+                    if isinstance(payload, dict):
+                        handle_payload(payload)
+                except Exception as exc:
+                    print(f"etheris-timezone: bridge: {exc}", file=sys.stderr)
+
+            ucm.connect("script-message-received::etheris", on_msg)
+        except Exception:
+            pass
+
+        try:
+            web = WebKit.WebView(user_content_manager=ucm)
+        except TypeError:
+            web = WebKit.WebView.new_with_user_content_manager(ucm)
+        st = web.get_settings()
+        try:
+            st.set_enable_webgl(True)
+        except Exception:
+            pass
+        try:
+            st.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.NEVER)
+        except Exception:
+            pass
+
+        def on_policy(_web, decision, decision_type) -> bool:
+            if decision_type != WebKit.PolicyDecisionType.NAVIGATION_ACTION:
+                return False
+            try:
+                uri = decision.get_navigation_action().get_request().get_uri() or ""
+            except Exception:
+                return False
+            if not uri.startswith("etheris://"):
+                return False
+            try:
+                q = uri.split("?", 1)[1] if "?" in uri else "{}"
+                payload = json.loads(unquote(q))
+                handle_payload(payload)
+            except Exception as exc:
+                print(f"etheris-timezone: nav: {exc}", file=sys.stderr)
+            try:
+                decision.ignore()
+            except Exception:
+                pass
+            return True
+
+        web.connect("decide-policy", on_policy)
+        web.load_uri(url)
+        win.set_child(web)
+
+        def on_close(*_a):
+            finish("skip")
+            return False
+
+        win.connect("close-request", on_close)
+        win.present()
+
+    app.connect("activate", on_activate)
+    try:
+        app.run(None)
+    finally:
+        server.shutdown()
+    return result
+
+
+def run_fallback(cities: list[dict]) -> dict[str, str | None] | None:
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk, GLib
+    except (ImportError, ValueError):
+        return None
+
+    result: dict[str, str | None] = {"value": None, "auto": "1", "country": ""}
+    selected: dict[str, dict | None] = {"city": None}
+
+    # Prefer a sensible default near common EU / local zones.
+    for pref in ("Europe/Helsinki", "Europe/Berlin", "America/New_York", "UTC"):
+        hit = next((c for c in cities if c["tz"] == pref), None)
+        if hit:
+            selected["city"] = hit
+            break
+    if selected["city"] is None and cities:
+        selected["city"] = cities[0]
+
+    app = Gtk.Application(application_id="os.etheris.timezone.list")
+
+    def on_activate(_app: Gtk.Application) -> None:
+        win = Gtk.ApplicationWindow(application=app, title="Etheris · Timezone")
+        win.set_default_size(560, 720)
+        win.add_css_class("tz-win")
+
+        css = Gtk.CssProvider()
+        css.load_from_data(NEO_CSS)
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        shell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        shell.add_css_class("tz-shell")
+
+        brand = Gtk.Label(label="ETHERIS", xalign=0)
+        brand.add_css_class("tz-brand")
+        title = Gtk.Label(label="Where are you?", xalign=0)
+        title.add_css_class("tz-title")
+        sub = Gtk.Label(
+            label="Pick a city to set the clock — or let Etheris follow you when you travel.",
+            xalign=0,
+            wrap=True,
+        )
+        sub.add_css_class("tz-sub")
+
+        entry = Gtk.SearchEntry()
+        entry.add_css_class("tz-search")
+        entry.set_placeholder_text("Search city, country, or timezone…")
+
+        scroll = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
+        scroll.add_css_class("tz-scroll")
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(360)
+        listbox = Gtk.ListBox()
+        listbox.add_css_class("tz-list")
+        listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        scroll.set_child(listbox)
+
+        def make_row(city: dict) -> Gtk.ListBoxRow:
+            row = Gtk.ListBoxRow()
+            row._city = city  # type: ignore[attr-defined]
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            inner.set_margin_top(8)
+            inner.set_margin_bottom(8)
+            inner.set_margin_start(12)
+            inner.set_margin_end(12)
+            name = Gtk.Label(label=city["name"], xalign=0)
+            name.add_css_class("tz-city")
+            country = city.get("country") or ""
+            meta = Gtk.Label(
+                label=f"{city['tz']}" + (f"  ·  {country}" if country else ""),
+                xalign=0,
+            )
+            meta.add_css_class("tz-meta")
+            inner.append(name)
+            inner.append(meta)
+            row.set_child(inner)
+            return row
+
+        def refill(text: str = "") -> None:
+            while (c := listbox.get_first_child()) is not None:
+                listbox.remove(c)
+            q = text.strip().lower()
+            shown = 0
+            pick_row = None
+            for city in cities:
+                blob = f"{city['name']} {city['tz']} {city.get('country', '')}".lower()
+                if q and q not in blob:
+                    continue
+                row = make_row(city)
+                listbox.append(row)
+                if selected["city"] and city["tz"] == selected["city"]["tz"]:
+                    pick_row = row
+                shown += 1
+                if shown >= 280:
+                    break
+            if pick_row is not None:
+                listbox.select_row(pick_row)
+
+        def on_row(_lb, row) -> None:
+            if row is None:
+                return
+            selected["city"] = getattr(row, "_city", None)
+
+        listbox.connect("row-selected", on_row)
+        entry.connect("search-changed", lambda e: refill(e.get_text()))
+        refill("")
+
+        auto_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        auto_box.add_css_class("tz-auto")
+        auto_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+        auto_title = Gtk.Label(label="Auto-update when traveling", xalign=0)
+        auto_title.add_css_class("tz-auto-title")
+        auto_sub = Gtk.Label(
+            label="Detects country changes over the network and adjusts the clock.",
+            xalign=0,
+            wrap=True,
+        )
+        auto_sub.add_css_class("tz-auto-sub")
+        auto_text.append(auto_title)
+        auto_text.append(auto_sub)
+        auto_switch = Gtk.Switch()
+        auto_switch.set_active(True)
+        auto_switch.set_valign(Gtk.Align.CENTER)
+        auto_box.append(auto_text)
+        auto_box.append(auto_switch)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        actions.add_css_class("tz-actions")
+        ok = Gtk.Button(label="Use this timezone")
+        ok.add_css_class("tz-btn-primary")
+        skip = Gtk.Button(label="Skip for now")
+        skip.add_css_class("tz-btn-ghost")
+
+        def confirm(*_a) -> None:
+            if not selected["city"]:
+                return
+            result["value"] = selected["city"]["tz"]
+            result["country"] = selected["city"].get("country") or ""
+            result["auto"] = "1" if auto_switch.get_active() else "0"
+            app.quit()
+
+        def do_skip(*_a) -> None:
+            result["value"] = "skip"
+            result["auto"] = "1" if auto_switch.get_active() else "0"
+            app.quit()
+
+        ok.connect("clicked", confirm)
+        skip.connect("clicked", do_skip)
+        listbox.connect("row-activated", lambda *_: confirm())
+
+        def on_close(*_a):
+            if result["value"] is None:
+                result["value"] = "skip"
+            app.quit()
+            return False
+
+        win.connect("close-request", on_close)
+
+        shell.append(brand)
+        shell.append(title)
+        shell.append(sub)
+        shell.append(entry)
+        shell.append(scroll)
+        shell.append(auto_box)
+        shell.append(actions)
+        actions.append(ok)
+        actions.append(skip)
+        win.set_child(shell)
+        win.present()
+        GLib.idle_add(entry.grab_focus)
+
+    app.connect("activate", on_activate)
+    app.run(None)
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Etheris timezone globe")
+    parser.add_argument("--first-login", action="store_true", help="Show once on first login")
+    parser.add_argument("--force", "-f", action="store_true", help="Show even if already done")
+    parser.add_argument("--fallback", action="store_true", help="Force GTK list UI")
+    args = parser.parse_args(argv)
+
+    if args.first_login and not args.force and already_done():
+        return 0
+
+    if not TZ_SHARE.is_dir():
+        print("etheris-timezone: missing assets at", TZ_SHARE, file=sys.stderr)
+        return 1
+
+    cities = load_cities()
+    if not cities:
+        print("etheris-timezone: no cities from zoneinfo", file=sys.stderr)
+        return 1
+
+    runtime = prepare_runtime(cities)
+    try:
+        meta: dict[str, str | None] | None = None
+        if not args.fallback:
+            meta = run_webkit(runtime)
+        if meta is None:
+            meta = run_fallback(cities)
+        if not meta or meta.get("value") is None:
+            print("etheris-timezone: no UI backend", file=sys.stderr)
+            return 1
+        choice = str(meta["value"])
+        auto_flag = meta.get("auto", "1") != "0"
+        country = meta.get("country") or ""
+        if choice == "skip":
+            set_settings(timezone_auto=("on" if auto_flag else "off"))
+            mark_done()
+            return 0
+        apply_timezone(choice, country=country, auto=auto_flag)
+        mark_done()
+        print(f"timezone={choice} auto={'on' if auto_flag else 'off'}")
+        return 0
+    finally:
+        shutil.rmtree(runtime, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

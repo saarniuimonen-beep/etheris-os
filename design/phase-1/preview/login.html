@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login — Etheris Design Phase 1</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .login-stage {
+      background:
+        radial-gradient(ellipse 70% 50% at 50% 20%, rgba(56, 189, 248, 0.2), transparent 55%),
+        var(--eth-wallpaper) center / cover,
+        var(--eth-bg-deep);
+    }
+    .login-hero {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .login-hero .brand {
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 12px 0 4px;
+      line-height: 1.1;
+    }
+    .login-hero .time {
+      font-size: clamp(48px, 8vw, 72px);
+      font-weight: 300;
+      letter-spacing: -0.04em;
+      margin: 24px 0 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .login-hero .date {
+      color: var(--eth-fg-muted);
+      font-size: 16px;
+      margin-bottom: 28px;
+    }
+    .login-card {
+      width: min(360px, 100%);
+      padding: 22px;
+      text-align: left;
+    }
+    .users {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .user {
+      flex: 1;
+      padding: 12px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-highlight);
+      text-align: center;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .user.on {
+      border-color: var(--eth-accent);
+      background: var(--eth-accent-soft);
+    }
+    .user .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      background: linear-gradient(145deg, var(--eth-accent), var(--eth-accent-2));
+    }
+    .session {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 16px;
+    }
+    .session select {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-input);
+      color: var(--eth-fg);
+      font-family: inherit;
+    }
+    .power {
+      position: absolute;
+      bottom: 28px;
+      right: 28px;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+    }
+    .note {
+      position: absolute;
+      bottom: 28px;
+      left: 28px;
+      z-index: 20;
+      font-size: 11px;
+      color: var(--eth-fg-muted);
+      max-width: 280px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a>
+      <a href="desktop.html">Desktop</a>
+      <a href="launcher.html">Launcher</a>
+      <a href="control-center.html">Control Center</a>
+      <a href="settings.html">Settings</a>
+      <a href="login.html" aria-current="page">Login</a>
+      <a href="atmospheres.html">Atmospheres</a>
+      <a href="extras.html">Extras</a>
+    </nav>
+    <div class="atm-picker">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+
+  <div class="stage login-stage">
+    <div class="login-hero">
+      <img src="assets/mark.svg" alt="" width="56" height="56" />
+      <div class="brand">Etheris OS</div>
+      <div class="time">19:42</div>
+      <div class="date">Thursday, 8 November</div>
+
+      <form class="glass login-card pop" action="#" onsubmit="return false">
+        <div class="users" role="listbox" aria-label="Users">
+          <div class="user on" role="option" aria-selected="true"><div class="avatar"></div>demo</div>
+          <div class="user" role="option" aria-selected="false"><div class="avatar" style="opacity:0.7"></div>guest</div>
+        </div>
+        <label for="pw" style="font-size:12px;color:var(--eth-fg-muted)">Password</label>
+        <input class="input" id="pw" type="password" placeholder="Enter password" style="margin-top:6px" />
+        <div class="session">
+          <select aria-label="Session">
+            <option selected>Etheris (Sway)</option>
+            <option>Sway (stock)</option>
+          </select>
+          <button type="submit" class="btn btn-primary">Sign in</button>
+        </div>
+      </form>
+    </div>
+
+    <p class="note">Concept only. Live greeter remains greetd + tuigreet until the LOGIN milestone is approved.</p>
+    <div class="power">
+      <button type="button" class="btn btn-ghost">Sleep</button>
+      <button type="button" class="btn btn-ghost">Restart</button>
+      <button type="button" class="btn btn-danger">Shut down</button>
+    </div>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

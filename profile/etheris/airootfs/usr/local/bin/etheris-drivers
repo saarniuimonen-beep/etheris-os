@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+# Etheris OS — GPU/CPU driver selection helpers.
+# Official Arch packages preferred. Pascal NVIDIA 580xx is AUR (third-party).
+set -euo pipefail
+
+LOCK_DIR=/var/lib/etheris
+PASCAL_PIN="$LOCK_DIR/nvidia-pascal-pin"
+CONF_DIR=/etc/etheris
+
+usage() {
+  cat <<'EOF'
+Etheris driver manager
+
+Usage:
+  etheris-drivers status          Detect GPUs and recommended packages
+  etheris-drivers recommend       Print install plan (no changes)
+  etheris-drivers apply           Install official packages for detected GPUs
+  etheris-drivers pascal-guide    Show Pascal 580xx AUR path + safety pins
+  etheris-drivers pin-pascal      Prevent nvidia-open from replacing 580xx
+  etheris-drivers unpin-pascal    Remove IgnorePkg pins
+  etheris-drivers help
+
+Rules:
+  • Pascal / Volta → nvidia-580xx (AUR) — never nvidia-open
+  • Turing and newer → nvidia-open + nvidia-utils (+ lib32) from official repos
+  • AMD → mesa + vulkan-radeon (+ lib32); kernel amdgpu
+  • Intel → mesa + vulkan-intel (+ lib32); media drivers as available
+  • Never disable pacman signature checks
+  • AUR packages are third-party — review PKGBUILD before building
+EOF
+}
+
+need_root() {
+  [[ "$(id -u)" -eq 0 ]] || { echo "Run as root: sudo etheris-drivers $*"; exit 1; }
+}
+
+have_gpu_family() {
+  local fam="$1"
+  etheris-hw json 2>/dev/null | grep -q "\"family\":\"${fam}\"" || return 1
+}
+
+any_nvidia() {
+  etheris-hw json 2>/dev/null | grep -q '"vendor":"10de"' || return 1
+}
+
+cmd_status() {
+  echo "=== Driver status ==="
+  etheris-hw gpu
+  echo
+  echo "=== Installed graphics packages (if pacman available) ==="
+  if command -v pacman >/dev/null; then
+    pacman -Q mesa vulkan-intel vulkan-radeon vulkan-icd-loader \
+      lib32-mesa lib32-vulkan-intel lib32-vulkan-radeon lib32-vulkan-icd-loader \
+      nvidia-open nvidia-utils lib32-nvidia-utils nvidia-dkms \
+      nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils \
+      steam gamemode mangohud gamescope 2>/dev/null | sed 's/^/  /' || true
+  fi
+  if [[ -f "$PASCAL_PIN" ]]; then
+    echo
+    echo "Pascal pin: active ($PASCAL_PIN)"
+  fi
+  if lsmod 2>/dev/null | grep -qE '^nvidia\b'; then
+    echo "Loaded module: nvidia"
+  elif lsmod 2>/dev/null | grep -qE '^nouveau\b'; then
+    echo "Loaded module: nouveau (open; replace with proprietary branch for gaming on NVIDIA)"
+  elif lsmod 2>/dev/null | grep -qE '^amdgpu\b'; then
+    echo "Loaded module: amdgpu"
+  elif lsmod 2>/dev/null | grep -qE '^i915\b|^xe\b'; then
+    echo "Loaded module: Intel graphics"
+  fi
+}
+
+plan_packages() {
+  local pkgs=()
+  pkgs+=(mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader mesa-utils vulkan-tools)
+
+  if etheris-hw json 2>/dev/null | grep -q '"vendor":"8086"'; then
+    pkgs+=(vulkan-intel lib32-vulkan-intel intel-media-driver libva-utils)
+    # Older Intel (HD4000 era) may also need libva-intel-driver
+    pkgs+=(libva-intel-driver)
+  fi
+  if etheris-hw json 2>/dev/null | grep -q '"vendor":"1002"'; then
+    pkgs+=(vulkan-radeon lib32-vulkan-radeon)
+  fi
+
+  local nvidia_plan="none"
+  if have_gpu_family pascal || have_gpu_family volta || have_gpu_family maxwell; then
+    nvidia_plan="pascal-legacy-aur"
+  elif have_gpu_family turing || have_gpu_family ampere || have_gpu_family ada || have_gpu_family blackwell; then
+    nvidia_plan="nvidia-open"
+    pkgs+=(nvidia-open nvidia-utils lib32-nvidia-utils nvidia-settings)
+  elif any_nvidia; then
+    nvidia_plan="unknown-nvidia-review"
+  fi
+
+  printf '%s\n' "${pkgs[@]}" | awk 'NF && !seen[$0]++'
+  echo "# NVIDIA_PLAN=${nvidia_plan}"
+}
+
+cmd_recommend() {
+  echo "Recommended official packages:"
+  local line
+  while IFS= read -r line; do
+    if [[ "$line" == \#* ]]; then
+      echo
+      echo "$line"
+    else
+      echo "  $line"
+    fi
+  done < <(plan_packages)
+
+  if have_gpu_family pascal || have_gpu_family volta || have_gpu_family maxwell; then
+    cat <<'EOF'
+
+NVIDIA Pascal/Volta/Maxwell detected:
+  Official Arch nvidia / nvidia-open packages do NOT support these GPUs (590+).
+  Use the legacy 580xx AUR stack (third-party):
+    nvidia-580xx-dkms  nvidia-580xx-utils  lib32-nvidia-580xx-utils
+    dkms  linux-headers
+  Run:  etheris-drivers pascal-guide
+  Then: etheris-drivers pin-pascal   # blocks accidental nvidia-open upgrades
+EOF
+  fi
+  if have_gpu_family kepler; then
+    echo
+    echo "Kepler NVIDIA: best-effort only (nvidia-470xx AUR). Desktop may work on nouveau; gaming/Vulkan limited."
+  fi
+}
+
+cmd_apply() {
+  need_root apply
+  mkdir -p "$LOCK_DIR" "$CONF_DIR"
+
+  # Ensure multilib exists in pacman.conf
+  if grep -q '^\[multilib\]' /etc/pacman.conf; then
+    :
+  elif grep -q '^#\[multilib\]' /etc/pacman.conf; then
+    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
+    echo "Enabled [multilib] in /etc/pacman.conf"
+  else
+    cat >>/etc/pacman.conf <<'EOF'
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+EOF
+    echo "Appended [multilib] to /etc/pacman.conf"
+  fi
+
+  mapfile -t PKGS < <(plan_packages | grep -v '^#' || true)
+  local plan
+  plan="$(plan_packages | awk -F= '/NVIDIA_PLAN/{print $2}')"
+
+  if [[ "$plan" == nvidia-open ]]; then
+    if pacman -Qq nvidia-580xx-dkms &>/dev/null || pacman -Qq nvidia-580xx-utils &>/dev/null; then
+      echo "Refusing nvidia-open install: nvidia-580xx packages present (Pascal pin)."
+      echo "Remove 580xx only if this machine is no longer Pascal/Volta."
+      exit 1
+    fi
+  fi
+
+  if [[ "$plan" == pascal-legacy-aur ]]; then
+    echo "Skipping official nvidia-open (incompatible with Pascal/Volta)."
+    # Strip any nvidia-open that might have been added
+    PKGS=("${PKGS[@]/nvidia-open}")
+    PKGS=("${PKGS[@]/nvidia-utils}")
+    PKGS=("${PKGS[@]/lib32-nvidia-utils}")
+    PKGS=("${PKGS[@]/nvidia-settings}")
+  fi
+
+  echo "Installing: ${PKGS[*]}"
+  pacman -Sy --needed --noconfirm "${PKGS[@]}"
+
+  if [[ "$plan" == pascal-legacy-aur ]]; then
+    cmd_pascal_guide
+    echo
+    echo "Official packages applied (Mesa/Vulkan stack). Complete Pascal support with AUR 580xx — see above."
+  elif [[ "$plan" == nvidia-open ]]; then
+    echo "Configured Turing+ path: nvidia-open. Rebuild initramfs if prompted, then reboot."
+  else
+    echo "Applied open graphics stack for detected devices."
+  fi
+}
+
+cmd_pascal_guide() {
+  cat <<'EOF'
+=== NVIDIA Pascal (and Volta/Maxwell) — 580xx legacy path ===
+
+Arch news: NVIDIA 590+ / nvidia-open dropped Pascal. Use AUR 580xx.
+
+1) Review PKGBUILDs (third-party, not official Arch):
+     etheris-aur info nvidia-580xx-dkms
+     # Also review: nvidia-580xx-utils  lib32-nvidia-580xx-utils
+
+2) Install build deps from official repos:
+     sudo pacman -S --needed dkms linux-headers base-devel git
+
+3) Remove conflicting official NVIDIA packages if present:
+     sudo pacman -Rns nvidia nvidia-open nvidia-dkms nvidia-utils lib32-nvidia-utils 2>/dev/null || true
+
+4) Build 580xx (example):
+     git clone https://aur.archlinux.org/nvidia-580xx-dkms.git
+     git clone https://aur.archlinux.org/nvidia-580xx-utils.git
+     git clone https://aur.archlinux.org/lib32-nvidia-580xx-utils.git
+     # Review each PKGBUILD, then makepkg -si in dependency order (utils before dkms)
+
+5) Pin against silent replacement:
+     sudo etheris-drivers pin-pascal
+
+6) Verify after reboot:
+     lsmod | grep nvidia
+     etheris-hw gpu
+     glxinfo -B
+     vulkaninfo --summary
+
+If 580xx becomes unavailable or fails to build for a new kernel, report the
+failure — do not install nvidia-open on Pascal hardware.
+Recovery: docs/DRIVER-RECOVERY.md
+EOF
+}
+
+cmd_pin_pascal() {
+  need_root pin-pascal
+  mkdir -p "$LOCK_DIR"
+  touch "$PASCAL_PIN"
+  if grep -q '^IgnorePkg' /etc/pacman.conf; then
+    # Ensure listed
+    for p in nvidia nvidia-open nvidia-dkms nvidia-lts nvidia-open-dkms nvidia-open-lts; do
+      grep -E "^IgnorePkg.*\b${p}\b" /etc/pacman.conf >/dev/null || \
+        sed -i "s/^IgnorePkg.*/& ${p}/" /etc/pacman.conf
+    done
+  else
+    sed -i '/^#IgnorePkg/a IgnorePkg = nvidia nvidia-open nvidia-dkms nvidia-lts nvidia-open-dkms nvidia-open-lts' /etc/pacman.conf \
+      || echo 'IgnorePkg = nvidia nvidia-open nvidia-dkms nvidia-lts nvidia-open-dkms nvidia-open-lts' >>/etc/pacman.conf
+  fi
+  # Drop duplicate spaces
+  sed -i 's/IgnorePkg = */IgnorePkg = /; s/  */ /g' /etc/pacman.conf
+  echo "Pinned: IgnorePkg blocks official NVIDIA packages. Marker: $PASCAL_PIN"
+  echo "Install 580xx via AUR before relying on proprietary acceleration."
+}
+
+cmd_unpin_pascal() {
+  need_root unpin-pascal
+  rm -f "$PASCAL_PIN"
+  if grep -q '^IgnorePkg' /etc/pacman.conf; then
+    sed -i 's/\bnvidia-open-dkms\b//; s/\bnvidia-open-lts\b//; s/\bnvidia-open\b//; s/\bnvidia-dkms\b//; s/\bnvidia-lts\b//; s/\bnvidia\b//' /etc/pacman.conf
+    sed -i 's/IgnorePkg = */IgnorePkg = /; s/  */ /g' /etc/pacman.conf
+    # Remove empty IgnorePkg line
+    sed -i '/^IgnorePkg = *$/d' /etc/pacman.conf
+  fi
+  echo "Pascal pin removed. Only unpin on non-Pascal hardware."
+}
+
+main() {
+  case "${1:-}" in
+    ""|status) cmd_status ;;
+    recommend|plan) cmd_recommend ;;
+    apply) cmd_apply ;;
+    pascal-guide|pascal) cmd_pascal_guide ;;
+    pin-pascal) cmd_pin_pascal ;;
+    unpin-pascal) cmd_unpin_pascal ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

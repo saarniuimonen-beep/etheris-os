@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Etheris (Sway)
+Comment=Etheris OS lightweight Wayland desktop
+Exec=etheris-session
+TryExec=sway
+Type=Application
+DesktopNames=sway;Etheris
+Keywords=etheris;sway;wayland;

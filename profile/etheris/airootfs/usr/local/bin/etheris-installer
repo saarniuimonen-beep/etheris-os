@@ -1,0 +1,511 @@
+#!/usr/bin/env bash
+# Etheris OS installer (UEFI + systemd-boot + ext4/btrfs) — safety-first
+# Logs: /var/log/etheris-install.log  and  ./etheris-install-*.log
+#
+# Non-interactive VM/CI mode (still requires explicit YES):
+#   sudo etheris-installer --auto \
+#     --disk /dev/vda --confirm YES \
+#     --user NAME --password PASS \
+#     [--hostname H] [--locale L] [--timezone TZ] [--fs ext4|btrfs] [--no-reboot]
+set -euo pipefail
+
+VERSION="$(cat /usr/local/share/etheris/VERSION 2>/dev/null || cat /etc/etheris-version 2>/dev/null || echo 0.1.0-alpha)"
+LOG="/var/log/etheris-install.log"
+ALT_LOG="${HOME}/etheris-install-$(date +%Y%m%d-%H%M%S).log"
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+exec > >(tee -a "$LOG" "$ALT_LOG") 2>&1
+
+die() { echo "ERROR: $*" >&2; echo "Installation FAILED — see $LOG"; exit 1; }
+info() { echo "==> $*"; }
+confirm() {
+  local prompt="$1" ans
+  echo
+  echo "$prompt"
+  if [[ "${AUTO:-0}" -eq 1 ]]; then
+    [[ "${CONFIRM:-}" == "YES" ]] || die "Auto mode requires --confirm YES (got '${CONFIRM:-}')"
+    echo "AUTO: confirmation=YES"
+    return 0
+  fi
+  read -r -p "Type YES to continue: " ans
+  [[ "$ans" == "YES" ]] || die "Aborted by user (confirmation not YES)"
+}
+
+AUTO=0
+NO_REBOOT=0
+TARGET=""
+CONFIRM=""
+FS=ext4
+HOSTNAME=etheris
+USERNAME=""
+PASS1=""
+LOCALE=en_US.UTF-8
+TZ=UTC
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-installer                 Interactive install
+  etheris-installer --auto …        Non-interactive (still needs --confirm YES)
+
+Auto flags:
+  --disk /dev/vdX     Target disk (required)
+  --confirm YES       Exact destructive confirmation (required)
+  --user NAME         Primary user (required)
+  --password PASS     Password (required; not logged beyond chpasswd stdin)
+  --hostname NAME     Default: etheris
+  --locale LOCALE     Default: en_US.UTF-8
+  --timezone TZ       Default: UTC
+  --fs ext4|btrfs     Default: ext4
+  --no-reboot         Do not reboot at end
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --auto) AUTO=1; shift ;;
+    --no-reboot) NO_REBOOT=1; shift ;;
+    --disk) TARGET="${2:-}"; shift 2 ;;
+    --confirm) CONFIRM="${2:-}"; shift 2 ;;
+    --user) USERNAME="${2:-}"; shift 2 ;;
+    --password) PASS1="${2:-}"; shift 2 ;;
+    --hostname) HOSTNAME="${2:-}"; shift 2 ;;
+    --locale) LOCALE="${2:-}"; shift 2 ;;
+    --timezone) TZ="${2:-}"; shift 2 ;;
+    --fs) FS="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "Unknown argument: $1" ;;
+  esac
+done
+
+[[ "$(id -u)" -eq 0 ]] || die "Run as root: sudo etheris-installer"
+
+if [[ "$AUTO" -eq 0 ]]; then
+  clear
+  cat <<EOF
+╔══════════════════════════════════════════╗
+║         Etheris OS Installer            ║
+║              ${VERSION}                  ║
+╚══════════════════════════════════════════╝
+
+Safety rules:
+  • Nothing is formatted without typing YES
+  • USB install media will be excluded when possible
+  • UEFI + systemd-boot (ext4 or Btrfs)
+  • Classic mutable install (immutable A/B is planned — see docs)
+  • Btrfs uses future-friendly subvolumes (@, @home, @var_log)
+  • Full log: $LOG
+
+EOF
+  read -r -p "Press Enter to begin (Ctrl+C to quit)… "
+fi
+
+# --- hardware ---
+info "Hardware detection"
+efi=0
+[[ -d /sys/firmware/efi ]] && efi=1
+echo "  UEFI firmware: $([[ $efi -eq 1 ]] && echo yes || echo NO)"
+[[ $efi -eq 1 ]] || die "This installer version requires UEFI. Legacy BIOS/GRUB comes later."
+echo "  CPU: $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs)"
+echo "  RAM: $(awk '/MemTotal/{printf "%.1f GiB", $2/1024/1024}' /proc/meminfo)"
+
+# --- disks ---
+info "Disk detection (excluding obvious USB installer / loop / ram)"
+# Parse with NUL-safe columns — empty MODEL/TRAN must not shift fields (breaks virtio).
+# NAME,TYPE only — empty MODEL/TRAN must not shift fields (breaks virtio VMs).
+mapfile -t DISKS < <(
+  lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}' | while read -r name; do
+      [[ -n "$name" ]] || continue
+      path="/dev/$name"
+      [[ -b "$path" ]] || continue
+      size="$(lsblk -dn -o SIZE "$path" 2>/dev/null | tr -d ' ')"
+      model="$(lsblk -dn -o MODEL "$path" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      tran="$(lsblk -dn -o TRAN "$path" 2>/dev/null | tr -d ' ')"
+      rmflag="$(lsblk -dn -o RM "$path" 2>/dev/null | tr -d ' ')"
+      echo "${path}|${size}|${model}|${tran}|rm=${rmflag}"
+    done
+)
+
+LIVE_SRC="$(findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null || findmnt -n -o SOURCE /run/archiso/copytoram 2>/dev/null || true)"
+LIVE_DISK=""
+if [[ -n "$LIVE_SRC" ]]; then
+  LIVE_DISK="$(lsblk -no PKNAME "$LIVE_SRC" 2>/dev/null || true)"
+  [[ -n "$LIVE_DISK" ]] && LIVE_DISK="/dev/$LIVE_DISK"
+fi
+
+echo
+echo "Available target disks:"
+i=1
+declare -a CHOICES=()
+for entry in "${DISKS[@]}"; do
+  path="${entry%%|*}"
+  rest="${entry#*|}"
+  if [[ -n "$LIVE_DISK" && "$path" == "$LIVE_DISK" ]]; then
+    echo "  [skipped installer media] $path ($rest)"
+    continue
+  fi
+  echo "  $i) $path ($rest)"
+  CHOICES+=("$path")
+  i=$((i+1))
+done
+if [[ "$AUTO" -eq 1 ]]; then
+  [[ -n "$TARGET" ]] || die "--disk required in --auto mode"
+  [[ -b "$TARGET" ]] || die "Not a block device: $TARGET"
+  [[ "$CONFIRM" == "YES" ]] || die "--confirm YES required in --auto mode"
+  [[ -n "$USERNAME" ]] || die "--user required"
+  [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "Invalid username"
+  [[ -n "$PASS1" ]] || die "--password required"
+  case "$FS" in ext4|btrfs) ;; *) die "Unsupported filesystem: $FS" ;; esac
+  # Refuse installing onto live ISO medium
+  if [[ -n "$LIVE_DISK" && "$TARGET" == "$LIVE_DISK" ]]; then
+    die "Refusing to install onto live installer medium ($TARGET)"
+  fi
+  # Warn if detection list empty (virtio parse bugs used to trigger this)
+  if (( ${#CHOICES[@]} == 0 )); then
+    echo "WARNING: disk auto-detection returned no entries; continuing with --disk $TARGET"
+  fi
+else
+  (( ${#CHOICES[@]} > 0 )) || die "No suitable disks found"
+  read -r -p "Select disk number: " num
+  [[ "$num" =~ ^[0-9]+$ ]] || die "Invalid selection"
+  (( num >= 1 && num <= ${#CHOICES[@]} )) || die "Out of range"
+  TARGET="${CHOICES[$((num-1))]}"
+
+  info "Selected target disk: $TARGET"
+  lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS "$TARGET"
+  echo
+  echo "WARNING: Continuing will ERASE ALL DATA on $TARGET"
+  confirm "Destroy all partitions on $TARGET and install Etheris OS?"
+
+  echo "Filesystem:"
+  echo "  ext4  — simple mutable root (default)"
+  echo "  btrfs — mutable root with @/@home/@var_log (preferred later for A/B immutability)"
+  read -r -p "Filesystem [ext4/btrfs] (default ext4): " fs_in || true
+  case "${fs_in:-ext4}" in
+    ext4|btrfs) FS="$fs_in" ;;
+    *) die "Unsupported filesystem: $fs_in" ;;
+  esac
+
+  read -r -p "Hostname [etheris]: " HOSTNAME
+  HOSTNAME="${HOSTNAME:-etheris}"
+  read -r -p "Username: " USERNAME
+  [[ -n "$USERNAME" ]] || die "Username required"
+  [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "Invalid username"
+  read -r -s -p "Password: " PASS1; echo
+  read -r -s -p "Password (again): " PASS2; echo
+  [[ "$PASS1" == "$PASS2" ]] || die "Passwords do not match"
+  [[ -n "$PASS1" ]] || die "Password empty"
+
+  read -r -p "Locale [en_US.UTF-8]: " LOCALE
+  LOCALE="${LOCALE:-en_US.UTF-8}"
+  read -r -p "Timezone [UTC]: " TZ
+  TZ="${TZ:-UTC}"
+fi
+
+info "Selected target disk: $TARGET"
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS "$TARGET" || true
+
+echo
+info "Installation summary"
+echo "  Disk:      $TARGET"
+echo "  Filesystem:$FS"
+echo "  Hostname:  $HOSTNAME"
+echo "  User:      $USERNAME"
+echo "  Locale:    $LOCALE"
+echo "  Timezone:  $TZ"
+echo "  Boot:      UEFI systemd-boot"
+echo "  Desktop:   Etheris (Sway)"
+echo "  Mode:      $([[ $AUTO -eq 1 ]] && echo auto || echo interactive)"
+confirm "Proceed with installation onto $TARGET?"
+MNT=/mnt
+umount -R "$MNT" 2>/dev/null || true
+
+info "Partitioning $TARGET"
+sgdisk --zap-all "$TARGET"
+sgdisk -n1:0:+1G -t1:EF00 -c1:"EFI System" "$TARGET"
+sgdisk -n2:0:0   -t2:8300 -c2:"Etheris Root" "$TARGET"
+sleep 1
+partprobe "$TARGET" || true
+# Resolve partition names (NVMe uses p1)
+if [[ -b "${TARGET}p1" ]]; then
+  P1="${TARGET}p1"; P2="${TARGET}p2"
+elif [[ -b "${TARGET}1" ]]; then
+  P1="${TARGET}1"; P2="${TARGET}2"
+else
+  die "Could not find partitions on $TARGET"
+fi
+
+info "Formatting"
+mkfs.fat -F32 -n EFI "$P1"
+case "$FS" in
+  ext4) mkfs.ext4 -F -L Etheris "$P2" ;;
+  btrfs) mkfs.btrfs -f -L Etheris "$P2" ;;
+esac
+
+info "Mounting"
+BTRFS_OPTS="defaults,noatime,compress=zstd:3"
+if [[ "$FS" == btrfs ]]; then
+  # Future-friendly layout: separate home/log from OS root (still mutable today).
+  # Later A/B can replace @ with @a/@b without moving @home.
+  mount "$P2" "$MNT"
+  btrfs subvolume create "$MNT/@"
+  btrfs subvolume create "$MNT/@home"
+  btrfs subvolume create "$MNT/@var_log"
+  umount "$MNT"
+  mount -o "${BTRFS_OPTS},subvol=@" "$P2" "$MNT"
+  mkdir -p "$MNT/home" "$MNT/var/log" "$MNT/boot"
+  mount -o "${BTRFS_OPTS},subvol=@home" "$P2" "$MNT/home"
+  mount -o "${BTRFS_OPTS},subvol=@var_log" "$P2" "$MNT/var/log"
+else
+  mount "$P2" "$MNT"
+  mkdir -p "$MNT/boot"
+fi
+mount "$P1" "$MNT/boot"
+
+info "Installing base system (desktop + gaming stack)"
+# Ensure multilib for Steam / lib32 graphics during pacstrap
+if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+  if grep -q '^#\[multilib\]' /etc/pacman.conf; then
+    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
+  else
+    printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+  fi
+fi
+# Core desktop install set. Steam/gaming is default on disk installs too
+# (live ISO already ships the stack). Opt out: ETHERIS_INSTALL_GAMING=0
+PKGS=(base linux linux-firmware networkmanager pipewire pipewire-pulse wireplumber
+  sway swaybg swayidle swaylock waybar foot wofi rofi mako pcmanfm
+  gvfs gvfs-mtp gvfs-smb gvfs-nfs
+  warpinator blueman bluez-obex avahi
+  xdg-desktop-portal-wlr greetd greetd-regreet greetd-tuigreet
+  sudo polkit polkit-gnome nano micro git nftables
+  amd-ucode intel-ucode efibootmgr dosfstools e2fsprogs
+  iwd wireless-regdb
+  mesa mesa-utils vulkan-icd-loader vulkan-intel vulkan-radeon
+  intel-media-driver libva-utils
+  bluez bluez-utils
+  lm_sensors cpupower)
+# Gaming stack: ON by default for interactive and --auto. Lean: ETHERIS_INSTALL_GAMING=0
+GAMING="${ETHERIS_INSTALL_GAMING:-1}"
+if [[ "$GAMING" == "1" ]]; then
+  info "Including Steam/gaming packages"
+  if [[ -f /usr/local/share/etheris/gaming-packages.list ]]; then
+    mapfile -t _gpkgs < <(grep -vE '^\s*(#|$)' /usr/local/share/etheris/gaming-packages.list)
+    PKGS+=("${_gpkgs[@]}")
+  else
+    PKGS+=(lib32-mesa lib32-vulkan-icd-loader lib32-vulkan-intel lib32-vulkan-radeon
+      lib32-pipewire lib32-libpipewire lib32-alsa-plugins lib32-libpulse
+      lib32-gnutls lib32-sqlite lib32-libcups lib32-vkd3d
+      openal vkd3d
+      steam steam-devices gamemode lib32-gamemode mangohud lib32-mangohud
+      gamescope wine wine-mono wine-gecko winetricks zenity cabextract
+      protontricks umu-launcher
+      gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav
+      vulkan-tools libva-intel-driver)
+  fi
+else
+  info "Lean install (no Steam). Default is gaming ON; you set ETHERIS_INSTALL_GAMING=0."
+fi
+[[ "$FS" == btrfs ]] && PKGS+=(btrfs-progs)
+pacstrap -K "$MNT" "${PKGS[@]}"
+
+info "fstab"
+genfstab -U "$MNT" >> "$MNT/etc/fstab"
+
+info "Configuring system"
+arch-chroot "$MNT" bash -s -- "$TZ" "$LOCALE" "$HOSTNAME" "$USERNAME" <<'CHROOT'
+set -euo pipefail
+TZ="$1"; LOCALE="$2"; HOSTNAME="$3"; USERNAME="$4"
+ln -sf "/usr/share/zoneinfo/${TZ}" /etc/localtime
+hwclock --systohc
+sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen || echo "${LOCALE} UTF-8" >> /etc/locale.gen
+locale-gen
+echo "LANG=${LOCALE}" > /etc/locale.conf
+echo "${HOSTNAME}" > /etc/hostname
+cat > /etc/hosts <<EOF
+127.0.0.1 localhost
+::1 localhost
+127.0.1.1 ${HOSTNAME}.localdomain ${HOSTNAME}
+EOF
+id "$USERNAME" >/dev/null 2>&1 || useradd -m -G wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users -s /bin/bash "$USERNAME"
+usermod -aG wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users "$USERNAME"
+# GameMode renice privileges (group created by gamemode package when installed)
+if getent group gamemode >/dev/null 2>&1; then
+  usermod -aG gamemode "$USERNAME"
+fi
+# Polkit already allows wheel admin in GUI (Defaults installs via pkexec).
+# Keep password sudo for interactive terminal use.
+install -d -m 755 /etc/polkit-1/rules.d
+if [[ -f /usr/local/share/etheris/polkit/49-etheris-wheel.rules ]]; then
+  install -m 644 /usr/local/share/etheris/polkit/49-etheris-wheel.rules \
+    /etc/polkit-1/rules.d/49-etheris-wheel.rules
+elif [[ -f /etc/polkit-1/rules.d/49-etheris-wheel.rules ]]; then
+  :
+fi
+# Standard Places folders for the file manager (Downloads, Pictures, …)
+install -d -o "$USERNAME" -g "$USERNAME" \
+  "/home/${USERNAME}/Desktop" \
+  "/home/${USERNAME}/Documents" \
+  "/home/${USERNAME}/Downloads" \
+  "/home/${USERNAME}/Music" \
+  "/home/${USERNAME}/Pictures" \
+  "/home/${USERNAME}/Pictures/Wallpapers" \
+  "/home/${USERNAME}/Pictures/Screenshots" \
+  "/home/${USERNAME}/Videos" \
+  "/home/${USERNAME}/Templates" \
+  "/home/${USERNAME}/Public" \
+  "/home/${USERNAME}/Downloads/Etheris Transfers" \
+  "/home/${USERNAME}/Downloads/Bluetooth"
+if [[ -f /etc/skel/.config/user-dirs.dirs ]]; then
+  install -D -o "$USERNAME" -g "$USERNAME" -m 644 \
+    /etc/skel/.config/user-dirs.dirs "/home/${USERNAME}/.config/user-dirs.dirs"
+fi
+mkdir -p "/home/${USERNAME}/.config/gtk-3.0"
+cat >"/home/${USERNAME}/.config/gtk-3.0/bookmarks" <<EOF
+file:///home/${USERNAME}/Desktop Desktop
+file:///home/${USERNAME}/Documents Documents
+file:///home/${USERNAME}/Downloads Downloads
+file:///home/${USERNAME}/Music Music
+file:///home/${USERNAME}/Pictures Pictures
+file:///home/${USERNAME}/Pictures/Wallpapers Wallpapers
+file:///home/${USERNAME}/Pictures/Screenshots Screenshots
+file:///home/${USERNAME}/Videos Videos
+file:///home/${USERNAME}/Public Public
+file:///home/${USERNAME}/Downloads/Etheris%20Transfers Etheris Transfers
+EOF
+chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
+# Password sudo on installed systems (not NOPASSWD)
+echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel
+chmod 440 /etc/sudoers.d/wheel
+# Enable multilib on installed system
+if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+  if grep -q '^#\[multilib\]' /etc/pacman.conf; then
+    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
+  else
+    printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+  fi
+fi
+systemctl enable NetworkManager greetd nftables bluetooth avahi-daemon
+systemctl mask sshd.service 2>/dev/null || true
+bootctl install
+mkdir -p /boot/loader/entries
+cat > /boot/loader/loader.conf <<EOF
+default etheris.conf
+timeout 3
+console-mode keep
+EOF
+ROOT_UUID=$(findmnt -no UUID /)
+# Microcode early initrd (both packages installed; unused image is harmless if absent)
+{
+  echo "title   Etheris OS"
+  echo "linux   /vmlinuz-linux"
+  [[ -f /boot/amd-ucode.img ]] && echo "initrd  /amd-ucode.img"
+  [[ -f /boot/intel-ucode.img ]] && echo "initrd  /intel-ucode.img"
+  echo "initrd  /initramfs-linux.img"
+  echo "options root=UUID=${ROOT_UUID} rw quiet"
+} > /boot/loader/entries/etheris.conf
+mkdir -p /etc/greetd
+cat > /etc/greetd/config.toml <<EOF
+[terminal]
+vt = 1
+[default_session]
+command = "sway --config /etc/greetd/sway-config"
+user = "greeter"
+EOF
+CHROOT
+# Passwords via chpasswd stdin only (not written into heredoc / logs)
+printf 'root:%s\n%s:%s\n' "$PASS1" "$USERNAME" "$PASS1" | arch-chroot "$MNT" chpasswd
+# Apply Etheris firewall/privacy defaults when present on live medium
+[[ -f /etc/nftables.conf ]] && cp -a /etc/nftables.conf "$MNT/etc/nftables.conf"
+# Neo-Aero greeter (ReGreet) assets from live ISO
+if [[ -d /etc/greetd ]]; then
+  mkdir -p "$MNT/etc/greetd"
+  for f in sway-config regreet.toml regreet.css config.toml; do
+    [[ -f "/etc/greetd/$f" ]] && cp -a "/etc/greetd/$f" "$MNT/etc/greetd/"
+  done
+fi
+[[ -x /usr/local/bin/etheris-greeter-tui ]] && cp -a /usr/local/bin/etheris-greeter-tui "$MNT/usr/local/bin/"
+[[ -f /etc/etheris/privacy.conf ]] && mkdir -p "$MNT/etc/etheris" && cp -a /etc/etheris/privacy.conf "$MNT/etc/etheris/"
+[[ -f /etc/etheris/system-mode.conf ]] && cp -a /etc/etheris/system-mode.conf "$MNT/etc/etheris/"
+[[ -f /etc/etheris/cpu.conf ]] && cp -a /etc/etheris/cpu.conf "$MNT/etc/etheris/"
+mkdir -p "$MNT/usr/local/share/etheris/docs"
+for d in IMMUTABLE.md HARDWARE.md GAMING.md DRIVER-RECOVERY.md; do
+  [[ -f "/usr/local/share/etheris/docs/$d" ]] && cp -a "/usr/local/share/etheris/docs/$d" "$MNT/usr/local/share/etheris/docs/"
+done
+
+[[ -f /etc/sysctl.d/99-etheris-security.conf ]] && cp -a /etc/sysctl.d/99-etheris-security.conf "$MNT/etc/sysctl.d/"
+[[ -d /etc/pacman.d/hooks ]] && mkdir -p "$MNT/etc/pacman.d/hooks" && \
+  cp -a /etc/pacman.d/hooks/etheris-nvidia-pascal-guard.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
+[[ -f /etc/systemd/system/etheris-cpu-setup.service ]] && \
+  cp -a /etc/systemd/system/etheris-cpu-setup.service "$MNT/etc/systemd/system/" 2>/dev/null || true
+PASS1=''
+PASS2=''
+
+# Copy Etheris branding / configs / lag mirrors into target
+info "Installing Etheris overlay"
+mkdir -p "$MNT/etc/etheris" "$MNT/var/lib/etheris"
+cp -a /etc/etheris/channels.conf "$MNT/etc/etheris/" 2>/dev/null || true
+cp -a /var/lib/etheris/. "$MNT/var/lib/etheris/" 2>/dev/null || true
+cp -a /usr/local/bin/etheris-update "$MNT/usr/local/bin/" 2>/dev/null || true
+mkdir -p "$MNT/usr/local" "$MNT/etc/pacman.d"
+cp -a /usr/local/bin/etheris* "$MNT/usr/local/bin/" 2>/dev/null || true
+cp -a /usr/local/share/etheris "$MNT/usr/local/share/" 2>/dev/null || true
+cp -a /etc/pacman.d/mirrorlist "$MNT/etc/pacman.d/mirrorlist"
+# Keep multilib enabled in installed pacman.conf
+if [[ -f /etc/pacman.conf ]]; then
+  cp -a /etc/pacman.conf "$MNT/etc/pacman.conf"
+fi
+cp -a /etc/skel/.config "$MNT/home/${USERNAME}/" 2>/dev/null || true
+arch-chroot "$MNT" chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}"
+
+# Copy VERSION
+mkdir -p "$MNT/usr/local/share/etheris"
+cp /usr/local/share/etheris/VERSION "$MNT/usr/local/share/etheris/VERSION" 2>/dev/null \
+  || echo "$VERSION" > "$MNT/usr/local/share/etheris/VERSION"
+
+# Enable CPU oneshot after overlay (unit + binary now present)
+arch-chroot "$MNT" systemctl enable etheris-cpu-setup.service 2>/dev/null || true
+
+# Milestone 6 — mark first-boot OOBE needed on installed systems (never on live)
+info "First-boot setup flag"
+mkdir -p "$MNT/var/lib/etheris/oobe" "$MNT/etc/etheris"
+[[ -f /etc/etheris/oobe.conf ]] && cp -a /etc/etheris/oobe.conf "$MNT/etc/etheris/oobe.conf"
+if [[ ! -f "$MNT/etc/etheris/oobe.conf" ]] || ! grep -qE '^enabled=1' "$MNT/etc/etheris/oobe.conf"; then
+  cat >"$MNT/etc/etheris/oobe.conf" <<'OOBE'
+enabled=1
+page_keyboard=1
+page_network=1
+page_appearance=1
+page_privacy=1
+OOBE
+fi
+printf 'needed\n' >"$MNT/var/lib/etheris/oobe/state"
+# World-writable state dir so first-login OOBE never prompts for sudo
+chmod 777 "$MNT/var/lib/etheris/oobe"
+chmod 666 "$MNT/var/lib/etheris/oobe/state"
+
+# Post-install hardware/driver recommendation (non-destructive)
+info "Hardware / driver recommendation"
+if [[ -x /usr/local/bin/etheris-hw ]]; then
+  etheris-hw 2>/dev/null | tee -a "$LOG" || true
+fi
+if [[ -x "$MNT/usr/local/bin/etheris-drivers" ]]; then
+  arch-chroot "$MNT" etheris-drivers recommend 2>/dev/null | tee -a "$LOG" || true
+fi
+
+info "Installation finished SUCCESSFULLY"
+echo "Log: $LOG"
+echo "Next: reboot, then run:  etheris-drivers status"
+echo "NVIDIA Pascal users:     etheris-drivers pascal-guide"
+echo "You can reboot into Etheris OS now."
+if [[ "$AUTO" -eq 1 ]]; then
+  if [[ "$NO_REBOOT" -eq 1 ]]; then
+    echo "AUTO: --no-reboot set; leaving system as-is."
+  else
+    echo "AUTO: rebooting…"
+    systemctl reboot
+  fi
+else
+  read -r -p "Reboot now? [y/N]: " rb
+  [[ "${rb,,}" == y* ]] && systemctl reboot
+  echo "Done. You may reboot manually."
+fi

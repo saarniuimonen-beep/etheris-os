@@ -1,0 +1,12 @@
+[Unit]
+Description=Etheris CPU balanced defaults (oneshot)
+After=multi-user.target
+ConditionPathExists=/usr/local/bin/etheris-cpu-setup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/etheris-cpu-setup apply
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

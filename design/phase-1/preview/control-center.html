@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control Center — Etheris Design Phase 1</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .cc {
+      width: min(360px, 92vw);
+      padding: 18px;
+      position: absolute;
+      top: 64px;
+      right: 24px;
+      z-index: 40;
+    }
+    .cc h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .tiles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .tile {
+      padding: 14px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-highlight);
+      min-height: 72px;
+    }
+    .tile.on {
+      border-color: var(--eth-accent);
+      background: var(--eth-accent-soft);
+    }
+    .tile .label {
+      font-size: 11px;
+      color: var(--eth-fg-muted);
+      margin-bottom: 6px;
+    }
+    .tile .value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .row-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 12px 0;
+    }
+    .row-ctrl span {
+      width: 72px;
+      font-size: 12px;
+      color: var(--eth-fg-muted);
+    }
+    .shortcuts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a>
+      <a href="desktop.html">Desktop</a>
+      <a href="launcher.html">Launcher</a>
+      <a href="control-center.html" aria-current="page">Control Center</a>
+      <a href="settings.html">Settings</a>
+      <a href="login.html">Login</a>
+      <a href="atmospheres.html">Atmospheres</a>
+      <a href="extras.html">Extras</a>
+    </nav>
+    <div class="atm-picker">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <header class="panel">
+      <img class="mark" src="assets/mark.svg" alt="" />
+      <span class="brand-word">etheris</span>
+      <span class="sep"></span>
+      <div class="ws"><span class="on"></span><span></span><span></span></div>
+      <span class="pill" style="border:1px solid var(--eth-accent)">CC</span>
+      <span class="clock">Thu 19:42</span>
+    </header>
+
+    <aside class="glass cc pop" aria-label="Control Center">
+      <h2>Control Center</h2>
+      <div class="tiles">
+        <div class="tile on"><div class="label">Network</div><div class="value">Etheris‑5G</div></div>
+        <div class="tile"><div class="label">Bluetooth</div><div class="value">Off</div></div>
+        <div class="tile on"><div class="label">Battery</div><div class="value">72%</div></div>
+        <div class="tile"><div class="label">Do Not Disturb</div><div class="value">Off</div></div>
+      </div>
+
+      <div class="row-ctrl">
+        <span>Audio</span>
+        <input class="slider" type="range" min="0" max="100" value="64" aria-label="Volume" />
+      </div>
+      <div class="row-ctrl">
+        <span>Bright</span>
+        <input class="slider" type="range" min="0" max="100" value="80" aria-label="Brightness" />
+      </div>
+
+      <div class="row-ctrl">
+        <span>DND</span>
+        <button type="button" class="toggle" aria-pressed="false" aria-label="Do Not Disturb" onclick="this.classList.toggle('on');this.setAttribute('aria-pressed', this.classList.contains('on'))"></button>
+      </div>
+
+      <div class="shortcuts">
+        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none">Settings</a>
+        <a class="btn btn-ghost" href="extras.html" style="text-decoration:none">Wallpaper</a>
+        <button type="button" class="btn btn-ghost">Display</button>
+      </div>
+    </aside>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

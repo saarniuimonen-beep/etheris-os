@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# Etheris browser launcher.
+# Firefox warm-start via Sway scratchpad → first open after login is typically <1s.
+# True virgin cold start of Firefox is multi-second; preload is the supported path.
+set -euo pipefail
+
+export MOZ_ENABLE_WAYLAND="${MOZ_ENABLE_WAYLAND:-1}"
+export MOZ_USE_XINPUT2="${MOZ_USE_XINPUT2:-1}"
+# Cap glibc arenas (also set globally; reinforce for the browser tree).
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+MARK="$RUNTIME/etheris-browser.ready"
+LOG="$RUNTIME/etheris-browser.log"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
+# Skip preload below this free RAM (kB) so idle stays lean on small VMs.
+PRELOAD_MIN_KB="${ETHERIS_BROWSER_PRELOAD_MIN_KB:-640000}"
+
+default_browser() {
+  local d
+  d="$(grep -E '^default_browser=' "$CONF" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  printf '%s\n' "${d:-firefox}"
+}
+
+preload_enabled() {
+  local v
+  v="$(grep -E '^browser_preload=' "$CONF" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  case "${v:-on}" in
+    off|0|false|no) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Preload is Firefox-only (scratchpad warm process).
+if [[ "${1:-}" == "--preload" || "${1:-}" == "preload" ]]; then
+  if [[ "$(default_browser)" != "firefox" ]]; then
+    exit 0
+  fi
+fi
+
+# Non-Firefox defaults: hand off (no warm path).
+if [[ "${1:-}" != "--preload" && "${1:-}" != "preload" && "${1:-}" != "--help" && "${1:-}" != "-h" && "${1:-}" != "--status" ]]; then
+  def="$(default_browser)"
+  if [[ "$def" != "firefox" ]]; then
+    if [[ -x /usr/local/bin/etheris-defaults ]]; then
+      exec /usr/local/bin/etheris-defaults open browser "$def" "$@"
+    elif [[ -x /usr/local/bin/etheris-browsers ]]; then
+      exec /usr/local/bin/etheris-browsers open "$def" "$@"
+    fi
+  fi
+fi
+
+BIN="$(command -v firefox || true)"
+if [[ -z "$BIN" ]]; then
+  echo "etheris-browser: firefox not installed — try: etheris-browsers" >&2
+  exit 127
+fi
+
+firefox_running() {
+  pgrep -u "$USER" -x firefox >/dev/null 2>&1
+}
+
+firefox_mapped() {
+  swaymsg -t get_tree 2>/dev/null | grep -Eq '"app_id": "?firefox"?'
+}
+
+sway_firefox() {
+  swaymsg "[app_id=firefox] $*" >/dev/null 2>&1
+}
+
+move_to_scratchpad() {
+  command -v swaymsg >/dev/null 2>&1 || return 1
+  local i
+  for i in $(seq 1 120); do
+    if firefox_mapped; then
+      sway_firefox move scratchpad || true
+      # Confirm it left the visible workspace.
+      sleep 0.05
+      return 0
+    fi
+    sleep 0.05
+  done
+  return 1
+}
+
+show_from_scratchpad() {
+  command -v swaymsg >/dev/null 2>&1 || return 1
+  local i
+  for i in $(seq 1 40); do
+    if firefox_mapped; then
+      sway_firefox scratchpad show || sway_firefox focus || true
+      return 0
+    fi
+    firefox_running || return 1
+    sleep 0.025
+  done
+  return 1
+}
+
+mem_available_kb() {
+  awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+preload() {
+  if ! preload_enabled; then
+    echo "$(date -Is) preload disabled (browser_preload=off)" >>"$LOG"
+    exit 0
+  fi
+  if firefox_running; then
+    if firefox_mapped; then
+      sway_firefox move scratchpad || true
+    fi
+    touch "$MARK"
+    exit 0
+  fi
+  local avail
+  avail="$(mem_available_kb)"
+  if [[ "$avail" -lt "$PRELOAD_MIN_KB" ]]; then
+    echo "$(date -Is) preload skipped (MemAvailable=${avail} kB < ${PRELOAD_MIN_KB})" >>"$LOG"
+    exit 0
+  fi
+  {
+    echo "$(date -Is) preload start (MemAvailable=${avail} kB)"
+    # Blank window: fastest paint, smallest first RSS vs about:home.
+    "$BIN" --new-window about:blank >>"$LOG" 2>&1 &
+    if move_to_scratchpad; then
+      touch "$MARK"
+      echo "$(date -Is) preload ready"
+    else
+      echo "$(date -Is) preload: firefox started but window not mapped in time"
+      # Still mark — process is warm; open path will focus/wait.
+      touch "$MARK"
+    fi
+  } &
+  exit 0
+}
+
+status() {
+  printf 'default_browser=%s\n' "$(default_browser)"
+  printf 'preload_enabled=%s\n' "$(preload_enabled && echo yes || echo no)"
+  printf 'firefox_running=%s\n' "$(firefox_running && echo yes || echo no)"
+  printf 'firefox_mapped=%s\n' "$(firefox_mapped && echo yes || echo no)"
+  printf 'ready_mark=%s\n' "$([[ -f "$MARK" ]] && echo yes || echo no)"
+  printf 'MemAvailable_kB=%s\n' "$(mem_available_kb)"
+}
+
+case "${1:-}" in
+  --preload|preload) preload ;;
+  --status) status; exit 0 ;;
+  --help|-h)
+    echo "Usage: etheris-browser [--preload|--status] [url...]"
+    echo "Default browser: $(default_browser)  (change with etheris-browsers)"
+    echo "Disable warm preload: browser_preload=off in ~/.config/etheris/settings.conf"
+    exit 0
+    ;;
+esac
+
+# Warm path: process already running (scratchpad or visible).
+if firefox_running; then
+  if [[ $# -eq 0 ]]; then
+    if show_from_scratchpad; then
+      exit 0
+    fi
+    # Process up but no window yet — wait briefly for preload race.
+    if [[ -f "$MARK" ]]; then
+      if show_from_scratchpad; then
+        exit 0
+      fi
+    fi
+    exec "$BIN" --new-window about:blank
+  fi
+  exec "$BIN" "$@"
+fi
+
+# Cold path (no warm process): blank start is leaner/faster than about:home.
+if [[ $# -eq 0 ]]; then
+  exec "$BIN" about:blank
+fi
+exec "$BIN" "$@"

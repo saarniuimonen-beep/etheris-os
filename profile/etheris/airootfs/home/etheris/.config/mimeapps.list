@@ -1,0 +1,10 @@
+[Default Applications]
+text/html=etheris-browser.desktop
+x-scheme-handler/http=etheris-browser.desktop
+x-scheme-handler/https=etheris-browser.desktop
+application/xhtml+xml=etheris-browser.desktop
+
+[Added Associations]
+text/html=etheris-browser.desktop;
+x-scheme-handler/http=etheris-browser.desktop;
+x-scheme-handler/https=etheris-browser.desktop;

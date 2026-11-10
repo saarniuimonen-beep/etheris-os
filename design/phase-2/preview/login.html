@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .login-stage {
+      background: radial-gradient(ellipse 70% 50% at 50% 18%, color-mix(in srgb, var(--eth-accent) 22%, transparent), transparent 55%),
+        var(--eth-wallpaper) center/cover, var(--eth-bg-deep);
+    }
+    .hero { position:absolute; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; text-align:center; }
+    .brand { font-size:clamp(36px,6vw,56px); font-weight:700; letter-spacing:-0.03em; margin:12px 0 0; }
+    .time { font-size:clamp(48px,8vw,72px); font-weight:300; letter-spacing:-0.04em; margin:20px 0 0; font-variant-numeric:tabular-nums; }
+    .date { color:var(--eth-fg-muted); margin-bottom:24px; }
+    .card { width:min(360px,100%); padding:22px; text-align:left; }
+    .users { display:flex; gap:10px; margin-bottom:14px; }
+    .user { flex:1; padding:12px 8px; border-radius:12px; border:1px solid var(--eth-border); background:var(--eth-highlight); text-align:center; font-size:12px; }
+    .user.on { border-color:var(--eth-accent); background:var(--eth-accent-soft); }
+    .avatar { width:40px; height:40px; border-radius:50%; margin:0 auto 8px; background:linear-gradient(145deg,var(--eth-accent),var(--eth-accent-2)); }
+    .session { display:flex; gap:8px; margin-top:12px; }
+    .session select { flex:1; padding:10px; border-radius:8px; border:1px solid var(--eth-border); background:var(--eth-input); color:var(--eth-fg); font-family:inherit; }
+    .power { position:absolute; bottom:28px; right:28px; z-index:20; display:flex; gap:8px; }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html" aria-current="page">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="stage login-stage">
+    <div class="hero">
+      <img src="assets/mark.svg" width="56" height="56" alt="" />
+      <div class="brand">Etheris OS</div>
+      <div class="time">20:18</div>
+      <div class="date">Thursday, 8 November</div>
+      <form class="glass card pop" onsubmit="return false">
+        <div class="users">
+          <div class="user on"><div class="avatar"></div>demo</div>
+          <div class="user"><div class="avatar" style="opacity:.7"></div>guest</div>
+        </div>
+        <label for="pw" style="font-size:12px;color:var(--eth-fg-muted)">Password</label>
+        <input class="input" id="pw" type="password" placeholder="Enter password" style="margin-top:6px" />
+        <div class="session">
+          <select aria-label="Session"><option selected>Etheris (Sway)</option><option>Sway (stock)</option></select>
+          <button class="btn btn-primary" type="submit">Sign in</button>
+        </div>
+      </form>
+    </div>
+    <p class="note-banner">Concept only — live greeter stays greetd + tuigreet until LOGIN milestone.</p>
+    <div class="power">
+      <button type="button" class="btn btn-ghost">Sleep</button>
+      <button type="button" class="btn btn-ghost">Restart</button>
+      <button type="button" class="btn btn-danger">Shut down</button>
+    </div>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

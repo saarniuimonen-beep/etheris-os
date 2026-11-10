@@ -1,0 +1,393 @@
+# device_id	family	support	driver	name
+0042	intel-graphics	supported	i915	Core Processor Integrated Graphics Controller
+0046	intel-graphics	supported	i915	Core Processor Integrated Graphics Controller
+004a	intel-graphics	supported	i915	Core Processor Integrated Graphics Controller
+0102	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+0106	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+010a	xe	supported	i915	Xeon E3-1200 Processor Family Integrated Graphics Controller
+010b	xe	supported	i915	Xeon E3-1200/2nd Generation Core Processor Family Integrated Graphics Controller
+010e	xe	supported	i915	Xeon E3-1200/2nd Generation Core Processor Family Integrated Graphics Controller
+0112	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+0116	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+0122	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+0126	intel-graphics	supported	i915	2nd Generation Core Processor Family Integrated Graphics Controller
+0152	xe	supported	i915	Xeon E3-1200 v2/3rd Gen Core processor Graphics Controller
+0156	hd	supported	i915	Ivy Bridge mobile GT1 [HD Graphics]
+015a	xe	supported	i915	Xeon E3-1200 v2/Ivy Bridge Graphics Controller
+015e	xe	supported	i915	Xeon E3-1200 v2/3rd Gen Core processor Graphics Controller
+0162	hd4000-era	supported	i915	IvyBridge GT2 [HD Graphics 4000]
+0166	hd4000-era	supported	i915	Ivy Bridge mobile GT2 [HD Graphics 4000]
+016a	xe	supported	i915	Xeon E3-1200 v2/3rd Gen Core processor Graphics Controller
+0172	xe	supported	i915	Xeon E3-1200 v2/3rd Gen Core processor Graphics Controller
+0176	intel-graphics	supported	i915	3rd Gen Core processor Graphics Controller
+0402	xe	supported	i915	Xeon E3-1200 v3/4th Gen Core Processor Integrated Graphics Controller
+0406	intel-graphics	supported	i915	Haswell Integrated Graphics Controller
+040a	xe	supported	i915	Xeon E3-1200 v3 Processor Integrated Graphics Controller
+0412	xe	supported	i915	Xeon E3-1200 v3/4th Gen Core Processor Integrated Graphics Controller
+0416	intel-graphics	supported	i915	4th Gen Core Processor Integrated Graphics Controller
+041a	xe	supported	i915	Xeon E3-1200 v3 Processor Integrated Graphics Controller
+041e	intel-graphics	supported	i915	4th Generation Core Processor Family Integrated Graphics Controller
+08cf	intel-graphics	supported	i915	Atom Processor Z2760 Integrated Graphics Controller
+0a06	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0a16	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0a22	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0a26	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0a2a	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0a2e	intel-graphics	supported	i915	Haswell-ULT Integrated Graphics Controller
+0be0	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be1	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be2	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be3	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be4	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be5	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be6	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be7	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be8	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0be9	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0bea	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0beb	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0bec	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0bed	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0bee	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0bef	intel-graphics	supported	i915	Atom Processor D2xxx/N2xxx Integrated Graphics Controller
+0d12	intel-graphics	supported	i915	Crystal Well Integrated Graphics Controller
+0d16	intel-graphics	supported	i915	Crystal Well Integrated Graphics Controller
+0d22	iris	supported	i915	Crystal Well Integrated Iris Pro Graphics 5200
+0d26	intel-graphics	supported	i915	Crystal Well Integrated Graphics Controller
+0d36	intel-graphics	supported	i915	Crystal Well Integrated Graphics Controller
+0f31	intel-graphics	supported	i915	Atom Processor Z36xxx/Z37xxx Series Graphics & Display
+1132	intel-graphics	supported	i915	82815 Chipset Graphics Controller (CGC)
+1240	intel-graphics	supported	i915	82752 (752) AGP Graphics Accelerator
+1602	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+1606	hd	supported	i915	Broadwell-U GT1 [HD Graphics]
+160a	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+160b	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+160d	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+160e	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+1612	hd	supported	i915	Broadwell-H GT2 [HD Graphics 5600]
+1616	hd	supported	i915	Broadwell-U GT2 [HD Graphics 5500]
+161a	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+161b	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+161d	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+161e	hd	supported	i915	Broadwell-Y GT2 [HD Graphics 5300]
+1622	iris	supported	i915	Broadwell-DT/H GT3 [Iris Pro Graphics 6200]
+1626	hd	supported	i915	Broadwell-U GT3 [HD Graphics 6000]
+162a	iris	supported	i915	Broadwell-DT GT3 [Iris Pro Graphics P6300]
+162b	iris	supported	i915	Broadwell-U GT3 [Iris Graphics 6100]
+162d	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+162e	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+1632	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+1636	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+163a	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+163b	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+163d	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+163e	intel-graphics	supported	i915	Broadwell-U Integrated Graphics
+1902	hd	supported	i915	Skylake-S GT1 [HD Graphics 510]
+1906	hd	supported	i915	Skylake-U GT1 [HD Graphics 510]
+190b	hd	supported	i915	HD Graphics 510
+1912	hd	supported	i915	Skylake-S GT2 [HD Graphics 530]
+1916	hd	supported	i915	Skylake-U GT2 [HD Graphics 520]
+191b	hd	supported	i915	Skylake-H GT2 [HD Graphics 530]
+191d	hd	supported	i915	Skylake-DT/H GT2 [HD Graphics P530]
+191e	hd	supported	i915	Skylake-Y GT2 [HD Graphics 515]
+1921	hd	supported	i915	HD Graphics 520
+1923	hd	supported	i915	HD Graphics 535
+1926	iris	supported	i915	Skylake-U GT3 [Iris Graphics 540]
+1927	iris	supported	i915	Skylake-U GT3 [Iris Graphics 550]
+192b	iris	supported	i915	Iris Graphics 555
+192d	iris	supported	i915	Skylake-H GT3 [Iris Graphics P555]
+1932	iris	supported	i915	Iris Pro Graphics 580
+193a	iris	supported	i915	Skylake-H GT4 [Iris Pro Graphics P580]
+193b	iris	supported	i915	Skylake-H GT4 [Iris Pro Graphics 580]
+193d	iris	supported	i915	Skylake-H GT4 [Iris Pro Graphics P580]
+1a12	intel-graphics	supported	i915	Timna CPU Graphics
+22b0	intel-graphics	supported	i915	Atom/Celeron/Pentium Processor x5-E8000/J3xxx/N3xxx Integrated Graphics Controller
+22b1	intel-graphics	supported	i915	Atom/Celeron/Pentium Processor x5-E8000/J3xxx/N3xxx Integrated Graphics Controller
+2562	intel-graphics	supported	i915	82845G/GL[Brookdale-G]/GE Chipset Integrated Graphics Device
+2572	intel-graphics	supported	i915	82865G Integrated Graphics Controller
+2582	intel-graphics	supported	i915	82915G/GV/910GL Integrated Graphics Controller
+258a	intel-graphics	supported	i915	E7221 Integrated Graphics Controller
+2592	intel-graphics	supported	i915	Mobile 915GM/GMS/910GML Express Graphics Controller
+2772	intel-graphics	supported	i915	82945G/GZ Integrated Graphics Controller
+2776	intel-graphics	supported	i915	82945G/GZ Integrated Graphics Controller
+2780	intel-graphics	supported	i915	82915G/GV/GL/910GL [Grantsdale] Graphics Device
+2782	intel-graphics	supported	i915	82915G Integrated Graphics Controller
+2792	intel-graphics	supported	i915	Mobile 915GM/GMS/910GML Express Graphics Controller
+27a2	intel-graphics	supported	i915	Mobile 945GM/GMS, 943/940GML Express Integrated Graphics Controller
+27a6	intel-graphics	supported	i915	Mobile 945GM/GMS/GME, 943/940GML Express Integrated Graphics Controller
+27ae	intel-graphics	supported	i915	Mobile 945GSE Express Integrated Graphics Controller
+2972	intel-graphics	supported	i915	82946GZ/GL Integrated Graphics Controller
+2973	intel-graphics	supported	i915	82946GZ/GL Integrated Graphics Controller
+2982	intel-graphics	supported	i915	82G35 Express Integrated Graphics Controller
+2983	intel-graphics	supported	i915	82G35 Express Integrated Graphics Controller
+2992	intel-graphics	supported	i915	82Q963/Q965 Integrated Graphics Controller
+2993	intel-graphics	supported	i915	82Q963/Q965 Integrated Graphics Controller
+29a2	intel-graphics	supported	i915	82G965 Integrated Graphics Controller
+29a3	intel-graphics	supported	i915	82G965 Integrated Graphics Controller
+29b2	intel-graphics	supported	i915	82Q35 Express Integrated Graphics Controller
+29b3	intel-graphics	supported	i915	82Q35 Express Integrated Graphics Controller
+29c2	intel-graphics	supported	i915	82G33/G31 Express Integrated Graphics Controller
+29c3	intel-graphics	supported	i915	82G33/G31 Express Integrated Graphics Controller
+29d2	intel-graphics	supported	i915	82Q33 Express Integrated Graphics Controller
+29d3	intel-graphics	supported	i915	82Q33 Express Integrated Graphics Controller
+2a02	intel-graphics	supported	i915	Mobile GM965/GL960 Integrated Graphics Controller (primary)
+2a03	intel-graphics	supported	i915	Mobile GM965/GL960 Integrated Graphics Controller (secondary)
+2a12	intel-graphics	supported	i915	Mobile GME965/GLE960 Integrated Graphics Controller
+2a13	intel-graphics	supported	i915	Mobile GME965/GLE960 Integrated Graphics Controller
+2a41	intel-graphics	supported	i915	Mobile 4 Series Chipset PCI Express Graphics Port
+2a42	intel-graphics	supported	i915	Mobile 4 Series Chipset Integrated Graphics Controller
+2a43	intel-graphics	supported	i915	Mobile 4 Series Chipset Integrated Graphics Controller
+2e02	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e03	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e12	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e13	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e22	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e23	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e32	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e33	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e42	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e43	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e5b	intel-graphics	supported	i915	Graphics Media Accelerator 500 Graphics
+2e92	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+2e93	intel-graphics	supported	i915	4 Series Chipset Integrated Graphics Controller
+3184	uhd	supported	i915	GeminiLake [UHD Graphics 605]
+3185	uhd	supported	i915	GeminiLake [UHD Graphics 600]
+3577	intel-graphics	supported	i915	82830M/MG Integrated Graphics Controller
+3582	intel-graphics	supported	i915	82852/855GM Integrated Graphics Device
+358e	intel-graphics	supported	i915	82854 GMCH Integrated Graphics Device
+3e90	uhd	supported	i915	CoffeeLake-S GT1 [UHD Graphics 610]
+3e91	uhd	supported	i915	CoffeeLake-S GT2 [UHD Graphics 630]
+3e92	uhd	supported	i915	CoffeeLake-S GT2 [UHD Graphics 630]
+3e93	uhd	supported	i915	CoffeeLake-S GT1 [UHD Graphics 610]
+3e94	uhd	supported	i915	Coffee Lake-S GT2 [UHD Graphics P630]
+3e96	uhd	supported	i915	CoffeeLake-S GT2 [UHD Graphics P630]
+3e98	uhd	supported	i915	CoffeeLake-S GT2 [UHD Graphics 630]
+3e9a	uhd	supported	i915	Coffee Lake-S GT2 [UHD Graphics P630]
+3e9b	uhd	supported	i915	CoffeeLake-H GT2 [UHD Graphics 630]
+3e9c	uhd	supported	i915	Coffee Lake-S GT1 [UHD Graphics 610]
+3ea0	uhd	supported	i915	WhiskeyLake-U GT2 [UHD Graphics 620]
+3ea1	uhd	supported	i915	Whiskey Lake-U GT1 [UHD Graphics 610]
+3ea5	iris	supported	i915	CoffeeLake-U GT3e [Iris Plus Graphics 655]
+3ea6	iris	supported	i915	Coffee Lake-U GT3 [Iris Plus Graphics 645]
+3ea8	iris	supported	i915	Coffee Lake-U GT3 [Iris Plus Graphics 655]
+3ea9	uhd	supported	i915	Coffee Lake-U GT2 [UHD Graphics 620]
+4100	intel-graphics	supported	i915	Moorestown Graphics and Video
+4108	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+4109	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410a	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410b	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410c	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410d	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410e	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+410f	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+4555	uhd	supported	i915	Elkhart Lake [UHD Graphics Gen11 16EU]
+4571	uhd	supported	i915	Elkhart Lake [UHD Graphics Gen11 32EU]
+4626	intel-graphics	supported	i915	Alder Lake-P Integrated Graphics Controller
+4628	uhd	supported	i915	Alder Lake-UP3 GT2 [UHD Graphics]
+462a	uhd	supported	i915	AlderLake-P [UHD Graphics]
+4636	uhd	supported	i915	AlderLake-P [UHD Graphics]
+4638	uhd	supported	i915	AlderLake-P [UHD Graphics]
+463a	uhd	supported	i915	AlderLake-P [UHD Graphics]
+4680	uhd	supported	i915	Alder Lake-S GT1 [UHD Graphics 770]
+4682	uhd	supported	i915	Alder Lake-S GT1 [UHD Graphics 730]
+4688	uhd	supported	i915	Alder Lake-HX GT1 [UHD Graphics 770]
+468a	uhd	supported	i915	Alder Lake-S [UHD Graphics]
+468b	uhd	supported	i915	Alder Lake-S [UHD Graphics]
+4690	uhd	supported	i915	Alder Lake-S GT1 [UHD Graphics 770]
+4692	uhd	supported	i915	Alder Lake-S GT1 [UHD Graphics 730]
+4693	uhd	supported	i915	Alder Lake-S GT1 [UHD Graphics 710]
+46a1	uhd	supported	i915	UHD Graphics
+46a3	uhd	supported	i915	Alder Lake-P GT1 [UHD Graphics]
+46a6	xe	supported	i915	Alder Lake-P GT2 [Iris Xe Graphics]
+46a8	xe	supported	i915	Alder Lake-UP3 GT2 [Iris Xe Graphics]
+46aa	xe	supported	i915	Alder Lake-UP4 GT2 [Iris Xe Graphics]
+46b0	xe	supported	i915	AlderLake-P [Iris Xe Graphics]
+46b1	xe	supported	i915	AlderLake-P [Iris Xe Graphics]
+46b3	uhd	supported	i915	Alder Lake-UP3 GT1 [UHD Graphics]
+46b6	xe	supported	i915	AlderLake-P [Iris Xe Graphics]
+46b8	xe	supported	i915	AlderLake-P [Iris Xe Graphics]
+46ba	xe	supported	i915	AlderLake-P [Iris Xe Graphics]
+46c1	xe	supported	i915	AlderLake-M [Iris Xe Graphics]
+46c3	uhd	supported	i915	Alder Lake-UP4 GT1 [UHD Graphics]
+46d0	uhd	supported	i915	Alder Lake-N [UHD Graphics]
+46d1	uhd	supported	i915	Alder Lake-N [UHD Graphics]
+46d2	uhd	supported	i915	Alder Lake-N [UHD Graphics]
+46d3	intel-graphics	supported	i915	Alder Lake-N [Intel Graphics]
+46d4	intel-graphics	supported	i915	Alder Lake-N [Intel Graphics]
+4905	xe	supported	i915	DG1 [Iris Xe MAX Graphics]
+4906	xe	supported	i915	DG1 [Iris Xe Pod]
+4908	xe	supported	i915	DG1 [Iris Xe Graphics]
+4909	xe	supported	i915	DG1 [Iris Xe MAX 100]
+4c8a	uhd	supported	i915	11th Gen Core Processor 8C DT GT1 [UHD Graphics 750]
+4c8b	uhd	supported	i915	RocketLake-S GT1 [UHD Graphics 730]
+4c90	uhd	supported	i915	11th Gen Core Processor 8C WS GT1 [UHD Graphics P750]
+4c9a	uhd	supported	i915	RocketLake-S [UHD Graphics]
+4e55	uhd	supported	i915	JasperLake [UHD Graphics]
+4e61	uhd	supported	i915	JasperLake [UHD Graphics]
+4e71	uhd	supported	i915	JasperLake [UHD Graphics]
+4f80	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f81	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f82	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f83	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f84	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f85	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f86	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f87	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f88	xe	supported	i915	DG2 [Intel Xe Graphics]
+4f89	xe	supported	i915	ACMP [Xe Graphics]
+4f8c	xe	supported	i915	ACMP [Xe Graphics]
+5002	intel-graphics	supported	i915	LE80578 Graphics Processor Unit
+5690	arc	supported	xe-or-i915	DG2 [Arc A770M]
+5691	arc	supported	xe-or-i915	DG2 [Arc A730M]
+5692	arc	supported	xe-or-i915	DG2 [Arc A550M]
+5693	arc	supported	xe-or-i915	DG2 [Arc A370M]
+5694	arc	supported	xe-or-i915	DG2 [Arc A350M]
+5695	xe	supported	i915	DG2 [Iris Xe MAX A200M]
+5696	arc	supported	xe-or-i915	DG2 [Arc A570M]
+5697	arc	supported	xe-or-i915	DG2 [Arc A530M]
+5698	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56a0	arc	supported	xe-or-i915	DG2 [Arc A770]
+56a1	arc	supported	xe-or-i915	DG2 [Arc A750]
+56a2	arc	supported	xe-or-i915	DG2 [Arc A580]
+56a3	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56a4	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56a5	arc	supported	xe-or-i915	DG2 [Arc A380]
+56a6	arc	supported	xe-or-i915	DG2 [Arc A310]
+56a7	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56a8	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56a9	arc	supported	xe-or-i915	DG2 [Arc Xe Graphics]
+56b0	arc	supported	xe-or-i915	DG2 [Arc Pro A30M]
+56b1	arc	supported	xe-or-i915	DG2 [Arc Pro A40/A50]
+56b2	arc	supported	xe-or-i915	DG2 [Arc Pro A60M]
+56b3	arc	supported	xe-or-i915	DG2 [Arc Pro A60]
+56ba	arc	supported	xe-or-i915	DG2 [Arc A380E]
+56bb	arc	supported	xe-or-i915	DG2 [Arc A310E]
+56bc	arc	supported	xe-or-i915	DG2 [Arc A370E]
+56bd	arc	supported	xe-or-i915	DG2 [Arc A350E]
+56be	arc	supported	xe-or-i915	DG2 [Arc A750E]
+56bf	arc	supported	xe-or-i915	DG2 [Arc A580E]
+5902	hd	supported	i915	Kaby Lake-S GT1 [HD Graphics 610]
+5906	hd	supported	i915	Kaby Lake-U GT1 [HD Graphics 610]
+590b	hd	supported	i915	HD Graphics 610
+5912	hd	supported	i915	Kaby Lake-S GT2 [HD Graphics 630]
+5916	hd	supported	i915	Kaby Lake-U GT2 [HD Graphics 620]
+5917	uhd	supported	i915	Kaby Lake-R GT2 [UHD Graphics 620]
+591b	hd	supported	i915	Kaby Lake-H GT2 [HD Graphics 630]
+591c	uhd	supported	i915	UHD Graphics 615
+591d	hd	supported	i915	Kaby Lake-DT GT2 [HD Graphics P630]
+591e	hd	supported	i915	Kaby Lake-Y GT2 [HD Graphics 615]
+5921	hd	supported	i915	HD Graphics 620
+5923	hd	supported	i915	HD Graphics 635
+5926	iris	supported	i915	Kaby Lake-U GT3 [Iris Plus Graphics 640]
+5927	iris	supported	i915	Kaby Lake-U GT3 [Iris Plus Graphics 650]
+5a84	hd	supported	i915	Apollo Lake [HD Graphics 505]
+5a85	hd	supported	i915	Apollo Lake GT1 [HD Graphics 500]
+6420	intel-graphics	supported	i915	Lunar Lake [Intel Graphics]
+64a0	arc	supported	xe-or-i915	Core Ultra 200V Series Processors Arc Graphics 130V/140V GPU
+64b0	intel-graphics	supported	i915	Lunar Lake [Intel Graphics]
+7120	intel-graphics	supported	i915	82810 GMCH (Graphics Memory Controller Hub)
+7121	intel-graphics	supported	i915	82810 (CGC) Chipset Graphics Controller
+7122	intel-graphics	supported	i915	82810 DC-100 (GMCH) Graphics Memory Controller Hub
+7123	intel-graphics	supported	i915	82810 DC-100 (CGC) Chipset Graphics Controller
+7124	intel-graphics	supported	i915	82810E DC-133 (GMCH) Graphics Memory Controller Hub
+7125	intel-graphics	supported	i915	82810E DC-133 (CGC) Chipset Graphics Controller
+7126	intel-graphics	supported	i915	82810 DC-133 System and Graphics Controller
+7128	intel-graphics	supported	i915	82810-M DC-100 System and Graphics Controller
+712a	intel-graphics	supported	i915	82810-M DC-133 System and Graphics Controller
+7800	intel-graphics	supported	i915	82740 (i740) AGP Graphics Accelerator
+7d40	intel-graphics	supported	i915	Meteor Lake-M [Intel Graphics]
+7d41	intel-graphics	supported	i915	Arrow Lake-U [Intel Graphics]
+7d45	intel-graphics	supported	i915	Meteor Lake-P [Intel Graphics]
+7d51	arc	supported	xe-or-i915	Arrow Lake-P [Arc Pro 130T/140T]
+7d55	arc	supported	xe-or-i915	Meteor Lake-P [Intel Arc Graphics]
+7d60	intel-graphics	supported	i915	Meteor Lake-M [Intel Graphics]
+7d67	intel-graphics	supported	i915	Arrow Lake-S [Intel Graphics]
+7dd1	intel-graphics	supported	i915	Arrow Lake-P [Intel Graphics]
+7dd5	intel-graphics	supported	i915	Meteor Lake-P [Intel Graphics]
+8108	intel-graphics	supported	i915	US15W/US15X SCH [Poulsbo] Graphics Controller
+8109	intel-graphics	supported	i915	US15L/UL11L SCH [Poulsbo] Graphics Controller
+8182	intel-graphics	supported	i915	Atom Processor E6xx Integrated Graphics Controller
+87c0	uhd	supported	i915	UHD Graphics 617
+87ca	uhd	supported	i915	UHD Graphics 617
+8a51	iris	supported	i915	Iris Plus Graphics G7 (Ice Lake)
+8a52	iris	supported	i915	Iris Plus Graphics G7
+8a53	iris	supported	i915	Iris Plus Graphics G7
+8a56	iris	supported	i915	Iris Plus Graphics G1 (Ice Lake)
+8a58	uhd	supported	i915	Ice Lake-Y GT1 [UHD Graphics G1]
+8a5a	iris	supported	i915	Iris Plus Graphics G4 (Ice Lake)
+8a5c	iris	supported	i915	Iris Plus Graphics G4 (Ice Lake)
+9840	uhd	supported	i915	Lakefield GT2 [UHD Graphics]
+9841	uhd	supported	i915	Lakefield GT1.5 [UHD Graphics]
+9a40	xe	supported	i915	Tiger Lake-UP4 GT2 [Iris Xe Graphics]
+9a49	xe	supported	i915	TigerLake-LP GT2 [Iris Xe Graphics]
+9a60	uhd	supported	i915	TigerLake-H GT1 [UHD Graphics]
+9a68	uhd	supported	i915	TigerLake-H GT1 [UHD Graphics]
+9a70	uhd	supported	i915	Tiger Lake-H GT1 [UHD Graphics]
+9a78	uhd	supported	i915	Tiger Lake-LP GT2 [UHD Graphics G4]
+9b21	uhd	supported	i915	Comet Lake-U GT2 [UHD Graphics 620]
+9b41	uhd	supported	i915	CometLake-U GT2 [UHD Graphics]
+9ba4	uhd	supported	i915	Comet Lake-H GT1 [UHD Graphics 610]
+9ba8	uhd	supported	i915	CometLake-S GT1 [UHD Graphics 610]
+9baa	uhd	supported	i915	Comet Lake UHD Graphics
+9bac	uhd	supported	i915	Comet Lake UHD Graphics
+9bc4	uhd	supported	i915	CometLake-H GT2 [UHD Graphics]
+9bc5	uhd	supported	i915	CometLake-S GT2 [UHD Graphics 630]
+9bc6	uhd	supported	i915	Comet Lake-S GT2 [UHD Graphics P630]
+9bc8	uhd	supported	i915	CometLake-S GT2 [UHD Graphics 630]
+9bca	uhd	supported	i915	Comet Lake UHD Graphics
+9bcc	uhd	supported	i915	Comet Lake UHD Graphics
+9be6	uhd	supported	i915	Comet Lake-S GT2 [UHD Graphics P630]
+9bf6	uhd	supported	i915	Coffee Lake-S GT2 [UHD Graphics P630]
+a001	intel-graphics	supported	i915	Atom Processor D4xx/D5xx/N4xx/N5xx Integrated Graphics Controller
+a002	intel-graphics	supported	i915	Atom Processor D4xx/D5xx/N4xx/N5xx Integrated Graphics Controller
+a011	intel-graphics	supported	i915	Atom Processor D4xx/D5xx/N4xx/N5xx Integrated Graphics Controller
+a012	intel-graphics	supported	i915	Atom Processor D4xx/D5xx/N4xx/N5xx Integrated Graphics Controller
+a70d	intel-graphics	supported	i915	Raptor Lake PCI Express 5.0 Graphics Port (PEG010)
+a720	uhd	supported	i915	Raptor Lake-P [UHD Graphics]
+a721	uhd	supported	i915	Raptor Lake-P [UHD Graphics]
+a74d	intel-graphics	supported	i915	Raptor Lake PCI Express 4.0 Graphics Port
+a780	uhd	supported	i915	Raptor Lake-S GT1 [UHD Graphics 770]
+a781	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a782	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a783	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a788	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a789	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a78a	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a78b	uhd	supported	i915	Raptor Lake-S UHD Graphics
+a7a0	xe	supported	i915	Raptor Lake-P [Iris Xe Graphics]
+a7a1	xe	supported	i915	Raptor Lake-P [Iris Xe Graphics]
+a7a8	uhd	supported	i915	Raptor Lake-P [UHD Graphics]
+a7a9	uhd	supported	i915	Raptor Lake-P [UHD Graphics]
+a7aa	intel-graphics	supported	i915	Raptor Lake-P [Intel Graphics]
+a7ab	intel-graphics	supported	i915	Raptor Lake-P [Intel Graphics]
+a7ac	intel-graphics	supported	i915	Raptor Lake-U [Intel Graphics]
+a7ad	intel-graphics	supported	i915	Raptor Lake-U [Intel Graphics]
+b080	arc	supported	xe-or-i915	Panther Lake [Arc B390]
+b081	arc	supported	xe-or-i915	Panther Lake [Arc B370]
+b082	arc	supported	xe-or-i915	Panther Lake [Arc B390]
+b083	arc	supported	xe-or-i915	Panther Lake [Arc B370]
+b084	arc	supported	xe-or-i915	Panther Lake [Arc Pro B390]
+b085	arc	supported	xe-or-i915	Panther Lake [Arc Pro B370]
+b086	arc	supported	xe-or-i915	Panther Lake [Arc Pro B390]
+b087	arc	supported	xe-or-i915	Panther Lake [Arc Pro B370]
+b08f	intel-graphics	supported	i915	Panther Lake [Intel Graphics]
+b090	intel-graphics	supported	i915	Panther Lake [Intel Graphics]
+b0a0	intel-graphics	supported	i915	Panther Lake [Intel Graphics]
+b0b0	intel-graphics	supported	i915	Panther Lake [Intel Graphics]
+b0ff	intel-graphics	supported	i915	Panther Lake [Intel Graphics]
+b640	intel-graphics	supported	i915	Arrow Lake-H [Intel Graphics]
+e202	intel-graphics	supported	i915	Battlemage G21 [Intel Graphics]
+e20b	arc	supported	xe-or-i915	Battlemage G21 [Arc B580]
+e20c	arc	supported	xe-or-i915	Battlemage G21 [Arc B570]
+e20d	intel-graphics	supported	i915	Battlemage G21 [Intel Graphics]
+e210	intel-graphics	supported	i915	Battlemage G21 [Intel Graphics]
+e211	arc	supported	xe-or-i915	Battlemage G21 [Arc Pro B60]
+e212	arc	supported	xe-or-i915	Battlemage G21 [Arc Pro B50]
+e215	intel-graphics	supported	i915	Battlemage G21 [Intel Graphics]
+e216	intel-graphics	supported	i915	Battlemage G21 [Intel Graphics]
+e220	intel-graphics	supported	i915	Battlemage G31 [Intel Graphics]
+e221	intel-graphics	supported	i915	Battlemage G31 [Intel Graphics]
+e222	arc	supported	xe-or-i915	Battlemage G31 [Arc Pro B65]
+e223	arc	supported	xe-or-i915	Battlemage G31 [Arc Pro B70]
+fd80	intel-graphics	supported	i915	Wildcat Lake [Intel Graphics]
+fd81	intel-graphics	supported	i915	Wildcat Lake [Intel Graphics]

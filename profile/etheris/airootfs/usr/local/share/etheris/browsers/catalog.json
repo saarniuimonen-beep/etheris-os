@@ -1,0 +1,113 @@
+{
+  "browsers": [
+    {
+      "id": "firefox",
+      "name": "Firefox",
+      "summary": "Shipped with Etheris · warm-start enabled",
+      "source": "repo",
+      "packages": ["firefox"],
+      "bin": "firefox",
+      "desktop": "firefox",
+      "shipped": true
+    },
+    {
+      "id": "chromium",
+      "name": "Chromium",
+      "summary": "Open-source Chrome engine (Arch official)",
+      "source": "repo",
+      "packages": ["chromium"],
+      "bin": "chromium",
+      "desktop": "chromium"
+    },
+    {
+      "id": "vivaldi",
+      "name": "Vivaldi",
+      "summary": "Feature-rich Chromium browser (Arch official)",
+      "source": "repo",
+      "packages": ["vivaldi", "vivaldi-ffmpeg-codecs"],
+      "bin": "vivaldi-stable",
+      "desktop": "vivaldi-stable"
+    },
+    {
+      "id": "librewolf",
+      "name": "LibreWolf",
+      "summary": "Privacy-focused Firefox fork (Arch official)",
+      "source": "repo",
+      "packages": ["librewolf"],
+      "bin": "librewolf",
+      "desktop": "librewolf"
+    },
+    {
+      "id": "epiphany",
+      "name": "GNOME Web",
+      "summary": "Lightweight WebKit browser",
+      "source": "repo",
+      "packages": ["epiphany"],
+      "bin": "epiphany",
+      "desktop": "org.gnome.Epiphany"
+    },
+    {
+      "id": "falkon",
+      "name": "Falkon",
+      "summary": "KDE Chromium-based browser",
+      "source": "repo",
+      "packages": ["falkon"],
+      "bin": "falkon",
+      "desktop": "org.kde.falkon"
+    },
+    {
+      "id": "qutebrowser",
+      "name": "qutebrowser",
+      "summary": "Keyboard-driven browser",
+      "source": "repo",
+      "packages": ["qutebrowser"],
+      "bin": "qutebrowser",
+      "desktop": "org.qutebrowser.qutebrowser"
+    },
+    {
+      "id": "chrome",
+      "name": "Google Chrome",
+      "summary": "Official Chrome · AUR (user-built)",
+      "source": "aur",
+      "packages": ["google-chrome"],
+      "bin": "google-chrome-stable",
+      "desktop": "google-chrome"
+    },
+    {
+      "id": "edge",
+      "name": "Microsoft Edge",
+      "summary": "Official Edge · AUR (user-built)",
+      "source": "aur",
+      "packages": ["microsoft-edge-stable-bin"],
+      "bin": "microsoft-edge-stable",
+      "desktop": "microsoft-edge"
+    },
+    {
+      "id": "zen",
+      "name": "Zen Browser",
+      "summary": "Firefox-based · AUR (user-built)",
+      "source": "aur",
+      "packages": ["zen-browser-bin"],
+      "bin": "zen-browser",
+      "desktop": "zen-browser"
+    },
+    {
+      "id": "brave",
+      "name": "Brave",
+      "summary": "Privacy Chromium · AUR (user-built)",
+      "source": "aur",
+      "packages": ["brave-bin"],
+      "bin": "brave",
+      "desktop": "brave-browser"
+    },
+    {
+      "id": "floorp",
+      "name": "Floorp",
+      "summary": "Firefox-based · AUR (user-built)",
+      "source": "aur",
+      "packages": ["floorp-bin"],
+      "bin": "floorp",
+      "desktop": "floorp"
+    }
+  ]
+}

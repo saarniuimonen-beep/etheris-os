@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atmospheres — Etheris Design Phase 1</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .atm-page {
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+      color: #e8f4fc;
+    }
+    .atm-page h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+    .atm-page .lead {
+      color: #a8c4d8;
+      margin: 0 0 24px;
+      max-width: 40em;
+    }
+    .atm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .atm-card {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      background: #0a1628;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    }
+    .atm-card .preview {
+      height: 160px;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+    }
+    .atm-card .mini-panel {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 10px;
+      border: 1px solid;
+      backdrop-filter: none;
+    }
+    .atm-card .body {
+      padding: 14px 16px 18px;
+    }
+    .atm-card h2 {
+      margin: 0 0 4px;
+      font-size: 16px;
+    }
+    .atm-card p {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: #a8c4d8;
+    }
+    .swatches {
+      display: flex;
+      gap: 6px;
+    }
+    .swatches i {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body style="background:#02060c;min-height:100vh;margin:0;font-family:Outfit,sans-serif">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a>
+      <a href="desktop.html">Desktop</a>
+      <a href="launcher.html">Launcher</a>
+      <a href="control-center.html">Control Center</a>
+      <a href="settings.html">Settings</a>
+      <a href="login.html">Login</a>
+      <a href="atmospheres.html" aria-current="page">Atmospheres</a>
+      <a href="extras.html">Extras</a>
+    </nav>
+  </div>
+
+  <div class="atm-page">
+    <h1>Atmospheres</h1>
+    <p class="lead">
+      Five presets change wallpaper, accent, and surface tint. Component geometry, type, and interaction
+      states stay identical — one Etheris identity.
+    </p>
+
+    <div class="atm-grid">
+      <article class="atm-card">
+        <div class="preview" style="background-image:url(assets/ocean-glass.svg)">
+          <div class="mini-panel" style="background:rgba(10,22,40,0.72);border-color:rgba(56,189,248,0.28);color:#e8f4fc">
+            <span style="width:8px;height:8px;border-radius:50%;background:#38bdf8"></span> etheris · Ocean Glass
+          </div>
+        </div>
+        <div class="body">
+          <h2>Ocean Glass</h2>
+          <p>Default dark. Sky blue primary, teal secondary. Clear coastal depth.</p>
+          <div class="swatches"><i style="background:#0a1628"></i><i style="background:#38bdf8"></i><i style="background:#2dd4bf"></i><i style="background:#e8f4fc"></i></div>
+        </div>
+      </article>
+
+      <article class="atm-card">
+        <div class="preview" style="background-image:url(assets/aurora.svg)">
+          <div class="mini-panel" style="background:rgba(7,24,32,0.74);border-color:rgba(45,212,191,0.32);color:#e6fbf7">
+            <span style="width:8px;height:8px;border-radius:50%;background:#2dd4bf"></span> etheris · Aurora
+          </div>
+        </div>
+        <div class="body">
+          <h2>Aurora</h2>
+          <p>Luminous teal–mint accents over cool night water. Alive without noise.</p>
+          <div class="swatches"><i style="background:#071820"></i><i style="background:#2dd4bf"></i><i style="background:#5eead4"></i><i style="background:#e6fbf7"></i></div>
+        </div>
+      </article>
+
+      <article class="atm-card">
+        <div class="preview" style="background-image:url(assets/meadow.svg)">
+          <div class="mini-panel" style="background:rgba(12,24,16,0.74);border-color:rgba(163,230,53,0.3);color:#f0fce8">
+            <span style="width:8px;height:8px;border-radius:50%;background:#a3e635"></span> etheris · Meadow
+          </div>
+        </div>
+        <div class="body">
+          <h2>Meadow</h2>
+          <p>Spring lime accents on deep green-black. Nature-forward, still precise.</p>
+          <div class="swatches"><i style="background:#0c1810"></i><i style="background:#a3e635"></i><i style="background:#4ade80"></i><i style="background:#f0fce8"></i></div>
+        </div>
+      </article>
+
+      <article class="atm-card">
+        <div class="preview" style="background-image:url(assets/arctic-glow.svg)">
+          <div class="mini-panel" style="background:rgba(255,255,255,0.78);border-color:rgba(2,132,199,0.3);color:#0c2740">
+            <span style="width:8px;height:8px;border-radius:50%;background:#0284c7"></span> etheris · Arctic Glow
+          </div>
+        </div>
+        <div class="body">
+          <h2>Arctic Glow</h2>
+          <p>First-class light mode. Sky glass whites, crisp cyan actions.</p>
+          <div class="swatches"><i style="background:#f0f7fc"></i><i style="background:#0284c7"></i><i style="background:#0d9488"></i><i style="background:#0c2740"></i></div>
+        </div>
+      </article>
+
+      <article class="atm-card">
+        <div class="preview" style="background-image:url(assets/midnight-ocean.svg)">
+          <div class="mini-panel" style="background:rgba(5,13,24,0.78);border-color:rgba(56,189,248,0.22);color:#dff3ff">
+            <span style="width:8px;height:8px;border-radius:50%;background:#2dd4bf"></span> etheris · Midnight
+          </div>
+        </div>
+        <div class="body">
+          <h2>Midnight Ocean</h2>
+          <p>Deepest night teal. Low luminance, high calm — same chrome language.</p>
+          <div class="swatches"><i style="background:#050d18"></i><i style="background:#2dd4bf"></i><i style="background:#38bdf8"></i><i style="background:#dff3ff"></i></div>
+        </div>
+      </article>
+    </div>
+
+    <p style="margin-top:28px;font-size:13px;color:#6b8aa3">
+      Try any Atmosphere live on
+      <a href="desktop.html">Desktop</a> via the top stage picker — identity stays coherent.
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+/* Atmosphere: Midnight Ocean (deep teal night) */
+[data-atmosphere="midnight-ocean"] {
+  --eth-bg: #050d18;
+  --eth-bg-elevated: #0b1a2c;
+  --eth-bg-deep: #03080f;
+  --eth-fg: #dff3ff;
+  --eth-fg-muted: #7fa8c4;
+  --eth-accent: #2dd4bf;
+  --eth-accent-2: #38bdf8;
+  --eth-accent-soft: rgba(45, 212, 191, 0.30);
+  --eth-border: rgba(56, 189, 248, 0.22);
+  --eth-panel: rgba(5, 13, 24, 0.78);
+  --eth-menu: rgba(5, 13, 24, 0.96);
+  --eth-input: rgba(11, 26, 44, 0.96);
+  --eth-focus: #5eead4;
+  --eth-wallpaper: url("../../preview/assets/midnight-ocean.svg");
+  --eth-atmosphere-name: "Midnight Ocean";
+  --eth-variant: dark;
+}

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Etheris OS — GPU Manager (GTK4). Hardware, drivers, performance link."""
+from __future__ import annotations
+
+import subprocess
+import sys
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-gpu-manager: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+
+def run_out(cmd: list[str], timeout: float = 12.0) -> str:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        return (r.stdout or r.stderr or "").strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+class GpuApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.gpu")
+        self._body = Gtk.Label(xalign=0, wrap=True, selectable=True)
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self, title="Etheris GPU Manager")
+        win.set_default_size(760, 580)
+
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window { background: #07111f; color: #e8f4fc; }
+            .card {
+              background: alpha(#0f2136, 0.92);
+              border: 1px solid alpha(#38bdf8, 0.18);
+              border-radius: 16px; padding: 14px 16px; margin: 10px 0;
+            }
+            label.heading { font-size: 15px; font-weight: 650; }
+            label.caption { color: #9db6cc; font-size: 12px; font-family: monospace; }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        root.set_margin_top(16)
+        root.set_margin_bottom(16)
+        root.set_margin_start(18)
+        root.set_margin_end(18)
+
+        h = Gtk.Label(label="GPU Manager", xalign=0)
+        h.add_css_class("heading")
+        root.append(h)
+        note = Gtk.Label(
+            label="Shows detected GPUs and driver recommendations. "
+            "Performance modes are applied through Etheris Performance Manager.",
+            xalign=0,
+            wrap=True,
+        )
+        note.add_css_class("caption")
+        root.append(note)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        for label, argv in (
+            ("Refresh", None),
+            ("Performance Manager", ["etheris-performance"]),
+            ("Driver status", ["foot", "-e", "sh", "-c", "etheris-drivers status; echo; read -r _"]),
+            ("Recommend drivers", ["foot", "-e", "sh", "-c", "etheris-drivers recommend; echo; read -r _"]),
+        ):
+            b = Gtk.Button(label=label)
+            if argv is None:
+                b.connect("clicked", lambda *_: self._refresh())
+            else:
+                b.connect("clicked", lambda _b, a=argv: self._spawn(a))
+            row.append(b)
+        root.append(row)
+
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        card.add_css_class("card")
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        self._body.add_css_class("caption")
+        scroll.set_child(self._body)
+        card.append(scroll)
+        root.append(card)
+
+        win.set_child(root)
+        win.present()
+        self._refresh()
+
+    def _spawn(self, argv: list[str]) -> None:
+        try:
+            subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    def _refresh(self) -> None:
+        self._body.set_text("Loading…")
+
+        def work() -> None:
+            text = run_out(["etheris-gpu", "status"]) or "GPU status unavailable"
+            GLib.idle_add(self._body.set_text, text)
+
+        import threading
+
+        threading.Thread(target=work, daemon=True).start()
+
+
+def main() -> int:
+    return GpuApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Power Menu
+GenericName=Session power controls
+Comment=Neo-Aero lock, sleep, logout, reboot, shutdown
+Exec=etheris-power-menu
+Icon=system-shutdown
+Terminal=false
+Categories=System;Settings;
+Keywords=power;shutdown;reboot;logout;lock;sleep;etheris;
+StartupNotify=false

@@ -1,0 +1,196 @@
+# Etheris OS 0.1.0-alpha — milestone package set (Sway default)
+# Keep lean for ≤500MB idle. Optional DEs are NOT on the ISO for v0.1.
+
+# --- base / ISO ---
+base
+linux
+linux-firmware
+mkinitcpio
+mkinitcpio-archiso
+syslinux
+memtest86+
+memtest86+-efi
+edk2-shell
+amd-ucode
+intel-ucode
+sof-firmware
+wireless-regdb
+grub
+efibootmgr
+
+# --- networking ---
+networkmanager
+iwd
+wpa_supplicant
+
+# --- audio ---
+pipewire
+pipewire-alsa
+pipewire-pulse
+pipewire-jack
+wireplumber
+pavucontrol
+playerctl
+
+# --- login ---
+greetd
+greetd-regreet
+# tuigreet kept as emergency fallback (etheris-greeter-tui)
+greetd-tuigreet
+
+# --- Sway desktop (Phase 2) ---
+sway
+swaybg
+swayidle
+swaylock
+waybar
+foot
+wofi
+rofi
+mako
+libnotify
+pcmanfm
+gvfs
+gvfs-mtp
+gvfs-smb
+gvfs-nfs
+# File transfers — LAN (Warpinator) + Bluetooth OBEX + SMB browse
+warpinator
+blueman
+bluez-obex
+avahi
+xdg-user-dirs
+xdg-utils
+xdg-desktop-portal
+xdg-desktop-portal-wlr
+polkit
+polkit-gnome
+wl-clipboard
+grim
+slurp
+brightnessctl
+wlsunset
+xorg-xwayland
+
+# --- theming ---
+nwg-look
+papirus-icon-theme
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono-nerd
+ttf-liberation
+adwaita-cursors
+gnome-themes-extra
+librsvg
+# Power menu (Neo-Aero glass UI + one-shot blurred backdrop)
+python
+python-gobject
+gtk4
+webkitgtk-6.0
+imagemagick
+gdk-pixbuf2
+webp-pixbuf-loader
+libjxl
+libavif
+
+# --- apps / tools ---
+firefox
+mousepad
+htop
+fastfetch
+micro
+nano
+git
+curl
+wget
+rsync
+unzip
+zip
+jq
+sudo
+which
+bash-completion
+less
+man-db
+
+# --- install / disks ---
+arch-install-scripts
+dosfstools
+e2fsprogs
+btrfs-progs
+parted
+gptfdisk
+mtools
+reflector
+pv
+
+# --- GPU (open stack on ISO; proprietary NVIDIA via etheris-drivers) ---
+mesa
+mesa-utils
+vulkan-icd-loader
+vulkan-intel
+vulkan-radeon
+vulkan-tools
+intel-media-driver
+libva-intel-driver
+libva-utils
+# libva-mesa-driver merged into mesa on current Arch
+
+# --- multilib / gaming (Steam + Wine + Proton essentials) ---
+lib32-mesa
+lib32-vulkan-icd-loader
+lib32-vulkan-intel
+lib32-vulkan-radeon
+lib32-pipewire
+lib32-libpipewire
+lib32-alsa-plugins
+lib32-libpulse
+lib32-gnutls
+lib32-sqlite
+lib32-libcups
+lib32-vkd3d
+lib32-freetype2
+lib32-curl
+lib32-dbus
+lib32-fontconfig
+steam
+steam-devices
+gamemode
+lib32-gamemode
+mangohud
+lib32-mangohud
+gamescope
+# Wine (system) — Proton itself is delivered by Steam / umu
+wine
+wine-mono
+wine-gecko
+winetricks
+zenity
+cabextract
+vkd3d
+openal
+# Proton helpers (Steam Play + non-Steam)
+protontricks
+umu-launcher
+# Media codecs often needed by launchers / in-game video
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-libav
+# Controllers / Bluetooth peripherals
+bluez
+bluez-utils
+# GameMode is on-demand (no always-on max performance)
+
+# --- CPU helpers ---
+lm_sensors
+cpupower
+# Compressed RAM swap — prevents Steam/browser OOM kills without a disk swapfile
+zram-generator
+
+# essentials
+imv
+file-roller
+# Pin providers so mkarchiso/pacstrap never waits on interactive prompts
+iptables
+nftables

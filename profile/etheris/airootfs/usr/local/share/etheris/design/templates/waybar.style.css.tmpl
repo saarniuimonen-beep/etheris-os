@@ -1,0 +1,131 @@
+* {
+  border: none;
+  border-radius: 0;
+  /* FONT_UI from tokens (Outfit when packaged; falls back to mono already on ISO) */
+  font-family: "@FONT_UI@", "JetBrainsMono Nerd Font", monospace;
+  font-size: 12px;
+  min-height: 0;
+}
+
+window#waybar {
+  background: @BG_PANEL_RGBA@;
+  color: @FG@;
+  border-radius: @RADIUS_PANEL@px;
+  border: 1px solid @BORDER_RGBA@;
+  padding: 0 4px;
+}
+
+#custom-logo {
+  color: @ACCENT@;
+  padding: 0 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+#workspaces {
+  padding: 0 4px;
+}
+
+#workspaces button {
+  padding: 0 7px;
+  color: @FG_SUBTLE@;
+  border-radius: 999px;
+  margin: 3px 1px;
+  background: transparent;
+}
+
+#workspaces button:hover {
+  color: @FG@;
+  background: @HIGHLIGHT@;
+}
+
+#workspaces button.focused,
+#workspaces button.active {
+  color: @ACCENT@;
+  background: @ACCENT_SOFT_RGBA@;
+}
+
+#workspaces button.urgent {
+  color: @DANGER@;
+  background: transparent;
+}
+
+#sway-mode {
+  color: @WARNING@;
+  padding: 0 8px;
+}
+
+#window {
+  color: @FG_MUTED@;
+  padding: 0 10px;
+  font-weight: 500;
+}
+
+#custom-winctl {
+  color: @FG_MUTED@;
+  padding: 0 10px;
+  margin: 3px 2px;
+  border-radius: @RADIUS_CONTROL@px;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+#custom-winctl:hover {
+  color: @FG@;
+  background: @HIGHLIGHT@;
+}
+
+#clock {
+  color: @FG@;
+  padding: 0 14px;
+  font-weight: 600;
+}
+
+#tray {
+  padding: 0 8px;
+}
+
+#tray > .passive { -gtk-icon-effect: dim; }
+#tray > .needs-attention { -gtk-icon-effect: highlight; }
+
+#pulseaudio,
+#network,
+#memory,
+#battery,
+#custom-cc,
+#custom-power,
+#custom-app-files,
+#custom-app-term,
+#custom-app-settings {
+  padding: 0 9px;
+  color: @FG_MUTED@;
+  border-radius: @RADIUS_CONTROL@px;
+  margin: 3px 1px;
+}
+
+#pulseaudio:hover,
+#network:hover,
+#memory:hover,
+#battery:hover,
+#custom-cc:hover,
+#custom-power:hover,
+#custom-app-files:hover,
+#custom-app-term:hover,
+#custom-app-settings:hover {
+  background: @HIGHLIGHT@;
+  color: @FG@;
+}
+
+#battery.warning { color: @WARNING@; }
+#battery.critical { color: @DANGER@; }
+#network.disconnected { color: @DANGER@; }
+
+#custom-cc {
+  color: @FG@;
+  padding: 0 10px;
+}
+
+#custom-power {
+  color: @ACCENT@;
+  padding-right: 14px;
+}

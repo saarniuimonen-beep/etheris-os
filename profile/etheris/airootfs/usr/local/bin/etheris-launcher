@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Etheris OS — Kickoff-style application launcher (Rofi).
+# Styles: wide (default) · slim — set launcher_style in settings.conf
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+ROFI_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rofi"
+SETTINGS="$CONF_DIR/settings.conf"
+PINS="$CONF_DIR/launcher-pins.conf"
+SHARE="${ETHERIS_SHARE:-/usr/local/share/etheris}"
+FAV_MODE="$SHARE/rofi/favorites.mode"
+FALLBACK_WIDE="$SHARE/rofi/etheris.rasi"
+FALLBACK_SLIM="$SHARE/rofi/etheris-slim.rasi"
+
+mkdir -p "$CONF_DIR" "$ROFI_DIR"
+
+launcher_style() {
+  local s
+  s="$(grep -E '^launcher_style=' "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  s="$(printf '%s' "${s:-wide}" | tr '[:upper:]' '[:lower:]')"
+  case "$s" in
+    slim|narrow|thin|compact) echo slim ;;
+    *) echo wide ;;
+  esac
+}
+
+if [[ ! -f "$PINS" ]]; then
+  cat >"$PINS" <<'EOF'
+# One entry per line: desktop-id (without .desktop) or absolute command
+foot
+etheris-files
+etheris-browser
+etheris-defaults
+steam
+etheris-settings
+etheris-wallpaper
+etheris-transfer
+EOF
+fi
+
+# Ensure themes exist (theme-apply refreshes colours into ~/.config/rofi)
+if [[ ! -f "$ROFI_DIR/etheris.rasi" && -f "$FALLBACK_WIDE" ]]; then
+  cp "$FALLBACK_WIDE" "$ROFI_DIR/etheris.rasi"
+fi
+if [[ ! -f "$ROFI_DIR/etheris-slim.rasi" && -f "$FALLBACK_SLIM" ]]; then
+  cp "$FALLBACK_SLIM" "$ROFI_DIR/etheris-slim.rasi"
+fi
+if [[ ! -f "$ROFI_DIR/config.rasi" ]]; then
+  if [[ -f /etc/skel/.config/rofi/config.rasi ]]; then
+    cp /etc/skel/.config/rofi/config.rasi "$ROFI_DIR/config.rasi"
+  else
+    cat >"$ROFI_DIR/config.rasi" <<EOF
+configuration {
+  modi: "pinned:${FAV_MODE},drun,run,window";
+  show-icons: true;
+  icon-theme: "Papirus-Dark";
+  sidebar-mode: true;
+  display-pinned: "Pinned";
+  display-drun: "Apps";
+  display-run: "Run";
+  display-window: "Windows";
+}
+@theme "etheris"
+EOF
+  fi
+fi
+
+mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes"
+[[ -f "$ROFI_DIR/etheris.rasi" ]] && \
+  ln -sfn "$ROFI_DIR/etheris.rasi" \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes/etheris.rasi" 2>/dev/null || true
+[[ -f "$ROFI_DIR/etheris-slim.rasi" ]] && \
+  ln -sfn "$ROFI_DIR/etheris-slim.rasi" \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/rofi/themes/etheris-slim.rasi" 2>/dev/null || true
+
+STYLE="$(launcher_style)"
+THEME="$ROFI_DIR/etheris.rasi"
+PROMPT="Etheris"
+if [[ "$STYLE" == slim ]]; then
+  if [[ -f "$ROFI_DIR/etheris-slim.rasi" ]]; then
+    THEME="$ROFI_DIR/etheris-slim.rasi"
+  elif [[ -f "$FALLBACK_SLIM" ]]; then
+    THEME="$FALLBACK_SLIM"
+  fi
+  PROMPT="Apps"
+fi
+
+rofi_base=(
+  rofi
+  -config "$ROFI_DIR/config.rasi"
+  -theme "$THEME"
+  -show-icons
+  -p "$PROMPT"
+)
+
+if ! command -v rofi >/dev/null 2>&1; then
+  echo "etheris-launcher: rofi not installed" >&2
+  exec wofi --show drun -I -p 'Etheris' "$@"
+fi
+
+mode="${1:-}"
+case "$mode" in
+  pins|pinned|favorites)
+    exec "${rofi_base[@]}" -show pinned
+    ;;
+  drun|apps)
+    exec "${rofi_base[@]}" -show drun
+    ;;
+  run)
+    exec "${rofi_base[@]}" -show run
+    ;;
+  window|windows)
+    exec "${rofi_base[@]}" -show window
+    ;;
+  wide|slim)
+    # Convenience: etheris-launcher slim
+    mkdir -p "$CONF_DIR"
+    if [[ -f "$SETTINGS" ]] && grep -qE '^launcher_style=' "$SETTINGS"; then
+      sed -i "s|^launcher_style=.*|launcher_style=${mode}|" "$SETTINGS"
+    else
+      echo "launcher_style=${mode}" >>"$SETTINGS"
+    fi
+    exec "$0"
+    ;;
+  wofi)
+    shift || true
+    exec wofi --show drun -I -p 'Etheris' "$@"
+    ;;
+  ""|kickoff|launcher|*)
+    exec "${rofi_base[@]}" -show pinned
+    ;;
+esac

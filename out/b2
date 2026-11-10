@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+curl -fs http://10.0.2.2:8765/browsers-apply/usr/local/bin/ethereal-browsers -o /tmp/ethereal-browsers
+curl -fs http://10.0.2.2:8765/browsers-apply/usr/local/bin/ethereal-browsers-ui -o /tmp/ethereal-browsers-ui
+chmod +x /tmp/ethereal-browsers /tmp/ethereal-browsers-ui
+sudo install -m0755 /tmp/ethereal-browsers /usr/local/bin/ethereal-browsers
+sudo install -m0755 /tmp/ethereal-browsers-ui /usr/local/bin/ethereal-browsers-ui
+echo PATCHED
+GSK_RENDERER=cairo ethereal-browsers >/tmp/browsers-ui.log 2>&1 &
+sleep 1
+echo STARTED

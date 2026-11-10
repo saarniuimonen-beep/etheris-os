@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+curl -fs http://10.0.2.2:8765/defaults-apply/etc/skel/.config/sway/config.d/40-ethereal-defaults -o /tmp/40-ethereal-defaults
+mkdir -p "$HOME/.config/sway/config.d"
+cp -f /tmp/40-ethereal-defaults "$HOME/.config/sway/config.d/40-ethereal-defaults"
+sudo install -D -m0644 /tmp/40-ethereal-defaults /etc/skel/.config/sway/config.d/40-ethereal-defaults
+swaymsg reload
+pkill -f ethereal-defaults-ui 2>/dev/null || true
+pkill -f ethereal-browsers-ui 2>/dev/null || true
+sleep 0.3
+GSK_RENDERER=cairo ethereal-defaults &
+echo FLOATED

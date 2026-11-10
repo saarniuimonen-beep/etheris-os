@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris Wallpapers
+Comment=Browse, import, and set wallpapers
+Exec=etheris-wallpaper
+Icon=preferences-desktop-wallpaper
+Terminal=false
+Categories=Settings;DesktopSettings;Graphics;
+Keywords=Etheris;wallpaper;background;pictures;images;
+StartupNotify=true

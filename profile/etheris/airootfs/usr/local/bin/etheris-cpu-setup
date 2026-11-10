@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Etheris OS — CPU microcode / frequency defaults (safe, non-aggressive).
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-cpu-setup status
+  etheris-cpu-setup apply     # root — enable sensible defaults
+  etheris-cpu-setup help
+
+Does not overclock, undervolt, or disable thermal protection.
+Does not force a permanent performance governor.
+EOF
+}
+
+cmd_status() {
+  echo "=== CPU setup status ==="
+  etheris-hw cpu
+  echo
+  if systemctl is-enabled etheris-cpu-setup.service &>/dev/null; then
+    echo "oneshot service: enabled"
+  else
+    echo "oneshot service: not enabled"
+  fi
+  if [[ -f /etc/etheris/cpu.conf ]]; then
+    echo "config: /etc/etheris/cpu.conf"
+    grep -v '^#' /etc/etheris/cpu.conf | sed 's/^/  /' || true
+  fi
+}
+
+cmd_apply() {
+  [[ "$(id -u)" -eq 0 ]] || { echo "Run as root"; exit 1; }
+  mkdir -p /etc/etheris /var/lib/etheris
+
+  local vendor
+  vendor="$(grep -m1 -E '^vendor_id' /proc/cpuinfo | cut -d: -f2- | xargs || true)"
+
+  # Microcode packages should already be installed; record which applies.
+  case "$vendor" in
+    GenuineIntel)
+      echo "intel" >/var/lib/etheris/cpu-vendor
+      pacman -Q intel-ucode &>/dev/null || pacman -S --needed --noconfirm intel-ucode || true
+      ;;
+    AuthenticAMD)
+      echo "amd" >/var/lib/etheris/cpu-vendor
+      pacman -Q amd-ucode &>/dev/null || pacman -S --needed --noconfirm amd-ucode || true
+      ;;
+    *)
+      echo "unknown" >/var/lib/etheris/cpu-vendor
+      ;;
+  esac
+
+  # Balanced cpufreq: prefer schedutil / powersave-on-battery via kernel defaults.
+  # Only set a default governor if none is configured and cpupower exists.
+  if command -v cpupower >/dev/null; then
+    # Ensure boost remains available when hardware supports it
+    if [[ -w /sys/devices/system/cpu/cpufreq/boost ]]; then
+      echo 1 >/sys/devices/system/cpu/cpufreq/boost || true
+    fi
+    if [[ -w /sys/devices/system/cpu/intel_pstate/no_turbo ]]; then
+      echo 0 >/sys/devices/system/cpu/intel_pstate/no_turbo || true
+    fi
+    # Prefer schedutil when available (balanced); do not force performance
+    if grep -q schedutil /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null; then
+      cpupower frequency-set -g schedutil >/dev/null 2>&1 || true
+    fi
+  fi
+
+  # lm_sensors: detect only if not already configured (non-interactive)
+  if command -v sensors-detect >/dev/null && [[ ! -f /etc/sensors.d/etheris.conf ]]; then
+    mkdir -p /etc/sensors.d
+    echo "# Etheris: run 'sudo sensors-detect' interactively if temps missing" >/etc/sensors.d/etheris.conf
+  fi
+
+  cat >/etc/etheris/cpu.conf <<'EOF'
+# Etheris CPU policy (safe defaults)
+# governor preference: schedutil (balanced) — never forced "performance" system-wide
+# boost: left enabled when hardware supports it
+# virtualization: optional; not required for desktop
+policy=balanced
+force_performance=no
+disable_boost=no
+EOF
+
+  echo "CPU defaults applied (balanced). Microcode vendor recorded."
+}
+
+main() {
+  case "${1:-}" in
+    ""|status) cmd_status ;;
+    apply) cmd_apply ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

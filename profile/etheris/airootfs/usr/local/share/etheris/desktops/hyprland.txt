@@ -1,0 +1,12 @@
+# Hyprland
+hyprland
+xdg-desktop-portal-hyprland
+hyprpaper
+hyprlock
+hypridle
+waybar
+foot
+fuzzel
+mako
+qt5-wayland
+qt6-wayland

@@ -1,0 +1,7 @@
+# Legacy alias → Ocean Glass (Neo-Aero default)
+NAME=mist
+VARIANT=dark
+ACCENT=#38bdf8
+WALLPAPER=/usr/local/share/etheris/wallpapers/ocean-glass.png
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

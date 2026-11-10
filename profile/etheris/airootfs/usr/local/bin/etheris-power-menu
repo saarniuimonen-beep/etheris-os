@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""Etheris OS — Neo-Aero power menu (glass buttons + one-shot blurred backdrop)."""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+# Prefer GTK4; fall back message if missing
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    from gi.repository import Gdk, GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-power-menu: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    print("Falling back is handled by `etheris logout-menu`.", file=sys.stderr)
+    sys.exit(2)
+
+
+ACTIONS = [
+    ("LOCK", "lock", "#38bdf8"),
+    ("SLEEP", "sleep", "#2dd4bf"),
+    ("LOG OUT", "logout", "#7dd3fc"),
+    ("REBOOT", "reboot", "#fbbf24"),
+    ("SHUTDOWN", "shutdown", "#fb7185"),
+]
+
+
+def setting(key: str, default: str = "") -> str:
+    conf = os.path.expanduser("~/.config/etheris/settings.conf")
+    if not os.path.isfile(conf):
+        return default
+    try:
+        with open(conf, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return default
+
+
+def want_blur() -> bool:
+    # Power-menu blur is one-shot (grim + ImageMagick), not a permanent compositor blur.
+    # Honor blur=off and reduced-motion / animations=off as a solid-glass fallback.
+    if setting("blur", "off") == "off":
+        # Still allow blur for this premium surface unless user opted out of effects
+        if setting("animations", "on") == "off":
+            return False
+        # Default settings keep blur=off for panels; power menu may still blur once.
+        # Use ETHERIS_POWER_BLUR=0 to force solid, =1 to force blur.
+    env = os.environ.get("ETHERIS_POWER_BLUR", "").strip()
+    if env == "0":
+        return False
+    if env == "1":
+        return True
+    if setting("animations", "on") == "off":
+        return False
+    return shutil.which("grim") and (shutil.which("magick") or shutil.which("convert"))
+
+
+def prepare_backdrop(path: str) -> bool:
+    """Capture screen and soft-blur into path. Returns True on success."""
+    if not want_blur():
+        return False
+    grim = shutil.which("grim")
+    magick = shutil.which("magick") or shutil.which("convert")
+    if not grim or not magick:
+        return False
+    raw = path + ".raw.png"
+    try:
+        subprocess.run([grim, raw], check=True, timeout=5)
+        # Downscale → blur → upscale: cheap frosted-glass look
+        subprocess.run(
+            [
+                magick,
+                raw,
+                "-scale",
+                "12%",
+                "-gaussian-blur",
+                "0x2.5",
+                "-resize",
+                "834%",
+                "-brightness-contrast",
+                "-8x-5",
+                path,
+            ],
+            check=True,
+            timeout=12,
+        )
+        return os.path.isfile(path)
+    except (subprocess.SubprocessError, OSError):
+        return False
+    finally:
+        try:
+            os.unlink(raw)
+        except OSError:
+            pass
+
+
+def run_action(action: str) -> None:
+    if action == "lock":
+        for cmd in (
+            ["swaylock", "-f", "-c", "0a1628"],
+            ["loginctl", "lock-session"],
+        ):
+            try:
+                subprocess.Popen(cmd)
+                return
+            except OSError:
+                continue
+    elif action == "sleep":
+        subprocess.Popen(["systemctl", "suspend"])
+    elif action == "logout":
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
+        if "Hyprland" in desktop:
+            subprocess.Popen(["hyprctl", "dispatch", "exit"])
+        else:
+            try:
+                subprocess.Popen(["swaymsg", "exit"])
+            except OSError:
+                subprocess.Popen(["loginctl", "terminate-user", os.environ.get("USER", "")])
+    elif action == "reboot":
+        subprocess.Popen(["systemctl", "reboot"])
+    elif action == "shutdown":
+        subprocess.Popen(["systemctl", "poweroff"])
+
+
+class PowerMenu(Gtk.Application):
+    def __init__(self, backdrop: str | None):
+        super().__init__(application_id="os.etheris.PowerMenu")
+        self.backdrop = backdrop
+        self._pending: str | None = None
+
+    def do_activate(self):  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self)
+        win.set_title("Etheris Power")
+        win.set_decorated(False)
+        win.set_resizable(False)
+        win.maximize()
+
+        overlay = Gtk.Overlay()
+        win.set_child(overlay)
+
+        # Backdrop: blurred screenshot or Neo-Aero solid gradient stand-in
+        if self.backdrop and os.path.isfile(self.backdrop):
+            picture = Gtk.Picture.new_for_filename(self.backdrop)
+            picture.set_content_fit(Gtk.ContentFit.COVER)
+            picture.set_hexpand(True)
+            picture.set_vexpand(True)
+            overlay.set_child(picture)
+        else:
+            overlay.set_child(self._solid_bg())
+
+        # Dim scrim for readability
+        scrim = Gtk.Box()
+        scrim.add_css_class("scrim")
+        scrim.set_hexpand(True)
+        scrim.set_vexpand(True)
+        overlay.add_overlay(scrim)
+
+        # Center glass card
+        center = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
+        center.set_halign(Gtk.Align.CENTER)
+        center.set_valign(Gtk.Align.CENTER)
+        center.add_css_class("glass-card")
+
+        title = Gtk.Label(label="Etheris OS")
+        title.add_css_class("pm-title")
+        subtitle = Gtk.Label(label="Power")
+        subtitle.add_css_class("pm-sub")
+        center.append(title)
+        center.append(subtitle)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        row.set_halign(Gtk.Align.CENTER)
+        for label, action, accent in ACTIONS:
+            btn = Gtk.Button()
+            btn.add_css_class("power-btn")
+            btn.set_size_request(148, 148)
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            inner.set_halign(Gtk.Align.CENTER)
+            inner.set_valign(Gtk.Align.CENTER)
+            lab = Gtk.Label(label=label)
+            lab.add_css_class("power-label")
+            lab.set_wrap(True)
+            lab.set_justify(Gtk.Justification.CENTER)
+            inner.append(lab)
+            btn.set_child(inner)
+            # Per-button accent via inline style provider
+            css = Gtk.CssProvider()
+            css.load_from_data(
+                f"""
+                button.power-btn-{action} {{
+                  border: 1.5px solid {accent};
+                }}
+                button.power-btn-{action}:hover {{
+                  background: alpha({accent}, 0.28);
+                  border-color: {accent};
+                  box-shadow: 0 0 28px alpha({accent}, 0.35);
+                }}
+                """.encode()
+            )
+            btn.add_css_class(f"power-btn-{action}")
+            btn.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            btn.connect("clicked", self._on_click, action, win)
+            row.append(btn)
+
+        center.append(row)
+
+        hint = Gtk.Label(label="Esc to cancel  ·  Super+Shift+E")
+        hint.add_css_class("pm-hint")
+        center.append(hint)
+
+        overlay.add_overlay(center)
+
+        # Global CSS
+        provider = Gtk.CssProvider()
+        provider.load_from_data(
+            b"""
+            .scrim {
+              background: alpha(#020617, 0.42);
+            }
+            .glass-card {
+              padding: 36px 40px 28px 40px;
+              border-radius: 28px;
+              background: alpha(#0a1628, 0.55);
+              border: 1px solid alpha(#38bdf8, 0.35);
+              box-shadow: 0 18px 60px alpha(#000000, 0.45);
+            }
+            .pm-title {
+              font-size: 22px;
+              font-weight: 700;
+              letter-spacing: 0.12em;
+              color: #e8f4fc;
+            }
+            .pm-sub {
+              font-size: 13px;
+              letter-spacing: 0.28em;
+              color: alpha(#a8c4d8, 0.9);
+              margin-bottom: 8px;
+            }
+            button.power-btn {
+              border-radius: 22px;
+              background: alpha(#122338, 0.72);
+              color: #e8f4fc;
+              transition: 120ms ease;
+            }
+            button.power-btn:hover {
+              background: alpha(#1e3a5f, 0.85);
+            }
+            .power-label {
+              font-size: 15px;
+              font-weight: 700;
+              letter-spacing: 0.08em;
+              color: #e8f4fc;
+            }
+            .pm-hint {
+              margin-top: 6px;
+              font-size: 11px;
+              color: alpha(#a8c4d8, 0.75);
+            }
+            window {
+              background: #0a1628;
+            }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        key = Gtk.EventControllerKey()
+        key.connect("key-pressed", self._on_key, win)
+        win.add_controller(key)
+
+        # Click scrim to cancel
+        click = Gtk.GestureClick()
+        click.connect("pressed", lambda *_: win.close())
+        scrim.add_controller(click)
+
+        win.present()
+
+        # Ask Sway to fullscreen this window if present
+        GLib.idle_add(self._sway_fullscreen)
+
+    def _solid_bg(self) -> Gtk.Box:
+        box = Gtk.Box()
+        box.add_css_class("solid-aero")
+        box.set_hexpand(True)
+        box.set_vexpand(True)
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            .solid-aero {
+              background-image: linear-gradient(145deg, #0a1628 0%, #0e3a5c 48%, #0d9488 100%);
+            }
+            """
+        )
+        box.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        return box
+
+    def _sway_fullscreen(self) -> bool:
+        try:
+            subprocess.Popen(
+                [
+                    "swaymsg",
+                    '[app_id="os.etheris.PowerMenu"] fullscreen enable',
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
+        return False
+
+    def _on_key(self, _ctrl, keyval, _code, _state, win) -> bool:
+        if keyval == Gdk.KEY_Escape:
+            win.close()
+            return True
+        return False
+
+    def _on_click(self, _btn, action: str, win: Gtk.Window) -> None:
+        self._pending = action
+        win.close()
+        # Defer action until after window teardown
+        GLib.timeout_add(80, self._fire)
+
+    def _fire(self) -> bool:
+        if self._pending:
+            run_action(self._pending)
+            self._pending = None
+        return False
+
+
+def main() -> int:
+    # Single instance: if already open, ignore
+    tmp = tempfile.mkdtemp(prefix="etheris-power-")
+    backdrop = os.path.join(tmp, "blur.png")
+    ok = prepare_backdrop(backdrop)
+    app = PowerMenu(backdrop if ok else None)
+
+    def cleanup(_app=None):
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    app.connect("shutdown", cleanup)
+    return app.run(None)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

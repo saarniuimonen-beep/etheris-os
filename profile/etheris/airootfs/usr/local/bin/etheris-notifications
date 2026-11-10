@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Etheris OS — notification center (Path A, mako-backed).
+# History / DND / clear — no second notification daemon.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+mkdir -p "$CONF_DIR"
+
+dnd="off"
+if command -v makoctl >/dev/null 2>&1; then
+  if makoctl mode 2>/dev/null | grep -qiE 'dnd|do-not-disturb'; then
+    dnd="on"
+  fi
+fi
+
+hist_count=0
+if command -v makoctl >/dev/null 2>&1; then
+  # makoctl history prints notifications; count non-empty lines loosely
+  hist_count="$(makoctl history 2>/dev/null | grep -c . || true)"
+fi
+
+pick="$(printf '%s\n' \
+  "Show history (${hist_count} lines)" \
+  "Restore last dismissed" \
+  "Do not disturb (${dnd})" \
+  "Dismiss all" \
+  "Test notification" \
+  "Open Control Center" \
+  "Cancel" \
+  | wofi --dmenu -p 'notifications › ' -I 2>/dev/null || true)"
+
+[[ -n "$pick" && "$pick" != Cancel ]] || exit 0
+
+case "$pick" in
+  "Show history"*)
+    if ! command -v makoctl >/dev/null 2>&1; then
+      notify-send -a Etheris 'Notifications' 'makoctl not available' 2>/dev/null || true
+      exit 1
+    fi
+    tmp="$(mktemp)"
+    makoctl history >"$tmp" 2>/dev/null || echo '(empty history)' >"$tmp"
+    foot -e bash -lc "less -R '$tmp'; rm -f '$tmp'" &
+    ;;
+  "Restore last"*)
+    makoctl restore >/dev/null 2>&1 || notify-send -a Etheris 'Notifications' 'Nothing to restore' 2>/dev/null || true
+    ;;
+  "Do not disturb"*)
+    if [[ "$dnd" == on ]]; then
+      makoctl mode -r dnd >/dev/null 2>&1 || makoctl set-mode default >/dev/null 2>&1 || true
+      notify-send -a Etheris 'Notifications' 'Do not disturb off' 2>/dev/null || true
+    else
+      makoctl mode -a dnd >/dev/null 2>&1 || makoctl set-mode dnd >/dev/null 2>&1 || true
+      # When entering DND, avoid spamming; still try a silent mode change
+    fi
+    # Persist preference
+    if grep -qE '^dnd=' "$SETTINGS" 2>/dev/null; then
+      if [[ "$dnd" == on ]]; then sed -i 's|^dnd=.*|dnd=off|' "$SETTINGS"; else sed -i 's|^dnd=.*|dnd=on|' "$SETTINGS"; fi
+    else
+      if [[ "$dnd" == on ]]; then echo 'dnd=off' >>"$SETTINGS"; else echo 'dnd=on' >>"$SETTINGS"; fi
+    fi
+    ;;
+  "Dismiss all")
+    makoctl dismiss -a >/dev/null 2>&1 || true
+    ;;
+  "Test notification")
+    notify-send -a Etheris -u normal 'Etheris OS' 'Notification path OK (mako).' 2>/dev/null \
+      || echo 'notify-send missing' >&2
+    ;;
+  "Open Control Center")
+    exec etheris-overlay control-center
+    ;;
+esac

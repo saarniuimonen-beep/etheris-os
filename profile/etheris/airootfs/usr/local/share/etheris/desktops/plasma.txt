@@ -1,0 +1,17 @@
+# KDE Plasma
+plasma-desktop
+plasma-workspace
+plasma-workspace-wayland
+plasma-nm
+plasma-pa
+plasma-systemmonitor
+konsole
+dolphin
+breeze
+breeze-gtk
+kde-gtk-config
+xdg-desktop-portal-kde
+sddm-kcm
+spectacle
+ark
+kate

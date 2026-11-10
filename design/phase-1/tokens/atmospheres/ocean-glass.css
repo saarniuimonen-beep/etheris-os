@@ -1,0 +1,19 @@
+/* Atmosphere: Ocean Glass (default dark) */
+[data-atmosphere="ocean-glass"] {
+  --eth-bg: #0a1628;
+  --eth-bg-elevated: #122338;
+  --eth-bg-deep: #061018;
+  --eth-fg: #e8f4fc;
+  --eth-fg-muted: #a8c4d8;
+  --eth-accent: #38bdf8;
+  --eth-accent-2: #2dd4bf;
+  --eth-accent-soft: rgba(56, 189, 248, 0.35);
+  --eth-border: rgba(56, 189, 248, 0.28);
+  --eth-panel: rgba(10, 22, 40, 0.72);
+  --eth-menu: rgba(10, 22, 40, 0.94);
+  --eth-input: rgba(18, 35, 56, 0.95);
+  --eth-focus: #7dd3fc;
+  --eth-wallpaper: url("../../preview/assets/ocean-glass.svg");
+  --eth-atmosphere-name: "Ocean Glass";
+  --eth-variant: dark;
+}

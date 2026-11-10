@@ -1,0 +1,12 @@
+# Etheris Light — labwc stack (≤500MB idle target)
+labwc
+waybar
+foot
+fuzzel
+mako
+swaybg
+swayidle
+swaylock
+thunar
+xdg-desktop-portal-wlr
+nwg-look

@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Etheris OS — workspace / window overview (Path A).
+# Sway has no GNOME-style overview; this lists workspaces + toplevels via IPC.
+set -euo pipefail
+
+if ! command -v swaymsg >/dev/null 2>&1; then
+  echo "etheris-workspace-overview: swaymsg required" >&2
+  exit 2
+fi
+
+mapfile -t LINES < <(python3 - <<'PY'
+import json, subprocess, sys
+
+try:
+    tree = json.loads(subprocess.check_output(["swaymsg", "-t", "get_tree"], text=True))
+except Exception as exc:
+    print(f"ERR:{exc}", file=sys.stderr)
+    sys.exit(1)
+
+rows = []
+
+def walk(node, ws_name=None):
+    ntype = node.get("type")
+    name = node.get("name")
+    if ntype == "workspace":
+        ws_name = name
+        focused = "●" if node.get("focused") else "○"
+        rows.append((f"WS {focused} {ws_name}", f"workspace:{ws_name}"))
+    # Toplevel containers with app/window
+    app = node.get("app_id") or (node.get("window_properties") or {}).get("class")
+    title = node.get("name") or ""
+    if app and ntype in ("con", "floating_con") and not node.get("nodes") and not node.get("floating_nodes"):
+        mark = "▸" if node.get("focused") else " "
+        short = (title[:48] + "…") if len(title) > 48 else title
+        rows.append((f"  {mark} [{ws_name}] {app} — {short}", f"con:{node.get('id')}"))
+    for ch in node.get("nodes") or []:
+        walk(ch, ws_name)
+    for ch in node.get("floating_nodes") or []:
+        walk(ch, ws_name)
+
+walk(tree)
+for label, _ in rows:
+    print(label)
+PY
+)
+
+if [[ ${#LINES[@]} -eq 0 ]]; then
+  notify-send -a "Etheris" "Overview" "No workspaces found" 2>/dev/null || true
+  exit 0
+fi
+
+pick="$(printf '%s\n' "${LINES[@]}" | wofi --dmenu -p 'overview › ' -i 2>/dev/null || true)"
+[[ -n "$pick" ]] || exit 0
+
+python3 - "$pick" <<'PY'
+import json, subprocess, sys
+pick = sys.argv[1]
+tree = json.loads(subprocess.check_output(["swaymsg", "-t", "get_tree"], text=True))
+
+def walk(node, ws_name=None):
+    ntype = node.get("type")
+    name = node.get("name")
+    if ntype == "workspace":
+        ws_name = name
+        focused = "●" if node.get("focused") else "○"
+        label = f"WS {focused} {ws_name}"
+        if label == pick:
+            subprocess.run(["swaymsg", f"workspace number {ws_name}" if str(ws_name).isdigit() else f"workspace {ws_name}"], check=False)
+            return True
+    app = node.get("app_id") or (node.get("window_properties") or {}).get("class")
+    title = node.get("name") or ""
+    if app and ntype in ("con", "floating_con") and not node.get("nodes") and not node.get("floating_nodes"):
+        mark = "▸" if node.get("focused") else " "
+        short = (title[:48] + "…") if len(title) > 48 else title
+        label = f"  {mark} [{ws_name}] {app} — {short}"
+        if label == pick:
+            cid = node.get("id")
+            subprocess.run(["swaymsg", f"[con_id={cid}]", "focus"], check=False)
+            return True
+    for ch in (node.get("nodes") or []) + (node.get("floating_nodes") or []):
+        if walk(ch, ws_name):
+            return True
+    return False
+
+walk(tree)
+PY

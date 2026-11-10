@@ -1,0 +1,7 @@
+/* Etheris OS — wheel group may perform admin actions in the GUI
+   (matches passwordless sudo on the live system). */
+polkit.addRule(function (action, subject) {
+    if (subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

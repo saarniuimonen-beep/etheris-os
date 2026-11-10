@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Status helper for Phase 20 — does NOT enable immutability.
+set -euo pipefail
+MODE_FILE=/etc/etheris/system-mode.conf
+DOC=/usr/local/share/etheris/docs/IMMUTABLE.md
+
+mode=mutable-classic
+[[ -f "$MODE_FILE" ]] && mode="$(grep -E '^MODE=' "$MODE_FILE" | cut -d= -f2- | tail -1)"
+
+cat <<EOF
+Etheris deployment mode
+  mode:     ${mode}
+  status:   immutable A/B is NOT active on this system
+  docs:     ${DOC}
+
+Current experimental Etheris uses a classic mutable root.
+Atomic updates / rollback are a planned architecture — see the doc.
+Do not assume /usr is protected against root or package managers.
+EOF
+
+case "${1:-}" in
+  ""|status) ;;
+  help|-h|--help)
+    echo "Usage: etheris-immutable status"
+    ;;
+  *)
+    echo "Unknown command: $1 (only 'status' is available until Phase 20 ships)"
+    exit 1
+    ;;
+esac

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Optional AUR helper — not an official binary repository.
+# Enforces lag vs AUR LastModified; align with Stable snapshot policy.
+set -euo pipefail
+
+CONF=/etc/etheris/channels.conf
+# shellcheck disable=SC1090
+[[ -f "$CONF" ]] && source "$CONF"
+DAYS="${ETHERIS_AUR_LAG_DAYS:-${AUR_LAG_DAYS:-14}}"
+CUTOFF=$(( $(date +%s) - DAYS*24*3600 ))
+SNAP="$(cat /var/lib/etheris/snapshot-date 2>/dev/null || echo unknown)"
+CH="$(cat /var/lib/etheris/channel 2>/dev/null || echo unknown)"
+
+usage() {
+  cat <<'USAGE'
+Etheris AUR (optional, user-maintained)
+
+AUR packages are NOT official Etheris binaries. Build them yourself against
+your current Arch snapshot. Manual fixes may be required.
+
+Usage:
+  etheris-aur check <pkg>
+  etheris-aur info <pkg>
+  etheris-aur install <pkg>   # check + print makepkg steps
+USAGE
+  echo "Channel=${CH}  Arch snapshot=${SNAP}  AUR lag≥${DAYS}d"
+}
+
+aur_last_modified() {
+  local pkg="$1" json
+  json="$(curl -fsSL "https://aur.archlinux.org/rpc/v5/info?arg[]=${pkg}")"
+  python3 -c 'import json,sys; data=json.load(sys.stdin); r=data.get("results") or [];
+import sys as s; s.exit(2) if not r else print(int(r[0]["LastModified"]))' <<<"$json" 2>/dev/null \
+  || python3 - "$json" <<'PY'
+import json,sys
+data=json.loads(sys.argv[1])
+results=data.get("results") or []
+if not results:
+    sys.exit(2)
+print(int(results[0]["LastModified"]))
+PY
+}
+
+cmd_check() {
+  local pkg="$1" ts age
+  echo "Note: verify the package builds on snapshot ${SNAP} (${CH})."
+  ts="$(aur_last_modified "$pkg")" || { echo "Not on AUR: $pkg"; return 1; }
+  age=$(( ($(date +%s) - ts) / 86400 ))
+  echo "$pkg: last AUR update ${age}d ago (policy ≥ ${DAYS}d)"
+  if (( ts > CUTOFF )); then
+    echo "REFUSED — too new for Etheris lag policy."
+    return 1
+  fi
+  echo "OK under lag policy (still user-maintained)."
+}
+
+cmd_install() {
+  local pkg="$1"
+  cmd_check "$pkg"
+  cat <<EOF
+
+Build against your current snapshot (${SNAP}):
+  git clone https://aur.archlinux.org/${pkg}.git
+  cd ${pkg}
+  makepkg -si
+
+If build fails, the AUR package may not match this Arch snapshot — that is expected.
+EOF
+}
+
+case "${1:-}" in
+  check) cmd_check "${2:?pkg}" ;;
+  info)
+    pkg="${2:?pkg}"
+    ts="$(aur_last_modified "$pkg")" || { echo "not found"; exit 1; }
+    echo "LastModified=$(date -u -d "@$ts" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$ts" +%Y-%m-%dT%H:%M:%SZ)"
+    cmd_check "$pkg" || true
+    ;;
+  install) cmd_install "${2:?pkg}" ;;
+  ""|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

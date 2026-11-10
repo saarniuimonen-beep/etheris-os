@@ -1,0 +1,100 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  "margin-top": 8,
+  "margin-left": 12,
+  "margin-right": 12,
+  "spacing": 6,
+  "modules-left": ["custom/logo", "sway/workspaces", "custom/overview", "sway/mode", "sway/window", "custom/winctl"],
+  "modules-center": ["clock"],
+  "modules-right": ["tray", "pulseaudio", "network", "memory", "battery", "custom/cc", "custom/power"],
+  "custom/logo": {
+    "format": " Etheris ",
+    "tooltip": "Etheris OS — Super+D launcher",
+    "on-click": "etheris-overlay launcher",
+    "on-click-right": "etheris-overlay launcher pins"
+  },
+  "sway/workspaces": {
+    "disable-scroll": false,
+    "all-outputs": true,
+    "format": "{icon}",
+    "format-icons": {
+      "urgent": "◉",
+      "focused": "●",
+      "default": "○"
+    },
+    "persistent-workspaces": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": []
+    }
+  },
+  "sway/mode": {
+    "format": " {} "
+  },
+  "sway/window": {
+    "format": "{title}",
+    "max-length": 40,
+    "tooltip": true
+  },
+  "custom/winctl": {
+    "format": "✕  −  ▭  ⛶",
+    "tooltip": "Window: left=close · middle=scratch(min) · right=fullscreen · Super+Shift+A menu · Super+Shift+click float via menu",
+    "on-click": "etheris-winctl close",
+    "on-click-middle": "etheris-winctl scratch",
+    "on-click-right": "etheris-winctl fullscreen",
+    "on-scroll-up": "etheris-winctl float",
+    "on-scroll-down": "etheris-winctl restore"
+  },
+  "custom/overview": {
+    "format": "overview",
+    "tooltip": "Workspace overview — Super+W",
+    "on-click": "etheris-workspace-overview"
+  },
+  "clock": {
+    "format": "{:%H:%M}",
+    "tooltip-format": "{:%Y-%m-%d %a}",
+    "interval": 30,
+    "on-click": "etheris-overlay control-center"
+  },
+  "tray": {
+    "icon-size": 15,
+    "spacing": 8
+  },
+  "memory": {
+    "format": "{used:0.1f}G",
+    "interval": 15,
+    "tooltip-format": "RAM {used:0.1f}G / {total:0.1f}G — ≤0.5G idle aspirational"
+  },
+  "pulseaudio": {
+    "format": "{volume}%",
+    "format-muted": "mute",
+    "on-click": "etheris-overlay menu pavucontrol",
+    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+  },
+  "network": {
+    "format-wifi": "{essid}",
+    "format-ethernet": "lan",
+    "format-disconnected": "off",
+    "interval": 15,
+    "on-click": "etheris-overlay menu foot -e nmtui"
+  },
+  "battery": {
+    "format": "{capacity}%",
+    "format-charging": "{capacity}%+",
+    "interval": 30,
+    "states": { "warning": 20, "critical": 10 }
+  },
+  "custom/cc": {
+    "format": "☰",
+    "tooltip": "Control Center — Super+A",
+    "on-click": "etheris-overlay control-center"
+  },
+  "custom/power": {
+    "format": "⏻",
+    "tooltip": "Power menu — Super+Shift+E",
+    "on-click": "etheris-overlay power"
+  }
+}

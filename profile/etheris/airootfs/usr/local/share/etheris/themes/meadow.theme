@@ -1,0 +1,7 @@
+# Neo-Aero — Meadow
+NAME=meadow
+VARIANT=dark
+ACCENT=#a3e635
+WALLPAPER=/usr/local/share/etheris/wallpapers/meadow.png
+GTK_THEME=Adwaita-dark
+ICON_THEME=Papirus-Dark

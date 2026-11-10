@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" data-atmosphere="ocean-glass">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control Center — Etheris Phase 2</title>
+  <link rel="stylesheet" href="preview.css" />
+  <style>
+    .cc { width:min(360px,92vw); padding:16px; position:absolute; top:64px; right:24px; z-index:40; }
+    .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+    .tile { padding:12px; border-radius:12px; border:1px solid var(--eth-border); background:var(--eth-highlight); min-height:68px; }
+    .tile.on { border-color:var(--eth-accent); background:var(--eth-accent-soft); }
+    .tile .label { font-size:11px; color:var(--eth-fg-muted); margin-bottom:4px; }
+    .tile .value { font-size:14px; font-weight:600; }
+    .row-ctrl { display:flex; align-items:center; gap:12px; margin:10px 0; }
+    .row-ctrl span { width:78px; font-size:12px; color:var(--eth-fg-muted); }
+    .power { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:12px; }
+    .power .btn { padding:10px 6px; font-size:11px; }
+  </style>
+</head>
+<body class="stage-wrap">
+  <div class="stage-bar">
+    <nav>
+      <a href="index.html">Hub</a> <a href="desktop.html">Desktop</a> <a href="launcher.html">Launcher</a> <a href="control-center.html" aria-current="page">Control Center</a> <a href="settings.html">Settings</a> <a href="login.html">Login</a> <a href="atmospheres.html">Atmospheres</a> <a href="components.html">Components</a> <a href="experience.html">Experience</a>
+    </nav>
+    <div class="atm-picker" aria-label="Atmosphere">
+      <button type="button" data-atm="ocean-glass">Ocean</button>
+      <button type="button" data-atm="aurora">Aurora</button>
+      <button type="button" data-atm="meadow">Meadow</button>
+      <button type="button" data-atm="arctic-glow">Arctic</button>
+      <button type="button" data-atm="midnight-ocean">Midnight</button>
+    </div>
+  </div>
+  <div class="stage">
+    <header class="panel">
+      <img class="mark" src="assets/mark.svg" alt="" />
+      <span class="brand-word">etheris</span>
+      <span class="sep"></span>
+      <div class="ws"><span class="on"></span><span></span><span></span></div>
+      <span class="pill cc" style="border-color:var(--eth-accent)">Quick</span>
+      <span class="clock">Thu 20:18</span>
+    </header>
+    <aside class="glass cc pop" aria-label="Control Center">
+      <h2 style="margin:0 0 12px;font-size:16px">Control Center</h2>
+      <div class="tiles">
+        <div class="tile on"><div class="label">Network</div><div class="value">Etheris‑5G</div></div>
+        <div class="tile"><div class="label">Bluetooth</div><div class="value">Off</div></div>
+        <div class="tile on"><div class="label">Notifications</div><div class="value">On</div></div>
+        <div class="tile"><div class="label">Do Not Disturb</div><div class="value">Off</div></div>
+      </div>
+      <div class="row-ctrl"><span>Audio</span><input class="slider" type="range" value="64" aria-label="Volume" /></div>
+      <div class="row-ctrl"><span>Bright</span><input class="slider" type="range" value="80" aria-label="Brightness" /></div>
+      <div class="row-ctrl"><span>Battery</span><strong style="font-size:13px">72% · Balanced</strong></div>
+      <div class="power">
+        <button type="button" class="btn btn-ghost">Lock</button>
+        <button type="button" class="btn btn-ghost">Sleep</button>
+        <button type="button" class="btn btn-ghost">Log out</button>
+        <button type="button" class="btn btn-danger">Power</button>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none">Settings</a>
+        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none">Wallpaper</a>
+      </div>
+    </aside>
+    <p class="note-banner">Mutually exclusive with Launcher / Notification Center / Shortcut Center (see INTERACTIONS.md).</p>
+  </div>
+  <script src="stage.js"></script>
+</body>
+</html>

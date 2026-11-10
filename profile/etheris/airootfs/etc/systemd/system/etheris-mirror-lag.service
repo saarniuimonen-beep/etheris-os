@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Etheris Stable/RC Arch Archive snapshot (channel-aware)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/etheris-update refresh

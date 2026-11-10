@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# Auto-update system timezone when the machine moves to another country.
+# Uses public IP geolocation (no GPS required). Respects timezone_auto=off.
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+STATE="$CONF_DIR/timezone-auto-state"
+LOG="${XDG_RUNTIME_DIR:-/tmp}/etheris-timezone-auto.log"
+INTERVAL_SEC="${ETHERIS_TZ_AUTO_INTERVAL:-1800}"
+
+mkdir -p "$CONF_DIR"
+
+get_setting() {
+  local key="$1" def="${2:-}"
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  printf '%s\n' "${v:-$def}"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  touch "$SETTINGS"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+auto_enabled() {
+  case "$(get_setting timezone_auto on | tr '[:upper:]' '[:lower:]')" in
+    0|off|false|no) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+apply_tz() {
+  local tz="$1"
+  [[ -e "/usr/share/zoneinfo/$tz" ]] || return 1
+  if timedatectl set-timezone "$tz" 2>/dev/null; then
+    :
+  else
+    sudo -n timedatectl set-timezone "$tz" 2>/dev/null || return 1
+  fi
+  timedatectl set-ntp true 2>/dev/null || sudo -n timedatectl set-ntp true 2>/dev/null || true
+  set_setting timezone "$tz"
+}
+
+# Returns: country|timezone|city  (best effort)
+lookup_network_location() {
+  local json
+  # Prefer ipapi.co (includes timezone + country)
+  if json="$(curl -fsS --max-time 8 'https://ipapi.co/json/' 2>/dev/null)"; then
+    python3 - "$json" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+if d.get("error"):
+    sys.exit(2)
+cc=(d.get("country_code") or d.get("country") or "").upper()
+tz=d.get("timezone") or ""
+city=d.get("city") or ""
+if not cc or not tz:
+    sys.exit(2)
+print(f"{cc}|{tz}|{city}")
+PY
+    return 0
+  fi
+  # Fallback: ipinfo.io
+  if json="$(curl -fsS --max-time 8 'https://ipinfo.io/json' 2>/dev/null)"; then
+    python3 - "$json" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+cc=(d.get("country") or "").upper()
+tz=d.get("timezone") or ""
+city=d.get("city") or ""
+if not cc or not tz:
+    sys.exit(2)
+print(f"{cc}|{tz}|{city}")
+PY
+    return 0
+  fi
+  return 1
+}
+
+notify() {
+  local title="$1" body="$2"
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a Etheris -i preferences-system-time "$title" "$body" 2>/dev/null || true
+  fi
+  printf '%s %s — %s\n' "$(date -Is)" "$title" "$body" >>"$LOG"
+}
+
+check_once() {
+  auto_enabled || { echo "timezone_auto disabled"; return 0; }
+
+  local info cc tz city prev_cc prev_tz
+  info="$(lookup_network_location)" || {
+    echo "location lookup failed" >>"$LOG"
+    return 0
+  }
+  IFS='|' read -r cc tz city <<<"$info"
+  [[ -n "$cc" && -n "$tz" ]] || return 0
+
+  prev_cc="$(get_setting timezone_country "")"
+  prev_tz="$(get_setting timezone "")"
+  if [[ -z "$prev_tz" ]]; then
+    prev_tz="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
+  fi
+
+  set_setting timezone_country "$cc"
+  # First observation: remember country, only apply if timezone differs strongly
+  if [[ -z "$prev_cc" ]]; then
+    set_setting timezone "$tz"
+    # Don't disrupt first-login choice unless TZ empty/UTC
+    if [[ -z "$prev_tz" || "$prev_tz" == "UTC" ]]; then
+      apply_tz "$tz" && notify "Timezone set" "${city:-$cc} · $tz"
+    fi
+    printf '%s\n' "$cc|$tz" >"$STATE"
+    return 0
+  fi
+
+  if [[ "$cc" != "$prev_cc" ]]; then
+    if apply_tz "$tz"; then
+      notify "Welcome to ${city:-$cc}" "Clock updated to $tz"
+    fi
+  elif [[ -n "$prev_tz" && "$tz" != "$prev_tz" && "$cc" == "$prev_cc" ]]; then
+    # Same country but ISP timezone changed (rare) — update quietly
+    apply_tz "$tz" || true
+  fi
+  printf '%s\n' "$cc|$tz|${city}" >"$STATE"
+}
+
+usage() {
+  cat <<'EOF'
+Etheris timezone auto-travel
+
+  etheris-timezone-auto           Run one check now
+  etheris-timezone-auto --daemon  Check now, then every 30 minutes
+  etheris-timezone-auto --enable  Turn on auto travel updates
+  etheris-timezone-auto --disable Turn off auto travel updates
+EOF
+}
+
+case "${1:-}" in
+  -h|--help|help) usage ;;
+  --enable) set_setting timezone_auto on; echo "timezone_auto=on" ;;
+  --disable) set_setting timezone_auto off; echo "timezone_auto=off" ;;
+  --daemon|daemon)
+    check_once || true
+    while true; do
+      sleep "$INTERVAL_SEC"
+      check_once || true
+    done
+    ;;
+  ""|check|--once)
+    check_once
+    ;;
+  *) usage >&2; exit 2 ;;
+esac
