@@ -1,6 +1,6 @@
 # Etheris OS
 
-Arch-based, lightweight Wayland distribution (**Sway** default, Neo-Aero desktop).  
+Arch-based, lightweight Wayland distribution (**Sway** default, Etheris-desktop).  
 Version: see `VERSION` (currently **0.1.0-alpha**).
 
 ## Goals
