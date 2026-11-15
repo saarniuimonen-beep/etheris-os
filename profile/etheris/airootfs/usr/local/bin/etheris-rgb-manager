@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+"""Etheris OS — RGB Manager (GTK4). Pick any color for PC fans via OpenRGB."""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import threading
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    from gi.repository import Gdk, GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-rgb-manager: GTK4/PyGObject required ({exc})", file=sys.stderr)
+    sys.exit(2)
+
+PRESETS = [
+    "#38BDF8",
+    "#2DD4BF",
+    "#4ADE80",
+    "#FBBF24",
+    "#FB7185",
+    "#A78BFA",
+    "#FF3366",
+    "#FFFFFF",
+    "#FF4500",
+    "#0088FF",
+    "#111111",
+    "#E8F4FC",
+]
+
+MODES = ["Static", "Direct", "Breathing", "Flashing", "Color Cycle"]
+
+
+def run_out(cmd: list[str], timeout: float = 30.0) -> tuple[int, str]:
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        return r.returncode, (r.stdout or r.stderr or "").strip()
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return 1, str(exc)
+
+
+def parse_hex(text: str) -> str | None:
+    t = text.strip().removeprefix("#")
+    if re.fullmatch(r"[0-9A-Fa-f]{6}", t):
+        return f"#{t.upper()}"
+    return None
+
+
+def summarize_status(raw: str) -> str:
+    if not raw:
+        return "No status"
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("[")]
+    return " · ".join(lines[:3]) if lines else raw.splitlines()[0]
+
+
+class RgbApp(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.rgb")
+        self._busy = False
+        self._color = "#38BDF8"
+        self._win: Gtk.ApplicationWindow | None = None
+        self._status = Gtk.Label(xalign=0, wrap=True)
+        self._preview = Gtk.Box()
+        self._hex = Gtk.Entry()
+        self._mode = Gtk.DropDown.new_from_strings(MODES)
+        self._leds = Gtk.SpinButton.new_with_range(1, 1024, 1)
+        self._brightness = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self._fans_only = Gtk.CheckButton(label="Fans only")
+        self._base_css = Gtk.CssProvider()
+
+    def do_activate(self) -> None:  # noqa: N802
+        if self._win is not None:
+            self._win.present()
+            return
+
+        win = Gtk.ApplicationWindow(application=self, title="Etheris RGB Manager")
+        self._win = win
+        win.set_default_size(860, 560)
+        win.set_size_request(640, 480)
+
+        swatch_css = "\n".join(f".swatch-{h[1:]} {{ background: {h}; }}" for h in PRESETS)
+        self._base_css.load_from_data(
+            f"""
+            window {{ background: #07111f; color: #e8f4fc; }}
+            .card {{
+              background: alpha(#0f2136, 0.94);
+              border: 1px solid alpha(#38bdf8, 0.20);
+              border-radius: 14px;
+              padding: 12px 14px;
+            }}
+            label.heading {{ font-size: 15px; font-weight: 650; }}
+            label.title {{ font-size: 20px; font-weight: 700; }}
+            label.caption {{ color: #9db6cc; font-size: 12px; }}
+            .swatch {{
+              min-width: 32px; min-height: 32px;
+              border-radius: 8px;
+              border: 1px solid alpha(#e8f4fc, 0.28);
+              padding: 0;
+            }}
+            .preview {{
+              min-width: 120px; min-height: 120px;
+              border-radius: 16px;
+              border: 1px solid alpha(#38bdf8, 0.40);
+            }}
+            entry, spinbutton {{
+              background: alpha(#122338, 0.95);
+              color: #e8f4fc;
+              border: 1px solid alpha(#38bdf8, 0.22);
+              border-radius: 8px;
+              min-height: 34px;
+            }}
+            button.suggested {{
+              background: alpha(#38bdf8, 0.32);
+              border: 1px solid alpha(#38bdf8, 0.55);
+              color: #e8f4fc;
+              font-weight: 650;
+              min-height: 38px;
+            }}
+            button {{ min-height: 34px; padding: 4px 10px; }}
+            {swatch_css}
+            """.encode()
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), self._base_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        root.set_margin_top(16)
+        root.set_margin_bottom(16)
+        root.set_margin_start(18)
+        root.set_margin_end(18)
+
+        title = Gtk.Label(label="Etheris RGB Manager", xalign=0)
+        title.add_css_class("title")
+        root.append(title)
+        subtitle = Gtk.Label(
+            label="Pick any color for your PC fans · Space Apply · O Off · R Refresh · Q Quit",
+            xalign=0,
+            wrap=True,
+        )
+        subtitle.add_css_class("caption")
+        root.append(subtitle)
+
+        # Two columns so the full UI fits without clipping in a tiled window.
+        columns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        columns.set_vexpand(True)
+        columns.set_homogeneous(False)
+
+        left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        left.set_hexpand(True)
+        left_card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        left_card.add_css_class("card")
+        left_card.set_vexpand(True)
+
+        lh = Gtk.Label(label="Color preview", xalign=0)
+        lh.add_css_class("heading")
+        left_card.append(lh)
+
+        self._preview.add_css_class("preview")
+        self._preview.set_size_request(120, 120)
+        self._preview.set_halign(Gtk.Align.CENTER)
+        left_card.append(self._preview)
+
+        ph = Gtk.Label(label="Presets", xalign=0)
+        ph.add_css_class("heading")
+        left_card.append(ph)
+
+        grid = Gtk.Grid()
+        grid.set_column_spacing(8)
+        grid.set_row_spacing(8)
+        grid.set_halign(Gtk.Align.CENTER)
+        for i, hexv in enumerate(PRESETS):
+            btn = Gtk.Button()
+            btn.set_size_request(32, 32)
+            btn.add_css_class("swatch")
+            btn.add_css_class(f"swatch-{hexv[1:]}")
+            btn.set_tooltip_text(hexv)
+            btn.connect("clicked", lambda _b, c=hexv: self._set_color(c, apply_now=True))
+            grid.attach(btn, i % 6, i // 6, 1, 1)
+        left_card.append(grid)
+
+        self._status.add_css_class("caption")
+        self._status.set_wrap(True)
+        self._status.set_text("Ready")
+        left_card.append(self._status)
+        left.append(left_card)
+        columns.append(left)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        right.set_hexpand(True)
+        right.set_size_request(360, -1)
+
+        controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        controls.add_css_class("card")
+        controls.set_vexpand(True)
+
+        ch = Gtk.Label(label="Controls", xalign=0)
+        ch.add_css_class("heading")
+        controls.append(ch)
+
+        self._hex.set_placeholder_text("#RRGGBB")
+        self._hex.set_text(self._color)
+        self._hex.set_max_length(7)
+        self._hex.connect("activate", self._on_hex_activate)
+
+        hex_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._hex.set_hexpand(True)
+        hex_row.append(self._hex)
+        pick = Gtk.Button(label="Picker…")
+        pick.connect("clicked", self._open_picker)
+        hex_row.append(pick)
+        controls.append(hex_row)
+
+        mode_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        mode_row.append(Gtk.Label(label="Mode", xalign=0))
+        self._mode.set_selected(0)
+        self._mode.set_hexpand(True)
+        mode_row.append(self._mode)
+        controls.append(mode_row)
+
+        self._fans_only.set_active(True)
+        controls.append(self._fans_only)
+
+        led_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        led_lab = Gtk.Label(label="LEDs / header", xalign=0)
+        led_lab.set_hexpand(True)
+        led_row.append(led_lab)
+        self._leds.set_value(60)
+        led_row.append(self._leds)
+        controls.append(led_row)
+        tip = Gtk.Label(
+            label="Total LEDs on the ARGB chain (e.g. 3×12-LED fans → 36).",
+            xalign=0,
+            wrap=True,
+        )
+        tip.add_css_class("caption")
+        controls.append(tip)
+
+        controls.append(Gtk.Label(label="Brightness", xalign=0))
+        self._brightness.set_value(100)
+        self._brightness.set_draw_value(True)
+        self._brightness.set_hexpand(True)
+        controls.append(self._brightness)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        apply_btn = Gtk.Button(label="Apply")
+        apply_btn.add_css_class("suggested")
+        apply_btn.connect("clicked", lambda *_: self._apply(False))
+        off_btn = Gtk.Button(label="Off")
+        off_btn.connect("clicked", lambda *_: self._apply(True))
+        refresh_btn = Gtk.Button(label="Refresh")
+        refresh_btn.connect("clicked", lambda *_: self._refresh())
+        for b in (apply_btn, off_btn, refresh_btn):
+            b.set_hexpand(True)
+            actions.append(b)
+        controls.append(actions)
+
+        right.append(controls)
+        columns.append(right)
+        root.append(columns)
+
+        win.set_child(root)
+        win.present()
+
+        self._set_preview(self._color)
+        self._load_saved()
+        self._refresh()
+
+        controller = Gtk.EventControllerKey()
+        controller.connect("key-pressed", self._on_key)
+        win.add_controller(controller)
+
+    def _on_key(self, _c, keyval, _code, _state) -> bool:
+        name = Gdk.keyval_name(keyval) or ""
+        if name in ("q", "Q"):
+            self.quit()
+            return True
+        if name == "space":
+            self._apply(False)
+            return True
+        if name in ("o", "O"):
+            self._apply(True)
+            return True
+        if name in ("r", "R"):
+            self._refresh()
+            return True
+        return False
+
+    def _set_preview(self, hexv: str) -> None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(f".preview {{ background: {hexv}; }}".encode())
+        if self._win is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                self._win.get_display(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+    def _set_color(self, hexv: str, apply_now: bool = False) -> None:
+        parsed = parse_hex(hexv)
+        if not parsed:
+            return
+        self._color = parsed
+        self._hex.set_text(parsed)
+        self._set_preview(parsed)
+        if apply_now:
+            self._apply(False)
+
+    def _on_hex_activate(self, *_args) -> None:
+        parsed = parse_hex(self._hex.get_text())
+        if parsed:
+            self._set_color(parsed, apply_now=True)
+        else:
+            self._status.set_text("Invalid color — use #RRGGBB")
+
+    def _open_picker(self, *_args) -> None:
+        dialog = Gtk.ColorDialog()
+        rgba = Gdk.RGBA()
+        rgba.parse(self._color)
+        dialog.choose_rgba(self._win, rgba, None, self._on_picked)
+
+    def _on_picked(self, dialog: Gtk.ColorDialog, result) -> None:
+        try:
+            rgba = dialog.choose_rgba_finish(result)
+        except GLib.Error:
+            return
+        hexv = "#{:02X}{:02X}{:02X}".format(
+            int(rgba.red * 255), int(rgba.green * 255), int(rgba.blue * 255)
+        )
+        self._set_color(hexv)
+
+    def _selected_mode(self) -> str:
+        idx = int(self._mode.get_selected())
+        return MODES[idx] if 0 <= idx < len(MODES) else "Static"
+
+    def _load_saved(self) -> None:
+        code, out = run_out(["etheris-rgb", "get"], timeout=5)
+        if code != 0:
+            return
+        data = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+        if "color" in data:
+            self._set_color(data["color"])
+        if "led_count" in data:
+            try:
+                self._leds.set_value(int(data["led_count"]))
+            except ValueError:
+                pass
+        if "brightness" in data:
+            try:
+                self._brightness.set_value(float(data["brightness"]))
+            except ValueError:
+                pass
+        self._fans_only.set_active(data.get("fans_only", "on") != "off")
+        if "mode" in data:
+            for i, mode in enumerate(MODES):
+                if mode.lower() == data["mode"].lower():
+                    self._mode.set_selected(i)
+                    break
+
+    def _refresh(self) -> None:
+        if self._busy:
+            return
+        self._status.set_text("Looking for RGB devices…")
+
+        def work() -> None:
+            code, out = run_out(["etheris-rgb", "status"])
+            text = summarize_status(out) if out else ("OK" if code == 0 else "Refresh failed")
+            GLib.idle_add(self._status.set_text, text)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply(self, off: bool) -> None:
+        if self._busy:
+            return
+        parsed = parse_hex(self._hex.get_text()) or self._color
+        self._color = parsed
+        self._set_preview(parsed)
+
+        argv = ["etheris-rgb", "off" if off else "set"]
+        if not off:
+            argv += [
+                parsed,
+                "--mode",
+                self._selected_mode(),
+                "--brightness",
+                str(int(self._brightness.get_value())),
+                "--leds",
+                str(int(self._leds.get_value())),
+            ]
+        if not self._fans_only.get_active():
+            argv.append("--all")
+        elif not off:
+            argv.append("--fans-only")
+
+        self._busy = True
+        self._status.set_text("Turning lights off…" if off else f"Applying {parsed}…")
+
+        def work() -> None:
+            code, out = run_out(argv)
+            msg = out or ("Lights off" if off and code == 0 else ("Applied" if code == 0 else "Apply failed"))
+            if "\n" in msg:
+                msg = summarize_status(msg)
+            GLib.idle_add(self._after_apply, code == 0, msg)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_apply(self, ok: bool, msg: str) -> bool:
+        self._busy = False
+        self._status.set_text(msg if ok else f"Error: {msg}")
+        return False
+
+
+def main() -> int:
+    return RgbApp().run(None)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

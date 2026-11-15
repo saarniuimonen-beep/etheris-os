@@ -8,7 +8,7 @@
 
 | ID | Item |
 |----|------|
-| P0 | Neo-Aero tokens + `etheris-theme-apply` + theme packs + baseline ≤500 MiB |
+| P0 | Theme tokens + `etheris-theme-apply` + theme packs + baseline ≤500 MiB |
 | — | Power menu GTK concept in OS (may be restyled to match Phase-1 tokens later) |
 
 ---

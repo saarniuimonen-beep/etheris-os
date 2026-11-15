@@ -1,0 +1,98 @@
+/* Etheris OS — Rofi · Slim icon launcher */
+
+* {
+  et-bg: rgba(10, 22, 40, 0.92);
+  et-input: rgba(18, 35, 56, 0.88);
+  et-fg: #e8f4fc;
+  et-muted: #a8c4d8;
+  et-accent: #38bdf8;
+  et-accent-soft: rgba(56, 189, 248, 0.16);
+  et-highlight: rgba(255, 255, 255, 0.08);
+  et-radius: 18px;
+  et-radius-sm: 12px;
+  font: "Noto Sans 12";
+  background-color: transparent;
+  text-color: @et-fg;
+}
+
+window {
+  background-color: @et-bg;
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: @et-radius;
+  padding: 14px;
+  width: 480px;
+  /* Neo-Aero D2 — slightly tighter slim Kickoff */
+}
+
+mainbox {
+  spacing: 12px;
+  children: [ inputbar, listview ];
+}
+
+inputbar {
+  background-color: @et-input;
+  border: none;
+  border-radius: @et-radius-sm;
+  padding: 10px 14px;
+  spacing: 10px;
+  children: [ entry ];
+}
+
+prompt {
+  enabled: false;
+}
+
+entry {
+  placeholder: "Search apps";
+  placeholder-color: @et-muted;
+  text-color: @et-fg;
+  cursor: text;
+  background-color: transparent;
+}
+
+message {
+  padding: 0;
+  text-color: @et-muted;
+}
+
+mode-switcher {
+  enabled: false;
+}
+
+listview {
+  lines: 3;
+  columns: 4;
+  spacing: 8px;
+  scrollbar: false;
+  background-color: transparent;
+  cycle: true;
+  fixed-height: true;
+}
+
+element {
+  orientation: vertical;
+  padding: 12px 8px;
+  spacing: 8px;
+  border-radius: @et-radius-sm;
+  border: none;
+  background-color: transparent;
+  text-color: @et-muted;
+}
+
+element selected {
+  background-color: @et-accent-soft;
+  text-color: @et-fg;
+}
+
+element-icon {
+  size: 40px;
+  background-color: transparent;
+  horizontal-align: 0.5;
+}
+
+element-text {
+  horizontal-align: 0.5;
+  vertical-align: 0.5;
+  text-color: inherit;
+  font: "Noto Sans 11";
+}

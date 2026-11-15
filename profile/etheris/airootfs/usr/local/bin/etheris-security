@@ -71,10 +71,22 @@ cmd_firewall() {
   echo "Docs: /usr/local/share/etheris/docs/SECURITY.md"
 }
 
+# Prefer root; else passwordless sudo (live NOPASSWD). Same pattern as etheris-auth-check.
+as_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  elif sudo -n true >/dev/null 2>&1; then
+    sudo -n "$@"
+  else
+    return 127
+  fi
+}
+
 cmd_audit() {
-  local ok=0 fail=0
+  local ok=0 fail=0 skip=0
   pass() { echo "  OK  $*"; ok=$((ok+1)); }
   bad() { echo "FAIL  $*"; fail=$((fail+1)); }
+  skip() { echo "SKIP $*"; skip=$((skip+1)); }
 
   echo "Etheris local security checklist"
   echo "(manual inspection helper — not a full audit)"
@@ -97,12 +109,24 @@ cmd_audit() {
   else
     pass "sshd not enabled"
   fi
+  # Prefer masked unit (rock-solid default)
+  if [[ -L /etc/systemd/system/sshd.service ]] \
+    && [[ "$(readlink -f /etc/systemd/system/sshd.service 2>/dev/null || readlink /etc/systemd/system/sshd.service)" == /dev/null ]]; then
+    pass "sshd.service masked"
+  elif [[ -d /run/archiso ]] || grep -qw archisobasedir /proc/cmdline 2>/dev/null; then
+    # Live ISO should ship the mask; note if missing
+    [[ -L /etc/systemd/system/sshd.service ]] \
+      && pass "sshd.service masked" \
+      || skip "sshd.service mask symlink (expected on Etheris images)"
+  else
+    skip "sshd.service mask check (optional on non-Etheris hosts)"
+  fi
 
   if [[ -f /etc/sudoers.d/etheris ]]; then
-    if grep -q NOPASSWD /etc/sudoers.d/etheris; then
+    if as_root grep -q NOPASSWD /etc/sudoers.d/etheris 2>/dev/null; then
       echo "  NOTE live ISO: NOPASSWD sudo for wheel (convenience — not for installed systems)"
     fi
-    mode=$(stat -c '%a' /etc/sudoers.d/etheris 2>/dev/null || echo '?')
+    mode=$(as_root stat -c '%a' /etc/sudoers.d/etheris 2>/dev/null || echo '?')
     [[ "$mode" == "440" || "$mode" == "0440" ]] && pass "sudoers.d mode $mode" || bad "sudoers.d mode $mode"
   fi
 
@@ -114,25 +138,95 @@ cmd_audit() {
     bad "privacy.conf missing"
   fi
 
-  if [[ -f /etc/shadow ]]; then
-    if awk -F: '($2=="" || $2=="!" || $2=="*") && $1!~/^(root|nobody|.*nologin)/ {exit 1}' /etc/shadow; then
-      :
-    fi
-    # live user must have a hash
-    if awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow 2>/dev/null; then
+  # /etc/shadow needs elevation — never false-FAIL when unreadable
+  if id etheris >/dev/null 2>&1; then
+    set +e
+    as_root awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow 2>/dev/null
+    rc=$?
+    set -e
+    if ((rc == 0)); then
       pass "live user has password hash (not empty)"
+    elif ((rc == 127)); then
+      skip "password hash (need root or sudo -n to read /etc/shadow)"
     else
-      # installed systems may not have etheris user
-      if id etheris >/dev/null 2>&1; then
-        bad "user etheris has no password hash"
-      else
-        pass "no shared live user on this system"
+      bad "user etheris has no password hash"
+    fi
+  else
+    pass "no shared live user on this system"
+  fi
+
+  if [[ -f /etc/nftables.conf ]]; then
+    grep -q 'policy drop' /etc/nftables.conf \
+      && pass "nftables.conf declares policy drop" \
+      || bad "nftables.conf missing policy drop"
+    if grep -A6 'chain forward' /etc/nftables.conf | grep -q 'policy drop'; then
+      pass "nftables forward chain policy drop"
+    else
+      bad "nftables forward chain missing policy drop"
+    fi
+    if grep -E 'dport[[:space:]]*22|[[:space:]]22[[:space:]]*accept|tcp dport 22' /etc/nftables.conf >/dev/null 2>&1; then
+      bad "nftables.conf accepts port 22"
+    else
+      pass "nftables.conf has no port-22 accept"
+    fi
+  fi
+
+  if [[ -f /etc/sysctl.d/99-etheris-security.conf ]]; then
+    pass "sysctl security drop-in present"
+  else
+    bad "sysctl security drop-in missing"
+  fi
+
+  # Listening sockets — only fail if something is on port 22
+  if command -v ss >/dev/null 2>&1; then
+    echo "  Listening (summary):"
+    ss -tulpn 2>/dev/null | awk 'NR==1 || /LISTEN|UNCONN/' | head -20 | sed 's/^/    /' || true
+    if ss -tulpn 2>/dev/null | grep -qE ':22\s'; then
+      bad "something listening on TCP/UDP 22 (SSH surface)"
+    else
+      pass "no listener on port 22"
+    fi
+  else
+    skip "listening-port summary (ss missing)"
+  fi
+
+  # Disk encryption detection (informational)
+  if command -v lsblk >/dev/null 2>&1; then
+    if lsblk -o NAME,FSTYPE,TYPE 2>/dev/null | grep -qi crypt; then
+      pass "crypt/LUKS block device detected"
+    else
+      echo "  NOTE: no crypt/LUKS devices (optional; not required by defaults)"
+    fi
+  fi
+
+  # Sudoers inventory + installed-system NOPASSWD trap
+  echo "  Sudoers inventory:"
+  if [[ -d /etc/sudoers.d ]]; then
+    for f in /etc/sudoers.d/*; do
+      [[ -f "$f" ]] || continue
+      base="$(basename "$f")"
+      [[ "$base" == *~ || "$base" == *.bak ]] && continue
+      mode=$(stat -c '%a' "$f" 2>/dev/null || echo '?')
+      echo "    $base mode=$mode"
+      if [[ "$base" == "etheris" ]] && grep -q NOPASSWD "$f" 2>/dev/null; then
+        if [[ -d /run/archiso ]] || grep -qw archisobasedir /proc/cmdline 2>/dev/null; then
+          echo "    NOTE: live NOPASSWD expected on live ISO"
+        else
+          bad "installed system still has live NOPASSWD sudoers ($base)"
+        fi
       fi
+    done
+    if [[ -f /etc/sudoers.d/wheel ]] && grep -q '%wheel ALL=(ALL:ALL) ALL' /etc/sudoers.d/wheel; then
+      pass "password sudo for wheel present"
+    elif [[ -d /run/archiso ]] || grep -qw archisobasedir /proc/cmdline 2>/dev/null; then
+      echo "  NOTE: wheel password sudoers not required on live ISO"
+    else
+      echo "  NOTE: /etc/sudoers.d/wheel not found (check sudoers policy)"
     fi
   fi
 
   echo
-  echo "Result: ${ok} OK, ${fail} FAIL"
+  echo "Result: ${ok} OK, ${fail} FAIL, ${skip} SKIP"
   echo "Limitations: see /usr/local/share/etheris/docs/SECURITY.md"
   (( fail == 0 ))
 }

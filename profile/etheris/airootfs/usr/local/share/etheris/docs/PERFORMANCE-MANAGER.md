@@ -56,7 +56,7 @@ etheris-gpu status
 etheris-performance   # GUI
 ```
 
-Privileged apply uses `pkexec` (wheel is allowed on Etheris live/install polkit rules).
+Privileged apply uses `pkexec` (`AUTH_ADMIN_KEEP` for `/usr/local/bin/etheris-perf` — see `docs/POLKIT.md`).
 
 ## Honesty / testing
 

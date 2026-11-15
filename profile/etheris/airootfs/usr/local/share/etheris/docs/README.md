@@ -1,45 +1,54 @@
 # Etheris OS
 
-Lightweight Arch-based desktop. Target: **≤500 MB RAM at idle**.
+Arch-based Wayland desktop. Default session: **Sway** with Etheris themes.  
+Version: see `/usr/local/share/etheris/VERSION` (product) and `/etc/os-release`.
+
+Idle RAM target: about **500 MB** for the Etheris/Sway session (a goal — do not strip security for it).
+
+## Live login
+
+- User / password: `etheris` / `etheris`
+- Greeter: **ReGreet** (text fallback available)
+- Session: **Etheris (Sway)**
 
 ## Shortcuts
 
 | Key | Action |
 |-----|--------|
-| Alt+Enter | Terminal |
-| Alt+D / Alt+Space | Launcher |
-| Alt+Esc | Session menu |
+| Super+Return | Terminal |
+| Super+D / Super+Space | Launcher |
+| Super+A | Control Center |
+| Super+, | Settings |
+| Super+Shift+E | Power menu |
 | Super+L | Lock |
-| Print | Screenshot to clipboard |
+| Super+/ | Shortcut Center |
 
 ## Customize
 
 ```bash
+etheris                 # interactive menu
 etheris themes
 etheris wallpaper
 etheris status
-nwg-look
+etheris hardware
+etheris performance
+etheris help
 ```
 
-Configs live in `~/.config/labwc`, `~/.config/waybar`, `~/.config/etheris`.
+Configs: `~/.config/sway`, `~/.config/waybar`, `~/.config/etheris`, …
 
 ## Install
 
 ```bash
-sudo archinstall
+sudo etheris-installer
 ```
 
-## Desktops
+After install, first boot runs the setup wizard when needed (`etheris oobe`).
 
-At the **SDDM login screen**, pick a session:
+## Docs in this folder
 
-| Session | Notes |
-|---------|--------|
-| Etheris Light (labwc) | Lowest RAM (≤500MB idle target) |
-| Hyprland | Tiling Wayland |
-| Plasma | Full KDE desktop (uses more RAM) |
-| Xfce | Classic GTK desktop |
+Security, channels, hardware/gaming, installer persistence, first-boot setup, polkit, and release policy — same topics as the project `docs/` tree (curated subset synced at bake time).
 
-Live user: `etheris` / `etheris`
+## Not on this ISO
 
-Install with desktop choice: `etheris install`
+Optional desktops (Hyprland / KDE / XFCE), disk encryption UI in the installer, Secure Boot, and immutable A/B updates are **not** included in 0.1.0-alpha.

@@ -1,0 +1,12 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = systemd
+Target = linux
+Target = linux-lts
+
+[Action]
+Description = Etheris: refresh systemd-boot after kernel/systemd update
+When = PostTransaction
+Exec = /usr/bin/bootctl update
+NeedsTargets

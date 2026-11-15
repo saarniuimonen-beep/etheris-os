@@ -12,5 +12,5 @@
   </defs>
   <rect width="1920" height="1080" fill="url(#g)"/>
   <rect width="1920" height="1080" fill="url(#r)"/>
-  <text x="64" y="1010" font-family="sans-serif" font-size="28" fill="#ecfccb" fill-opacity="0.4">Etheris OS</text>
+  <text x="168" y="820" font-family="sans-serif" font-size="36" fill="#ecfccb" fill-opacity="0.82">Etheris OS</text>
 </svg>

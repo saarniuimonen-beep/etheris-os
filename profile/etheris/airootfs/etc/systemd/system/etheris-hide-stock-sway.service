@@ -1,0 +1,14 @@
+[Unit]
+Description=Etheris: hide stock Sway session from greeters
+Documentation=file:///usr/local/share/etheris/docs/LOGIN.md
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service greetd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/etheris-hide-stock-sway
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

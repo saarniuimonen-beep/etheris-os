@@ -2,7 +2,7 @@
 Type=Application
 Name=Etheris Files
 GenericName=File Manager
-Comment=Browse files with Neo-Aero Etheris styling
+Comment=Browse files with Etheris styling
 Exec=pcmanfm %U
 Icon=system-file-manager
 Terminal=false

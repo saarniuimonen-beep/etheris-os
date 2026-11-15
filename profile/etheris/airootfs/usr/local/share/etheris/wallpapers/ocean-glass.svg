@@ -13,6 +13,6 @@
   <rect width="1920" height="1080" fill="url(#g)"/>
   <rect width="1920" height="1080" fill="url(#r)"/>
   <circle cx="1400" cy="280" r="90" fill="#7dd3fc" fill-opacity="0.25"/>
-  <circle cx="1400" cy="280" r="55" fill="#e0f2fe" fill-opacity="0.35"/>
-  <text x="64" y="1010" font-family="sans-serif" font-size="28" fill="#e8f4fc" fill-opacity="0.45">Etheris OS</text>
+  <circle cx="1400" cy="280" r="55" fill="#e0f2fe" fill-opacity="0.65"/>
+  <text x="168" y="820" font-family="sans-serif" font-size="36" fill="#e8f4fc" fill-opacity="0.82">Etheris OS</text>
 </svg>

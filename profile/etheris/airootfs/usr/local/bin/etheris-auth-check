@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
-# Verify Etheris authentication is usable
+# Verify Etheris authentication is usable (safe for live user + root).
 set -euo pipefail
 ok=0
 fail=0
+skip=0
 
 pass() { echo "  OK  $*"; ok=$((ok+1)); }
 fail() { echo "FAIL  $*"; fail=$((fail+1)); }
+skip() { echo "SKIP $*"; skip=$((skip+1)); }
+
+# Prefer direct root; else passwordless sudo (live NOPASSWD).
+as_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  elif sudo -n true >/dev/null 2>&1; then
+    sudo -n "$@"
+  else
+    return 127
+  fi
+}
 
 echo "Etheris authentication check"
 echo
@@ -17,26 +30,79 @@ else fail "user 'etheris' missing"; fi
 if id etheris 2>/dev/null | grep -q wheel; then pass "etheris is in wheel"
 else fail "etheris not in wheel (sudo/polkit admin broken)"; fi
 
-# password hash present
-if awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow; then
+# password hash present (needs root for /etc/shadow)
+if as_root awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow 2>/dev/null; then
   pass "etheris has a password hash in /etc/shadow"
+elif [[ $? -eq 127 ]]; then
+  skip "password hash (need root or sudo -n to read /etc/shadow)"
 else
   fail "etheris has no usable password hash"
 fi
 
 # password verifies (when possible as root)
-if [[ "$(id -u)" -eq 0 ]] && command -v python3 >/dev/null; then
-  if python3 - <<'PY'
-import crypt, sys
-hash=None
+# Python 3.13+ removed stdlib crypt — use libxcrypt via ctypes. Never treat
+# ImportError as a password mismatch (that was a false FAIL on live ISO).
+if as_root true >/dev/null 2>&1 && command -v python3 >/dev/null; then
+  set +e
+  as_root python3 - <<'PY'
+import sys
+
+def load_crypt():
+    try:
+        import crypt as _crypt  # Python ≤3.12
+        return lambda pw, h: _crypt.crypt(pw, h)
+    except ImportError:
+        pass
+    import ctypes
+    import ctypes.util
+    candidates = []
+    found = ctypes.util.find_library("crypt")
+    if found:
+        candidates.append(found)
+    candidates.extend(
+        ["libcrypt.so.2", "libcrypt.so.1", "libcrypt.so", "/usr/lib/libcrypt.so.2"]
+    )
+    last = None
+    for name in candidates:
+        try:
+            lib = ctypes.CDLL(name, use_errno=True)
+            lib.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+            lib.crypt.restype = ctypes.c_char_p
+
+            def _crypt(pw, h, _lib=lib):
+                out = _lib.crypt(pw.encode(), h.encode())
+                return out.decode() if out else None
+
+            return _crypt
+        except OSError as e:
+            last = e
+            continue
+    raise RuntimeError(f"libcrypt unavailable ({last})")
+
+hashv = None
 for line in open("/etc/shadow"):
     if line.startswith("etheris:"):
-        hash=line.split(":")[1]; break
-sys.exit(0 if hash and crypt.crypt("etheris", hash)==hash else 1)
+        hashv = line.split(":")[1]
+        break
+if not hashv or hashv in ("!", "*", "!!", ""):
+    sys.exit(1)  # no usable hash
+try:
+    crypt_fn = load_crypt()
+except Exception:
+    sys.exit(2)  # cannot verify on this Python — SKIP
+try:
+    sys.exit(0 if crypt_fn("etheris", hashv) == hashv else 1)
+except Exception:
+    sys.exit(2)
 PY
-  then pass "password 'etheris' matches shadow hash"
-  else fail "password 'etheris' does NOT match shadow hash"
-  fi
+  rc=$?
+  set -e
+  case "$rc" in
+    0) pass "password 'etheris' matches shadow hash" ;;
+    2) skip "password hash verify (no crypt/libcrypt on this Python)" ;;
+    127) skip "password hash verify (need root or sudo -n)" ;;
+    *) fail "password 'etheris' does NOT match shadow hash" ;;
+  esac
 fi
 
 # sudoers
@@ -52,8 +118,13 @@ else
 fi
 
 if command -v visudo >/dev/null; then
-  if visudo -cf /etc/sudoers >/dev/null 2>&1; then pass "visudo: /etc/sudoers OK"
-  else fail "visudo: /etc/sudoers INVALID"; fi
+  if as_root visudo -cf /etc/sudoers >/dev/null 2>&1; then
+    pass "visudo: /etc/sudoers OK"
+  elif [[ $? -eq 127 ]]; then
+    skip "visudo (need root or sudo -n)"
+  else
+    fail "visudo: /etc/sudoers INVALID"
+  fi
 fi
 
 # sudo works for etheris (nopasswd)
@@ -63,17 +134,54 @@ if [[ "$(id -u)" -eq 0 ]]; then
   else
     fail "etheris cannot sudo -n (check wheel + sudoers)"
   fi
-fi
-
-# SDDM unit / config
-if [[ -f /etc/sddm.conf.d/etheris.conf ]] || [[ -f /usr/lib/systemd/system/sddm.service ]]; then
-  pass "SDDM present"
+elif sudo -n true >/dev/null 2>&1; then
+  pass "current user can sudo -n"
 else
-  fail "SDDM not found"
+  fail "sudo -n failed for current user (check wheel + sudoers)"
 fi
 
-if [[ -f /etc/polkit-1/rules.d/49-etheris-wheel.rules ]]; then
-  pass "polkit wheel rule installed"
+# greetd / ReGreet (display manager)
+if [[ -f /etc/greetd/config.toml ]] || [[ -f /usr/lib/systemd/system/greetd.service ]]; then
+  pass "greetd present"
+else
+  fail "greetd not found"
+fi
+if command -v regreet >/dev/null 2>&1 || [[ -x /usr/local/bin/etheris-greeter ]]; then
+  pass "ReGreet / etheris-greeter available"
+elif command -v tuigreet >/dev/null 2>&1 || [[ -x /usr/local/bin/etheris-greeter-tui ]]; then
+  pass "tuigreet / etheris-greeter-tui fallback available"
+else
+  fail "no greeter binary (regreet/tuigreet) found"
+fi
+
+# Polkit: /etc/polkit-1/rules.d is often root-only; also ship under share/.
+POLKIT_RULE=""
+for cand in \
+  /etc/polkit-1/rules.d/49-etheris-wheel.rules \
+  /usr/share/polkit-1/rules.d/49-etheris-wheel.rules \
+  /usr/local/share/etheris/polkit/49-etheris-wheel.rules
+do
+  if [[ -r "$cand" ]]; then
+    POLKIT_RULE="$cand"
+    break
+  fi
+  if as_root test -f "$cand" >/dev/null 2>&1; then
+    POLKIT_RULE="$cand"
+    break
+  fi
+done
+
+if [[ -n "$POLKIT_RULE" ]]; then
+  if as_root grep -q 'org.freedesktop.NetworkManager' "$POLKIT_RULE" \
+    && as_root grep -q 'AUTH_ADMIN_KEEP' "$POLKIT_RULE"; then
+    pass "polkit wheel rule installed (scoped) at $POLKIT_RULE"
+  elif [[ -r "$POLKIT_RULE" ]] \
+    && grep -q 'org.freedesktop.NetworkManager' "$POLKIT_RULE" \
+    && grep -q 'AUTH_ADMIN_KEEP' "$POLKIT_RULE"; then
+    pass "polkit wheel rule installed (scoped) at $POLKIT_RULE"
+  else
+    fail "polkit wheel rule missing scoped NetworkManager/AUTH_ADMIN_KEEP entries"
+  fi
 else
   fail "polkit wheel rule missing"
 fi
@@ -85,10 +193,15 @@ for d in /usr/share/wayland-sessions /usr/share/xsessions; do
   sess=$((sess + $(find "$d" -name '*.desktop' 2>/dev/null | wc -l)))
 done
 if (( sess > 0 )); then pass "login sessions available (${sess} desktop files)"
-else fail "no .desktop sessions found for SDDM"; fi
+else fail "no .desktop sessions found for greetd"; fi
+if [[ -f /usr/share/wayland-sessions/etheris.desktop ]]; then
+  pass "Etheris (Sway) session desktop present"
+else
+  fail "etheris.desktop wayland session missing"
+fi
 
 echo
-echo "Result: ${ok} OK, ${fail} FAIL"
+echo "Result: ${ok} OK, ${fail} FAIL, ${skip} SKIP"
 if (( fail > 0 )); then
   echo "Run: sudo etheris-auth-setup"
   exit 1

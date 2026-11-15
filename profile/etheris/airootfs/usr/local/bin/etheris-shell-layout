@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Etheris OS — apply shell layout preferences to Waybar (Path A).
-# panel_layout=floating → Neo-Aero top panel (default)
+# panel_layout=floating → edge-to-edge top bar (default; name kept for settings compat)
 # panel_layout=dock     → bottom island dock (different modules / chrome)
 # Never starts Quickshell. Safe to run from theme-apply / Settings / CC.
 set -euo pipefail
@@ -106,7 +106,7 @@ layout = sys.argv[4]
 
 MODULE_DEFS = {
     "custom/logo": {
-        "format": " Etheris ",
+        "format": "Etheris",
         "tooltip": "Etheris OS — Super+D launcher",
         "on-click": "etheris-overlay launcher",
         "on-click-right": "etheris-overlay launcher pins",
@@ -125,7 +125,7 @@ MODULE_DEFS = {
     "sway/mode": {"format": " {} "},
     "sway/window": {
         "format": "{title}",
-        "max-length": 40,
+        "max-length": 36,
         "tooltip": True,
     },
     "custom/winctl": {
@@ -163,7 +163,7 @@ MODULE_DEFS = {
         "interval": 30,
         "on-click": "etheris-overlay control-center",
     },
-    "tray": {"icon-size": 15, "spacing": 8},
+    "tray": {"icon-size": 14, "spacing": 6},
     "memory": {
         "format": "{used:0.1f}G",
         "interval": 15,
@@ -172,25 +172,28 @@ MODULE_DEFS = {
     "pulseaudio": {
         "format": "{volume}%",
         "format-muted": "mute",
-        "on-click": "etheris-overlay menu pavucontrol",
+        "on-click": "etheris-overlay control-center",
         "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+        "on-click-middle": "etheris-overlay menu pavucontrol",
     },
     "network": {
         "format-wifi": "{essid}",
         "format-ethernet": "lan",
         "format-disconnected": "off",
         "interval": 15,
-        "on-click": "etheris-overlay menu foot -e nmtui",
+        "on-click": "etheris-overlay control-center",
+        "on-click-right": "etheris-overlay menu foot -e nmtui",
     },
     "battery": {
         "format": "{capacity}%",
         "format-charging": "{capacity}%+",
         "interval": 30,
         "states": {"warning": 20, "critical": 10},
+        "on-click": "etheris-overlay control-center",
     },
     "custom/cc": {
-        "format": "☰",
-        "tooltip": "Control Center — Super+A",
+        "format": "Menu",
+        "tooltip": "Etheris Menu — hover or Super+A",
         "on-click": "etheris-overlay control-center",
     },
     "custom/power": {
@@ -235,7 +238,7 @@ if layout == "dock":
         "modules-right": right,
     }
 else:
-    # Floating top Neo-Aero panel (default).
+    # Edge-to-edge top bar (default; panel_layout=floating for settings compat).
     left = [
         "custom/logo",
         "sway/workspaces",
@@ -251,12 +254,12 @@ else:
     data = {
         "layer": "top",
         "position": "top",
-        "height": 34,
-        "margin-top": 8,
+        "height": 28,
+        "margin-top": 0,
         "margin-bottom": 0,
-        "margin-left": 12,
-        "margin-right": 12,
-        "spacing": 6,
+        "margin-left": 0,
+        "margin-right": 0,
+        "spacing": 4,
         "modules-left": left,
         "modules-center": center,
         "modules-right": right,

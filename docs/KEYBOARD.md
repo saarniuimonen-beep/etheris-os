@@ -4,7 +4,7 @@
 |-----|--------|
 | Super+Return | Terminal (foot) |
 | Super+D / Super+Space | Etheris launcher (Rofi Kickoff) |
-| **Super+A** | Control Center |
+| **Super+A** | Etheris Menu (Control Center sheet) |
 | **Super+N** | Notification center |
 | **Super+W** | Workspace / window overview |
 | **Super+,** | Etheris Settings (GTK) |
@@ -43,4 +43,4 @@ Sway does not use a Windows-style taskbar minimize. **Super+H** moves the focuse
 - Sway title strip has **no** SSD close/min/max buttons; use panel window controls, **Alt+F4**, or the app’s own CSD buttons (GTK themed).
 - Shortcut Center: `Super+/` or `etheris shortcuts` (launcher: Shortcut Center).
 - First-login guide: `etheris guide --force` (auto once on installed systems).
-- Greeter (ReGreet Neo-Aero): graphical login · TUI fallback `etheris-greeter-tui` · live user `etheris` / `etheris`.
+- Greeter (ReGreet): graphical login · text fallback `etheris-greeter-tui` · live user `etheris` / `etheris`.

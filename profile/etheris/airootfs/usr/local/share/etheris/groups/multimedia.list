@@ -1,0 +1,17 @@
+# Etheris package group: multimedia — optional codecs / creative
+ffmpeg
+gst-plugins-base
+gst-plugins-good
+gst-plugins-bad
+gst-libav
+mpv
+imagemagick
+obs-studio
+pipewire-alsa
+pipewire-jack
+libva-utils
+vulkan-tools
+handbrake
+audacity
+gimp
+inkscape

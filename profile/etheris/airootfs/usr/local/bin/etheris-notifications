@@ -7,6 +7,65 @@ CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
 SETTINGS="$CONF_DIR/settings.conf"
 mkdir -p "$CONF_DIR"
 
+get_setting() {
+  local key="$1" def="${2:-}"
+  [[ -f "$SETTINGS" ]] || { echo "$def"; return; }
+  local v
+  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  [[ -n "$v" ]] && echo "$v" || echo "$def"
+}
+
+set_setting() {
+  local key="$1" val="$2"
+  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
+  else
+    echo "${key}=${val}" >>"$SETTINGS"
+  fi
+}
+
+# Restore persisted DND after mako starts (session / apply-session).
+restore_dnd() {
+  command -v makoctl >/dev/null 2>&1 || return 0
+  local want
+  want="$(get_setting dnd off | tr '[:upper:]' '[:lower:]')"
+  case "$want" in
+    on|1|true|yes)
+      makoctl mode -a dnd >/dev/null 2>&1 || makoctl set-mode dnd >/dev/null 2>&1 || true
+      ;;
+    *)
+      makoctl mode -r dnd >/dev/null 2>&1 || makoctl set-mode default >/dev/null 2>&1 || true
+      ;;
+  esac
+}
+
+dmenu() {
+  local prompt="$1"
+  shift || true
+  if command -v rofi >/dev/null 2>&1; then
+    printf '%s\n' "$@" | rofi -dmenu -p "$prompt" -i 2>/dev/null || true
+  elif command -v wofi >/dev/null 2>&1; then
+    printf '%s\n' "$@" | wofi --dmenu -p "$prompt" -I 2>/dev/null || true
+  fi
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  restore-dnd|apply-dnd)
+    # Wait briefly for mako daemon on session start (do not key off makoctl PATH alone)
+    for _ in 1 2 3 4 5 6 7 8; do
+      if pgrep -x mako >/dev/null 2>&1; then
+        restore_dnd
+        exit 0
+      fi
+      sleep 0.25
+    done
+    # Last try even if pgrep missed (socket still usable)
+    restore_dnd
+    exit 0
+    ;;
+esac
+
 dnd="off"
 if command -v makoctl >/dev/null 2>&1; then
   if makoctl mode 2>/dev/null | grep -qiE 'dnd|do-not-disturb'; then
@@ -16,19 +75,17 @@ fi
 
 hist_count=0
 if command -v makoctl >/dev/null 2>&1; then
-  # makoctl history prints notifications; count non-empty lines loosely
   hist_count="$(makoctl history 2>/dev/null | grep -c . || true)"
 fi
 
-pick="$(printf '%s\n' \
+pick="$(dmenu 'notifications › ' \
   "Show history (${hist_count} lines)" \
   "Restore last dismissed" \
   "Do not disturb (${dnd})" \
   "Dismiss all" \
   "Test notification" \
   "Open Control Center" \
-  "Cancel" \
-  | wofi --dmenu -p 'notifications › ' -I 2>/dev/null || true)"
+  "Cancel" || true)"
 
 [[ -n "$pick" && "$pick" != Cancel ]] || exit 0
 
@@ -48,16 +105,11 @@ case "$pick" in
   "Do not disturb"*)
     if [[ "$dnd" == on ]]; then
       makoctl mode -r dnd >/dev/null 2>&1 || makoctl set-mode default >/dev/null 2>&1 || true
+      set_setting dnd off
       notify-send -a Etheris 'Notifications' 'Do not disturb off' 2>/dev/null || true
     else
       makoctl mode -a dnd >/dev/null 2>&1 || makoctl set-mode dnd >/dev/null 2>&1 || true
-      # When entering DND, avoid spamming; still try a silent mode change
-    fi
-    # Persist preference
-    if grep -qE '^dnd=' "$SETTINGS" 2>/dev/null; then
-      if [[ "$dnd" == on ]]; then sed -i 's|^dnd=.*|dnd=off|' "$SETTINGS"; else sed -i 's|^dnd=.*|dnd=on|' "$SETTINGS"; fi
-    else
-      if [[ "$dnd" == on ]]; then echo 'dnd=off' >>"$SETTINGS"; else echo 'dnd=on' >>"$SETTINGS"; fi
+      set_setting dnd on
     fi
     ;;
   "Dismiss all")

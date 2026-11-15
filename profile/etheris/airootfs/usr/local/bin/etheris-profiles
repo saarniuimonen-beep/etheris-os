@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Etheris workspace profiles — save/restore settings.conf + panel layout (off by default)
+set -euo pipefail
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+PROF_DIR="$CONF_DIR/profiles"
+
+usage() {
+  cat <<'EOF'
+Etheris workspace profiles
+
+Usage:
+  etheris profiles list
+  etheris profiles save <name>     Snapshot settings.conf
+  etheris profiles load <name>     Restore + apply session
+  etheris profiles delete <name>
+  etheris profiles help
+
+Profiles are user-local and reversible. Nothing auto-applies at login.
+EOF
+}
+
+list_prof() {
+  mkdir -p "$PROF_DIR"
+  echo "Profiles in $PROF_DIR"
+  local f
+  shopt -s nullglob
+  for f in "$PROF_DIR"/*.conf; do
+    echo "  $(basename "$f" .conf)"
+  done
+}
+
+save_prof() {
+  local name="${1:-}"
+  [[ -n "$name" ]] || { usage; exit 2; }
+  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "Invalid name"; exit 1; }
+  mkdir -p "$PROF_DIR"
+  [[ -f "$SETTINGS" ]] || { echo "No settings.conf yet"; exit 1; }
+  cp -a "$SETTINGS" "$PROF_DIR/${name}.conf"
+  echo "Saved profile: $name"
+}
+
+load_prof() {
+  local name="${1:-}" f
+  [[ -n "$name" ]] || { usage; exit 2; }
+  f="$PROF_DIR/${name}.conf"
+  [[ -f "$f" ]] || { echo "Unknown profile: $name"; list_prof; exit 1; }
+  mkdir -p "$CONF_DIR"
+  cp -a "$f" "$SETTINGS"
+  echo "Loaded profile: $name"
+  if command -v etheris >/dev/null; then
+    etheris apply-session >/dev/null 2>&1 || true
+  fi
+}
+
+del_prof() {
+  local name="${1:-}" f
+  [[ -n "$name" ]] || { usage; exit 2; }
+  f="$PROF_DIR/${name}.conf"
+  [[ -f "$f" ]] || { echo "Unknown profile: $name"; exit 1; }
+  rm -f "$f"
+  echo "Deleted profile: $name"
+}
+
+case "${1:-list}" in
+  list|ls) list_prof ;;
+  save|create) shift; save_prof "${1:-}" ;;
+  load|apply) shift; load_prof "${1:-}" ;;
+  delete|rm) shift; del_prof "${1:-}" ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 1 ;;
+esac

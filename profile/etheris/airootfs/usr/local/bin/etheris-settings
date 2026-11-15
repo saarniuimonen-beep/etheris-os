@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Etheris OS — Neo-Aero Settings (GTK4). Appearance / Shell / Motion / Links."""
+"""Etheris OS — Settings (GTK4). Appearance / Shell / Motion / Links."""
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+# Virtio/TCG software GL blanks GTK4 without Cairo.
+os.environ.setdefault("GSK_RENDERER", "cairo")
 
 try:
     import gi
@@ -138,6 +141,8 @@ class SettingsApp(Gtk.Application):
             ("appearance", "Appearance", self._page_appearance()),
             ("shell", "Shell", self._page_shell()),
             ("performance", "Performance", self._page_performance()),
+            ("privacy", "Privacy", self._page_privacy()),
+            ("software", "Software", self._page_software()),
             ("defaults", "Defaults", self._page_defaults()),
             ("motion", "Motion", self._page_motion()),
             ("links", "More", self._page_links()),
@@ -186,7 +191,7 @@ class SettingsApp(Gtk.Application):
                 b.set_sensitive(False)
             b.connect("clicked", self._apply_theme, name)
             theme_box.append(b)
-        pane.append(self._card("Atmosphere / theme", "Applies Neo-Aero tokens to panel, menus, GTK, terminal.", theme_box))
+        pane.append(self._card("Atmosphere / theme", "Applies theme colors to panel, menus, GTK, and terminal.", theme_box))
 
         wall_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         open_w = Gtk.Button(label="Open Etheris Wallpapers")
@@ -229,7 +234,7 @@ class SettingsApp(Gtk.Application):
         pane.append(
             self._card(
                 "Panel position",
-                "Top panel = Neo-Aero floating bar with window title and controls. Bottom dock = centered island with app pins (no title chrome).",
+                "Top panel = thin edge-to-edge bar with window title and controls. Bottom dock = centered island with app pins (no title bar).",
                 layout,
             )
         )
@@ -314,12 +319,19 @@ class SettingsApp(Gtk.Application):
         for label, argv in [
             ("Open Performance Manager", ["etheris-performance"]),
             ("Open GPU Manager", ["etheris-gpu-manager"]),
+            ("Open RGB Manager", ["etheris-rgb-manager"]),
             ("Hardware report", ["foot", "-e", "sh", "-c", "etheris-hw; echo; read -r _"]),
         ]:
             b = Gtk.Button(label=label)
             b.connect("clicked", lambda _b, a=argv: run_bg(a))
             btns.append(b)
-        pane.append(self._card("Managers", "Detailed metrics, GPU detection, and driver helpers.", btns))
+        pane.append(
+            self._card(
+                "Managers",
+                "Detailed metrics, GPU detection, fan RGB lighting, and driver helpers.",
+                btns,
+            )
+        )
         return pane
 
     def _page_defaults(self) -> Gtk.Widget:
@@ -388,31 +400,87 @@ class SettingsApp(Gtk.Application):
         )
         return pane
 
+    def _page_privacy(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        for label, argv in [
+            ("Privacy dashboard", ["etheris-privacy"]),
+            ("Security audit", ["foot", "-e", "bash", "-lc", "etheris-security audit; read -r -p 'Enter…'"]),
+            ("Firewall status", ["foot", "-e", "bash", "-lc", "etheris-security status; read -r -p 'Enter…'"]),
+            ("Create support report", ["foot", "-e", "bash", "-lc", "etheris report create; echo; read -r -p 'Enter…'"]),
+            ("Doctor", ["foot", "-e", "bash", "-lc", "etheris doctor; read -r -p 'Enter…'"]),
+        ]:
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _b, a=argv: run_bg(a))
+            box.append(b)
+        pane.append(
+            self._card(
+                "Privacy & security",
+                "No cloud telemetry. Local tools only. See PRIVACY-DASHBOARD.md.",
+                box,
+            )
+        )
+        return pane
+
+    def _page_software(self) -> Gtk.Widget:
+        pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        pane.add_css_class("pane")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        for label, argv in [
+            ("Open Software Center", ["etheris-software-center"]),
+            ("List package groups", ["foot", "-e", "bash", "-lc", "etheris packages list; read -r -p 'Enter…'"]),
+            ("Install gaming group", ["foot", "-e", "bash", "-lc", "echo 'Needs sudo'; sudo etheris packages install gaming; read -r -p 'Enter…'"]),
+            ("Install dev group", ["foot", "-e", "bash", "-lc", "echo 'Needs sudo'; sudo etheris packages install dev; read -r -p 'Enter…'"]),
+            ("Install multimedia group", ["foot", "-e", "bash", "-lc", "echo 'Needs sudo'; sudo etheris packages install multimedia; read -r -p 'Enter…'"]),
+        ]:
+            b = Gtk.Button(label=label)
+            b.connect("clicked", lambda _b, a=argv: run_bg(a))
+            box.append(b)
+        pane.append(
+            self._card(
+                "Software",
+                "Curated groups from Arch official repos. AUR stays in etheris-aur.",
+                box,
+            )
+        )
+        return pane
+
     def _page_links(self) -> Gtk.Widget:
         pane = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         pane.add_css_class("pane")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         for label, argv in [
             ("Etheris Defaults", ["etheris-defaults"]),
+            ("Software Center", ["etheris-software-center"]),
+            ("System Monitor", ["etheris-monitor"]),
+            ("Workspace profiles", ["etheris-profiles"]),
             ("Performance Manager", ["etheris-performance"]),
             ("GPU Manager", ["etheris-gpu-manager"]),
+            ("RGB Manager", ["etheris-rgb-manager"]),
             ("Timezone / Region (3D globe)", ["etheris-timezone", "--force"]),
             ("Timezone auto-travel: on", ["etheris-timezone-auto", "--enable"]),
             ("Timezone auto-travel: off", ["etheris-timezone-auto", "--disable"]),
             ("Etheris Wallpapers", ["etheris-wallpaper"]),
             ("Etheris Transfers", ["etheris-transfer"]),
             ("Shortcut Center", ["etheris-shortcuts"]),
-            ("Sound settings", ["etheris-sound", "status"]),
+            ("Sound settings", ["__sound__"]),
+            ("Save display layout (persist)", ["__display__"]),
             ("Control Center", ["etheris-overlay", "control-center"]),
             ("Workspace overview", ["etheris-workspace-overview"]),
             ("Power menu", ["etheris-overlay", "power"]),
         ]:
             b = Gtk.Button(label=label)
-            b.connect("clicked", lambda _b, a=argv: run_bg(a))
+            if argv == ["__sound__"]:
+                b.connect("clicked", lambda *_: self._open_sound())
+            elif argv == ["__display__"]:
+                b.connect("clicked", lambda *_: self._save_display())
+            else:
+                b.connect("clicked", lambda _b, a=argv: run_bg(a))
             box.append(b)
         pane.append(self._card("Open", "Jump to other Etheris surfaces.", box))
         about = Gtk.Label(
-            label="Etheris OS · Neo-Aero Path A (Sway + Waybar)\nQuickshell remains optional after RSS gates.",
+            label="Etheris OS · Sway + Waybar desktop\nOther shell options remain experimental.",
             xalign=0,
         )
         about.add_css_class("caption")
@@ -459,11 +527,44 @@ class SettingsApp(Gtk.Application):
     def _on_anim(self, dropdown: Gtk.DropDown, _pspec) -> None:
         val = ["off", "on", "reduced"][dropdown.get_selected()]
         save_setting("animations", val)
-        # Restart motion helper if enabling
+        self.state["animations"] = val
+        # Restart motion helper if enabling; always re-apply Flow so GTK
+        # gtk-enable-animations and reduced-motion CSS stay in sync.
         if val == "on":
             run_bg(["sh", "-c", "pkill -f etheris-motion; etheris-motion &"])
         else:
             run_bg(["pkill", "-f", "etheris-motion"])
+        run_bg(["sh", "-c", "ETHERIS_THEME_FORCE=1 etheris-theme-apply"])
+
+    def _open_sound(self) -> None:
+        """Open a real mixer UI — never a discarded status dump."""
+        for argv in (
+            ["pavucontrol"],
+            ["foot", "-e", "sh", "-c", "etheris-sound status; echo; printf 'Press Enter…'; read -r _"],
+        ):
+            try:
+                subprocess.Popen(argv)
+                return
+            except OSError:
+                continue
+        run_bg(["notify-send", "-a", "Etheris", "Sound", "No sound UI available (install pavucontrol)."])
+
+    def _save_display(self) -> None:
+        """Persist monitor mode/scale/position across reboots."""
+        try:
+            r = subprocess.run(
+                ["etheris-display", "save"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            msg = (r.stdout or r.stderr or "saved").strip().splitlines()
+            notify = msg[0] if msg else "Display layout saved"
+            run_bg(["notify-send", "-a", "Etheris", "Display", notify])
+            if r.returncode == 0:
+                subprocess.Popen(["etheris-display", "apply"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            run_bg(["notify-send", "-a", "Etheris", "Display", "etheris-display not available"])
 
     def _on_performance_profile(self, dropdown: Gtk.DropDown, _pspec) -> None:
         val = ["maximum", "balanced", "quiet", "powersave"][dropdown.get_selected()]

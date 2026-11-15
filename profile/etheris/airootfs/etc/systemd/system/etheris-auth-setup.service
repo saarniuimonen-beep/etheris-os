@@ -1,6 +1,9 @@
 [Unit]
 Description=Etheris OS authentication setup (live user, passwords, sudo)
 DefaultDependencies=no
+# Live ISO only — never reset passwords on installed systems
+ConditionKernelCommandLine=archisobasedir
+ConditionPathExists=/run/archiso
 After=systemd-sysusers.service local-fs.target
 Before=display-manager.service greetd.service systemd-user-sessions.service
 Wants=systemd-sysusers.service

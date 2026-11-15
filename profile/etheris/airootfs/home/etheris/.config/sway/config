@@ -9,15 +9,15 @@ set $agent etheris-agent
 set $cc etheris-overlay control-center
 set $notif etheris-overlay notifications
 
-# Neo-Aero borders (overridden by ~/.config/sway/config.d/20-etheris-colors on apply)
-# Neo-Aero chrome colours (overridden by config.d/20-etheris-colors on apply)
+# Etheris borders (overridden by ~/.config/sway/config.d/20-etheris-colors on apply)
+# Etheris chrome colours (overridden by config.d/20-etheris-colors on apply)
 client.focused          #38bdf8 #122338 #e8f4fc #2dd4bf #38bdf8
 client.focused_inactive #1e3a5f #0a1628 #a8c4d8 #0a1628 #1e3a5f
 client.unfocused        #1e3a5f #0a1628 #a8c4d8 #0a1628 #1e3a5f
 client.urgent           #fb7185 #0a1628 #e8f4fc #fb7185 #fb7185
 
 font pango:JetBrainsMono Nerd Font 10
-# Neo-Aero title strip (title text only — Sway has no SSD buttons; see docs/WINDOW-DECORATIONS.md)
+# Etheris title strip (title text only — Sway has no SSD buttons; see docs/WINDOW-DECORATIONS.md)
 default_border normal
 default_floating_border normal
 titlebar_padding 3 10
@@ -31,15 +31,20 @@ output * bg /usr/local/share/etheris/wallpapers/ocean-glass.png fill
 # Fast session bring-up: theme/wallpaper, then shell. Motion only if enabled.
 exec etheris apply-session
 exec mako
+# Restore DND from settings after mako is up (Pulse / notification maturity)
+exec sh -c 'sleep 0.4; etheris-notifications restore-dnd'
 exec waybar
+# Hover hitbox over the Waybar "menu" chip (Waybar has no on-hover action).
+exec sh -c 'sleep 0.35; etheris-menu-hover'
 exec sh -c 'grep -qE "^animations=(on|1|true)$" "${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf" 2>/dev/null && exec etheris-motion || true'
 exec sh -c 'sleep 0.5; etheris-widgets apply'
 exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
-# Warm Firefox in the scratchpad early so Super+B is typically <1s (virgin cold is multi-second).
+# Prepare lean Firefox profile early (warm resident only if browser_preload=on).
+# Default off keeps ≤500 MiB idle; Super+B still uses lean profile (docs/IDLE-RAM-CRITERIA.md).
 exec sh -c 'sleep 0.35; etheris-browser --preload'
 exec swayidle -w \
-    timeout 600 'swaylock -f -c 0a1628' \
-    before-sleep 'swaylock -f -c 0a1628'
+    timeout 600 'etheris-lock' \
+    before-sleep 'etheris-lock'
 
 # Input
 input type:touchpad {
@@ -53,9 +58,9 @@ bindsym $mod+d exec $menu
 bindsym $mod+space exec $menu
 bindsym $mod+a exec $cc
 bindsym $mod+n exec $notif
-bindsym $mod+w exec etheris-workspace-overview
+bindsym $mod+w exec etheris-overlay menu etheris-workspace-overview
 bindsym $mod+comma exec etheris-settings
-bindsym $mod+Shift+a exec etheris-winctl menu
+bindsym $mod+Shift+a exec etheris-overlay winctl
 bindsym $mod+e exec $files
 bindsym $mod+b exec $browser
 bindsym $mod+i exec $agent
@@ -70,7 +75,7 @@ bindsym --inhibited Alt+Shift+Tab exec etheris-focus-cycle prev
 bindsym $mod+h move scratchpad
 bindsym $mod+Shift+h scratchpad show
 bindsym $mod+Shift+e exec etheris-overlay power
-bindsym $mod+l exec swaylock -f -c 0b1020
+bindsym $mod+l exec etheris-lock
 bindsym $mod+f fullscreen
 bindsym $mod+Shift+space floating toggle
 bindsym $mod+Left focus left
@@ -104,12 +109,10 @@ bindsym $mod+Shift+9 move container to workspace number 9
 # Shortcut Center
 bindsym $mod+slash exec etheris-shortcuts
 
-# Defer non-critical helpers so browser preload gets CPU first, desktop stays snappy
+# OOBE when needed. First-login guide once on installed systems only
+# (etheris-guide no-ops on live ISO and when already completed).
 exec sh -c 'sleep 0.3; etheris-oobe maybe-run'
-# First login helpers after warm browser is ready (avoid fighting Firefox for I/O)
-exec sh -c 'sleep 2.5; etheris-timezone --first-login; etheris-guide'
-# Travel-aware timezone: re-check when you move countries (IP geolocation)
-exec sh -c 'sleep 12; etheris-timezone-auto --daemon'
+exec sh -c 'sleep 2; etheris-guide'
 
 # Screenshots → ~/Pictures/Screenshots (and clipboard)
 bindsym Print exec sh -c 'd="$HOME/Pictures/Screenshots"; mkdir -p "$d"; f="$d/Etheris-$(date +%Y%m%d-%H%M%S).png"; grim "$f" && wl-copy < "$f"'

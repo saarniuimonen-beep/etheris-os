@@ -2,6 +2,8 @@
 
 **Status: SPIKE IMPLEMENTED (foot TUI) — 2026-11-08**
 
+**Related:** Reboot persistence gates → [`INSTALL-PERSISTENCE.md`](INSTALL-PERSISTENCE.md).
+
 Working code: `etheris-oobe`, session gate in `etheris-session`, installer sets `needed`.  
 Verified on installed VM: `out/VERIFICATION-M6-OOBE.md`.  
 GTK4/libadwaita UI remains optional follow-up; do not regress the foot spike without a replacement.
@@ -115,15 +117,18 @@ Recommended flow for **installed** systems:
 
 Suggested files (names flexible at implementation time):
 
-| Path | Purpose |
-|------|---------|
-| `/var/lib/etheris/oobe/state` | `needed` \| `in_progress` \| `done` |
-| `/var/lib/etheris/oobe/draft.json` | Non-secret draft answers (no passwords) |
-| `/etc/etheris/oobe.conf` | Policy: enable OOBE on install images |
+| Path | Purpose | Permissions |
+|------|---------|-------------|
+| `/var/lib/etheris/oobe/` | System OOBE directory | `root:wheel` mode `2770` (not world-writable) |
+| `/var/lib/etheris/oobe/state` | `needed` \| `in_progress` \| `done` | `root:wheel` mode `660` |
+| `~/.config/etheris/oobe/draft.conf` | Non-secret draft answers | user-private `600` |
+| `~/.config/etheris/oobe/state` | User mirror (`done` wins for session gate) | user-private `600` |
+| `/etc/etheris/oobe.conf` | Policy: enable OOBE on install images | root |
 
 Installer sets `needed` on the target root when creating an installed system.  
 Live image never sets `needed` (or explicitly sets `disabled`).
 
+Privileged fallback: `etheris-oobe-helper` (pkexec allow-listed) writes system state only.  
 Passwords: only via PAM/`chpasswd` at Apply time; **never** written to draft/logs.
 
 ### Apply layer (reuse system tools)

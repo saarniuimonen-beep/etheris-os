@@ -1,4 +1,4 @@
-font=Outfit 11
+font=Noto Sans 11
 background-color=#0a1628ee
 text-color=#e8f4fc
 border-color=#38bdf8
@@ -15,6 +15,7 @@ max-visible=5
 layer=overlay
 sort=-time
 
+# Group similar notifications
 [mode=default]
 invisible=0
 

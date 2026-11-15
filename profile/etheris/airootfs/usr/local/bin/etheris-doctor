@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# Etheris OS — aggregate diagnostics for support / smoke.
+# Exit 0 when all hard checks pass; 1 if any hard check fails; 2 on usage error.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Etheris doctor — local health aggregator
+
+Usage:
+  etheris doctor           Run full checklist
+  etheris doctor --json    Machine-readable summary (stdout)
+  etheris doctor help
+
+Runs (best-effort):
+  • etheris-auth-check
+  • etheris-security audit
+  • failed / degraded systemd units
+  • nftables active?
+  • greeter seed / skip_selection presence
+  • session desktop files
+EOF
+}
+
+ok=0
+fail=0
+warn=0
+pass() { echo "  OK  $*"; ok=$((ok + 1)); }
+bad() { echo "FAIL  $*"; fail=$((fail + 1)); }
+note() { echo "WARN $*"; warn=$((warn + 1)); }
+
+section() { echo; echo "==> $*"; }
+
+run_auth() {
+  section "Authentication (etheris-auth-check)"
+  if ! command -v etheris-auth-check >/dev/null 2>&1; then
+    bad "etheris-auth-check missing"
+    return
+  fi
+  set +e
+  out="$(etheris-auth-check 2>&1)"
+  rc=$?
+  set -e
+  echo "$out" | sed 's/^/  | /'
+  if ((rc == 0)); then
+    pass "auth-check exit 0"
+  else
+    bad "auth-check exit $rc"
+  fi
+}
+
+run_security() {
+  section "Security checklist (etheris-security audit)"
+  if ! command -v etheris-security >/dev/null 2>&1; then
+    bad "etheris-security missing"
+    return
+  fi
+  set +e
+  out="$(etheris-security audit 2>&1)"
+  rc=$?
+  set -e
+  echo "$out" | sed 's/^/  | /'
+  if ((rc == 0)); then
+    pass "security audit exit 0"
+  else
+    bad "security audit exit $rc"
+  fi
+}
+
+# Units that fail harmlessly in QEMU/live (CDROM/optical loop attach) — WARN only.
+# Real unit names look like systemd-loop@sys-devices-pci…ata…service (often no "sr0" token).
+is_benign_failed_unit() {
+  local u="$1"
+  case "$u" in
+    systemd-loop@*) return 0 ;;
+  esac
+  return 1
+}
+
+run_units() {
+  section "Systemd failed / degraded"
+  local failed degraded line unit product=0
+  failed="$(systemctl --failed --no-legend --no-pager --plain 2>/dev/null || true)"
+  if [[ -z "${failed// }" ]]; then
+    pass "no failed units"
+  else
+    while IFS= read -r line; do
+      [[ -z "${line// }" ]] && continue
+      unit="$(awk '{print $1}' <<<"$line")"
+      echo "  | $line"
+      if is_benign_failed_unit "$unit"; then
+        note "ignoring benign VM/CDROM unit: $unit"
+      else
+        product=1
+      fi
+    done <<<"$failed"
+    if ((product)); then
+      bad "product-relevant failed units present"
+    else
+      pass "no product-relevant failed units (benign VM noise only)"
+    fi
+  fi
+  degraded="$(systemctl is-system-running 2>/dev/null || true)"
+  case "$degraded" in
+    running) pass "systemctl is-system-running: running" ;;
+    degraded)
+      if ((product)); then
+        note "systemctl is-system-running: degraded (inspect --failed)"
+      else
+        note "systemctl is-system-running: degraded (benign units only)"
+      fi
+      ;;
+    *)
+      note "systemctl is-system-running: ${degraded:-unknown}"
+      ;;
+  esac
+}
+
+run_firewall() {
+  section "Firewall"
+  if systemctl is-active --quiet nftables 2>/dev/null; then
+    pass "nftables active"
+  elif systemctl is-enabled --quiet nftables 2>/dev/null; then
+    note "nftables enabled but not active in this context"
+  else
+    bad "nftables not active/enabled"
+  fi
+}
+
+run_greeter() {
+  section "Greeter / session"
+  if [[ -f /etc/greetd/regreet.toml ]] && grep -qE '^\s*skip_selection\s*=\s*true' /etc/greetd/regreet.toml; then
+    pass "skip_selection=true"
+  else
+    bad "regreet skip_selection not true"
+  fi
+  if [[ -f /var/lib/regreet/state.toml ]] \
+    && grep -qE 'last_user\s*=' /var/lib/regreet/state.toml; then
+    pass "regreet state.toml present"
+  else
+    note "regreet state.toml missing (cold skip_selection may show User/Session)"
+  fi
+  if [[ -f /usr/share/wayland-sessions/etheris.desktop ]]; then
+    pass "etheris.desktop present"
+  else
+    bad "etheris.desktop missing"
+  fi
+  if [[ -f /usr/share/wayland-sessions/sway.desktop ]]; then
+    if grep -qiE '^(Hidden|NoDisplay)=true' /usr/share/wayland-sessions/sway.desktop; then
+      pass "stock sway.desktop hidden"
+    else
+      bad "stock sway.desktop visible in greeter"
+    fi
+  else
+    pass "stock sway.desktop absent"
+  fi
+}
+
+run_session_hint() {
+  section "Desktop session"
+  echo "  WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}"
+  echo "  XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-}"
+  echo "  XDG_SESSION_DESKTOP=${XDG_SESSION_DESKTOP:-}"
+  if [[ -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]; then
+    pass "graphical session env present"
+  else
+    note "not in a graphical session (TTY/SSH is fine for auth/security)"
+  fi
+}
+
+emit_json() {
+  printf '{"ok":%d,"fail":%d,"warn":%d,"passed":%s}\n' \
+    "$ok" "$fail" "$warn" "$([[ $fail -eq 0 ]] && echo true || echo false)"
+}
+
+main() {
+  local mode="${1:-}"
+  case "$mode" in
+    help|-h|--help) usage; exit 0 ;;
+    --json) ;;
+    "") ;;
+    *) usage; exit 2 ;;
+  esac
+
+  echo "Etheris doctor"
+  echo "  host: $(hostname 2>/dev/null || echo unknown)"
+  echo "  when: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  run_auth
+  run_security
+  run_units
+  run_firewall
+  run_greeter
+  run_session_hint
+
+  echo
+  echo "Summary: $ok OK, $fail FAIL, $warn WARN"
+  if [[ "$mode" == "--json" ]]; then
+    emit_json
+  fi
+  if ((fail)); then
+    echo "doctor: FAILED"
+    exit 1
+  fi
+  echo "doctor: PASSED"
+  exit 0
+}
+
+main "${1:-}"

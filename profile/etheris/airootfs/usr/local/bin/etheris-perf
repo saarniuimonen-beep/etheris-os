@@ -3,11 +3,15 @@
 # Never overclocks, undervolts, or disables thermal protection.
 set -euo pipefail
 
+# systemd oneshot has no HOME; nounset-safe defaults (unit also sets Environment=HOME=/root)
+: "${HOME:=/root}"
+: "${XDG_CONFIG_HOME:=$HOME/.config}"
+
 STATE_DIR=/var/lib/etheris
 STATE_FILE="$STATE_DIR/performance-profile"
 CAP_CACHE="$STATE_DIR/performance-capabilities.json"
 SYS_CONF=/etc/etheris/performance.conf
-USER_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
+USER_CONF="$XDG_CONFIG_HOME/etheris/settings.conf"
 
 PROFILES=(maximum balanced quiet powersave)
 PROFILE_LABELS=(
@@ -134,7 +138,7 @@ EOF
 
 persist_user_profile() {
   local p="$1" conf dir
-  conf="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
+  conf="${XDG_CONFIG_HOME:-${HOME:-}/.config}/etheris/settings.conf"
   # When elevated via pkexec, HOME may be root — still update calling user if SUDO_USER/PKEXEC_UID
   if [[ -n "${SUDO_USER:-}" ]]; then
     conf="$(getent passwd "$SUDO_USER" | cut -d: -f6)/.config/etheris/settings.conf"

@@ -1,0 +1,20 @@
+# Etheris package group: dev — optional developer tools
+base-devel
+git
+github-cli
+neovim
+ripgrep
+fd
+jq
+strace
+gdb
+cmake
+ninja
+clang
+lldb
+python
+python-pip
+nodejs
+npm
+docker
+docker-compose

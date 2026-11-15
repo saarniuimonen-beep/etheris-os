@@ -12,8 +12,22 @@ LOG="$OUT/build-$(date -u +%Y%m%dT%H%M%SZ).log"
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date -u +%s)}"
 
 mkdir -p "$OUT" "$CACHE" "$WORKDIR"
-# Fresh mkarchiso work tree each bake (keeps /home space visible; avoids overlay quota traps)
-rm -rf "$WORKDIR"/*
+# Fresh mkarchiso work tree each bake (keeps /home space visible; avoids overlay quota traps).
+# Prior rootful podman bakes leave root-owned files — plain rm fails; escalate cleanly.
+if [[ -n "$(find "$WORKDIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -1)" ]]; then
+  if rm -rf "$WORKDIR"/* 2>/dev/null; then
+    :
+  elif sudo -n true 2>/dev/null; then
+    echo "    cleaning work/mkarchiso with sudo (root-owned leftovers)"
+    sudo rm -rf "$WORKDIR"
+    mkdir -p "$WORKDIR"
+  else
+    echo "    cleaning work/mkarchiso via podman alpine (root-owned leftovers)"
+    podman run --rm --privileged -v "$ROOT/work:/work:Z" docker.io/alpine:latest \
+      rm -rf /work/mkarchiso
+    mkdir -p "$WORKDIR"
+  fi
+fi
 "$ROOT/scripts/prepare-profile.sh"
 
 if ! command -v podman >/dev/null 2>&1; then
@@ -44,8 +58,21 @@ else
   echo "    using: rootless podman + mount-wrapper (devtmpfs workaround)"
 fi
 
+# Build image pin (Beta reproducibility). Override with ETHERIS_BUILD_IMAGE=…
+BUILD_IMAGE="${ETHERIS_BUILD_IMAGE:-}"
+if [[ -z "$BUILD_IMAGE" && -f "$OUT/build-image.pin" ]]; then
+  # shellcheck disable=SC1090
+  BUILD_IMAGE="$(awk -F= '/^ETHERIS_BUILD_IMAGE=/{print $2; exit}' "$OUT/build-image.pin")"
+fi
+BUILD_IMAGE="${BUILD_IMAGE:-docker.io/archlinux:latest}"
+echo "    image:   $BUILD_IMAGE"
+
 set +e
+# Podman bridge DNS is broken on this Omarchy host; host net inherits working resolvers.
+# Drop a leftover named container from a killed bake
+"${PODMAN[@]}" rm -f etheris-build >/dev/null 2>&1 || true
 "${PODMAN[@]}" run --rm --privileged \
+  --network=host \
   --security-opt label=disable \
   --security-opt seccomp=unconfined \
   --name etheris-build \
@@ -55,7 +82,7 @@ set +e
   -v "$CACHE:/var/cache/pacman/pkg:Z" \
   -v "$WORKDIR:/work:Z" \
   -v "$ROOT/scripts/mount-wrapper.sh:/usr/local/sbin/mount:ro,Z" \
-  docker.io/archlinux:latest \
+  "$BUILD_IMAGE" \
   bash -lc '
     set -euo pipefail
     export PACMAN_OPTS="--noconfirm --needed"

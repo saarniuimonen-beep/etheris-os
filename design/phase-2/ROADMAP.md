@@ -3,7 +3,7 @@
 **Gate:** Owner approval of this Phase 2 blueprint.  
 **Constraint:** Respect master roadmap (M0–M6, ISO, OOBE). Do not skip unfinished core OS milestones for chrome.
 
-Design stages below are **Neo-Aero shell work**, sequenced after/alongside verified ISO+install path.
+Design stages below are **desktop shell work**, sequenced after/alongside verified ISO+install path.
 
 ---
 
@@ -20,7 +20,7 @@ Design stages below are **Neo-Aero shell work**, sequenced after/alongside verif
 
 - Floating panel polish (Waybar Path A) — **verified**
 - Launcher + overlay mutex + CC stub — **verified**
-- ADR: `docs/ADR-NEO-AERO-DESKTOP.md`
+- ADR: `docs/ADR-ETHERIS-DESKTOP.md`
 
 ## Stage 2+/3/4 desktop packages — **IN TREE** (second bake)
 

@@ -7,9 +7,9 @@
 
 ## Essence
 
-Etheris OS is **modern Neo-Aero / Neo-Frutiger Aero**: luminous cool air, water, and soft glass — futuristic, clean, bright, atmospheric, and efficient. It is **not** a Windows Vista/7 clone and **not** a pile of unrelated pretty screens.
+Etheris OS should feel **clear and calm**: cool blues, soft transparency, readable type, and quiet motion. It is **not** a Windows Vista/7 clone and **not** a pile of unrelated pretty screens.
 
-**One sentence:** *Clear glass over ocean light, with calm type and quiet motion.*
+**One sentence:** *Cool blue theme, soft panels, calm type, quiet motion.*
 
 ---
 
@@ -17,7 +17,7 @@ Etheris OS is **modern Neo-Aero / Neo-Frutiger Aero**: luminous cool air, water,
 
 | Context | Treatment |
 |---------|-----------|
-| Panel | 16–18px mark + word **etheris** (lowercase) |
+| Panel | Word **etheris** (lowercase) in the thin top bar |
 | Login / splash / OOBE / guide | Mark + **Etheris OS** |
 | About / ISO | Etheris OS + version |
 
@@ -56,7 +56,7 @@ Exact values: [`tokens/etheris.tokens.json`](tokens/etheris.tokens.json).
 ## Layout principles
 
 - 4px grid; one job per surface.
-- Default desktop = **floating top panel** + wallpaper + windows (no dock, no desktop icons, no widgets).
+- Default desktop = **edge-to-edge top bar** (thin) + wallpaper + windows (no dock, no desktop icons, no widgets).
 - Overlays are centered or anchored; never full-screen dimming that blocks Sway focus traps poorly — scrim ≤40% opacity.
 - Same component geometry in all Atmospheres.
 

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Etheris curated package groups (Software Center CLI backend)
+set -euo pipefail
+GROUPS_DIR="${ETHERIS_GROUPS_DIR:-/usr/local/share/etheris/groups}"
+
+usage() {
+  cat <<'EOF'
+Etheris package groups
+
+Usage:
+  etheris packages list
+  etheris packages show <group>
+  etheris packages install <group>     # root
+  etheris packages remove <group>      # root; best-effort
+  etheris packages help
+
+Groups live in /usr/local/share/etheris/groups/*.list
+Trust: curated Etheris lists → pacman official repos only (not AUR).
+EOF
+}
+
+list_groups() {
+  echo "Etheris package groups (${GROUPS_DIR})"
+  local f name
+  shopt -s nullglob
+  for f in "$GROUPS_DIR"/*.list; do
+    name="$(basename "$f" .list)"
+    local n
+    n="$(grep -cvE '^\s*(#|$)' "$f" || true)"
+    printf '  %-14s %s packages\n' "$name" "$n"
+  done
+  echo
+  echo "Docs: /usr/local/share/etheris/docs/PACKAGE-GROUPS.md"
+}
+
+show_group() {
+  local g="${1:-}" f
+  [[ -n "$g" ]] || { usage; exit 2; }
+  f="$GROUPS_DIR/${g}.list"
+  [[ -f "$f" ]] || { echo "Unknown group: $g"; list_groups; exit 1; }
+  echo "Group: $g"
+  echo "Trust: Etheris curated → Arch official repos"
+  echo "-----"
+  grep -vE '^\s*(#|$)' "$f" || true
+}
+
+need_root() {
+  [[ "$(id -u)" -eq 0 ]] || { echo "Run as root: sudo etheris packages $*"; exit 1; }
+}
+
+pkgs_from() {
+  local f="$1"
+  grep -vE '^\s*(#|$)' "$f"
+}
+
+cmd_install() {
+  local g="${1:-}" f
+  need_root "install $g"
+  f="$GROUPS_DIR/${g}.list"
+  [[ -f "$f" ]] || { echo "Unknown group: $g"; exit 1; }
+  mapfile -t pkgs < <(pkgs_from "$f")
+  ((${#pkgs[@]} > 0)) || { echo "Empty group"; exit 1; }
+  echo "Installing group '$g' (${#pkgs[@]} packages)…"
+  pacman -S --needed --noconfirm "${pkgs[@]}"
+  echo "Done. Group: $g"
+}
+
+cmd_remove() {
+  local g="${1:-}" f
+  need_root "remove $g"
+  f="$GROUPS_DIR/${g}.list"
+  [[ -f "$f" ]] || { echo "Unknown group: $g"; exit 1; }
+  mapfile -t pkgs < <(pkgs_from "$f")
+  echo "Removing group '$g' (best-effort; shared deps may remain)…"
+  pacman -Rns --noconfirm "${pkgs[@]}" 2>/dev/null || pacman -R --noconfirm "${pkgs[@]}" || true
+  echo "Done (check pacman output above)."
+}
+
+main() {
+  case "${1:-list}" in
+    list|ls) list_groups ;;
+    show|cat) shift; show_group "${1:-}" ;;
+    install|add) shift; cmd_install "${1:-}" ;;
+    remove|rm) shift; cmd_remove "${1:-}" ;;
+    help|-h|--help) usage ;;
+    *) echo "Unknown: $1"; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

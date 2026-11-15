@@ -2,7 +2,9 @@
 
 ## Default stack
 
-**Pre-installed** on the live ISO and on disk installs (default). Opt out of disk gaming packages with `ETHERIS_INSTALL_GAMING=0`.
+**Live ISO** still ships the Steam/Proton stack for try-before-install.
+
+**Disk installs are lean by default** (no Steam). Opt in with `ETHERIS_INSTALL_GAMING=1` during `etheris-installer` / `--auto`.
 
 Package list source of truth: `/usr/local/share/etheris/gaming-packages.list`
 

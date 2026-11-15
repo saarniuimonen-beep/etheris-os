@@ -44,7 +44,7 @@ No migration shims for `/etc/ethereal` or `~/.config/ethereal` were found or nee
 ## Gaps fixed during this checkpoint
 
 - None required for branding strings in source.
-- README still had some **stale feature wording** (tuigreet-first, wofi launcher) relative to the baked Neo-Aero stack; corrected separately as documentation accuracy, not rename.
+- README still had some **stale feature wording** (tuigreet-first, wofi launcher) relative to the baked desktop stack; corrected separately as documentation accuracy, not rename.
 
 ## Checkpoint decision
 

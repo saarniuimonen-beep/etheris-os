@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 # Etheris browser launcher.
-# Firefox warm-start via Sway scratchpad → first open after login is typically <1s.
-# True virgin cold start of Firefox is multi-second; preload is the supported path.
+# Lean Firefox warm-start via Sway scratchpad → Super+B reuses one low-RSS process.
+# True virgin cold start without preload is still multi-second.
 set -euo pipefail
 
 export MOZ_ENABLE_WAYLAND="${MOZ_ENABLE_WAYLAND:-1}"
 export MOZ_USE_XINPUT2="${MOZ_USE_XINPUT2:-1}"
-# Cap glibc arenas (also set globally; reinforce for the browser tree).
 export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 MARK="$RUNTIME/etheris-browser.ready"
 LOG="$RUNTIME/etheris-browser.log"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf"
-# Skip preload below this free RAM (kB) so idle stays lean on small VMs.
-PRELOAD_MIN_KB="${ETHERIS_BROWSER_PRELOAD_MIN_KB:-640000}"
+# Skip preload below this free RAM (kB).
+PRELOAD_MIN_KB="${ETHERIS_BROWSER_PRELOAD_MIN_KB:-512000}"
+LEAN_PROFILE="${ETHERIS_FIREFOX_LEAN_PROFILE:-$HOME/.local/share/etheris/firefox-lean}"
+LEAN_USERJS_SRC="/usr/local/share/etheris/firefox/lean-user.js"
 
 default_browser() {
   local d
@@ -29,6 +30,19 @@ preload_enabled() {
     off|0|false|no) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+ensure_lean_profile() {
+  mkdir -p "$LEAN_PROFILE"
+  if [[ -f "$LEAN_USERJS_SRC" ]]; then
+    # Refresh prefs each session so OS updates apply.
+    cp -f "$LEAN_USERJS_SRC" "$LEAN_PROFILE/user.js"
+  fi
+}
+
+ff() {
+  ensure_lean_profile
+  "$BIN" -profile "$LEAN_PROFILE" "$@"
 }
 
 # Preload is Firefox-only (scratchpad warm process).
@@ -64,6 +78,43 @@ firefox_mapped() {
   swaymsg -t get_tree 2>/dev/null | grep -Eq '"app_id": "?firefox"?'
 }
 
+# True when a Firefox window is still shown on a workspace (not only scratchpad).
+firefox_visible_on_ws() {
+  command -v swaymsg >/dev/null 2>&1 || return 1
+  local tree
+  tree="$(swaymsg -t get_tree 2>/dev/null || true)"
+  [[ -n "$tree" ]] || return 1
+  # Prefer python for reliable JSON; fall back to a conservative grep heuristic.
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$tree" | python3 -c '
+import json, sys
+try:
+    root = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+
+def walk(n, in_scratch=False):
+    if not isinstance(n, dict):
+        return False
+    name = (n.get("name") or "")
+    scratch = in_scratch or name == "__i3_scratch" or n.get("type") == "scratchpad"
+    app = n.get("app_id") or ""
+    if app == "firefox" and not scratch and n.get("visible", True):
+        return True
+    for ch in n.get("nodes") or []:
+        if walk(ch, scratch):
+            return True
+    for ch in n.get("floating_nodes") or []:
+        if walk(ch, scratch):
+            return True
+    return False
+
+sys.exit(0 if walk(root) else 1)
+' && return 0 || return 1
+  fi
+  printf '%s' "$tree" | grep -B2 -A25 '"app_id": "firefox"' | grep -q '"visible": true'
+}
+
 sway_firefox() {
   swaymsg "[app_id=firefox] $*" >/dev/null 2>&1
 }
@@ -71,14 +122,22 @@ sway_firefox() {
 move_to_scratchpad() {
   command -v swaymsg >/dev/null 2>&1 || return 1
   local i
-  for i in $(seq 1 120); do
+  # Wait for the window, then keep pushing to scratchpad until it is off-workspace.
+  for i in $(seq 1 160); do
     if firefox_mapped; then
       sway_firefox move scratchpad || true
-      # Confirm it left the visible workspace.
-      sleep 0.05
-      return 0
+      sleep 0.08
+      if ! firefox_visible_on_ws; then
+        return 0
+      fi
     fi
     sleep 0.05
+  done
+  # Last-chance retries (slow KVM / first profile create).
+  for i in 1 2 3 4 5 6 7 8; do
+    sway_firefox move scratchpad || true
+    sleep 0.2
+    firefox_visible_on_ws || return 0
   done
   return 1
 }
@@ -101,35 +160,67 @@ mem_available_kb() {
   awk '/MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0
 }
 
+# Approximate session Pss (MiB) for budget decisions.
+session_pss_mib() {
+  local uid sum=0 pss
+  uid="$(id -u)"
+  for p in /proc/[0-9]*; do
+    [[ -r "$p/status" ]] || continue
+    awk -v u="$uid" 'BEGIN{ok=0} /^Uid:/{if ($2==u) ok=1} END{exit !ok}' "$p/status" 2>/dev/null || continue
+    pss="$(awk '/^Pss:/{s+=$2} END{print s+0}' "$p/smaps_rollup" 2>/dev/null || echo 0)"
+    sum=$((sum + pss))
+  done
+  printf '%d\n' $(( (sum + 512) / 1024 ))
+}
+
 preload() {
+  # Always prepare lean profile so Super+B stays fast/small — even when warm start is off.
+  ensure_lean_profile
+  touch "$MARK"
   if ! preload_enabled; then
-    echo "$(date -Is) preload disabled (browser_preload=off)" >>"$LOG"
+    echo "$(date -Is) warm preload disabled (browser_preload=off); lean profile ready for Super+B" >>"$LOG"
     exit 0
   fi
   if firefox_running; then
-    if firefox_mapped; then
+    if firefox_visible_on_ws; then
+      move_to_scratchpad || sway_firefox kill || true
+    elif firefox_mapped; then
       sway_firefox move scratchpad || true
     fi
-    touch "$MARK"
+    echo "$(date -Is) lean profile ready (firefox already running)" >>"$LOG"
     exit 0
   fi
-  local avail
+  local avail pss
   avail="$(mem_available_kb)"
+  pss="$(session_pss_mib)"
+  # Warm resident Firefox breaks ≤500 MiB idle — only when forced or under a tight budget.
+  local force="${ETHERIS_BROWSER_FORCE_WARM:-0}"
+  local budget="${ETHERIS_BROWSER_WARM_BUDGET_MIB:-180}"
+  if [[ "$force" != "1" && "$pss" -gt "$budget" ]]; then
+    echo "$(date -Is) warm firefox skipped (session_pss=${pss} MiB > ${budget}; lean profile prepared for Super+B)" >>"$LOG"
+    exit 0
+  fi
   if [[ "$avail" -lt "$PRELOAD_MIN_KB" ]]; then
-    echo "$(date -Is) preload skipped (MemAvailable=${avail} kB < ${PRELOAD_MIN_KB})" >>"$LOG"
+    echo "$(date -Is) warm firefox skipped (MemAvailable=${avail} kB < ${PRELOAD_MIN_KB}; lean profile prepared)" >>"$LOG"
     exit 0
   fi
   {
-    echo "$(date -Is) preload start (MemAvailable=${avail} kB)"
-    # Blank window: fastest paint, smallest first RSS vs about:home.
-    "$BIN" --new-window about:blank >>"$LOG" 2>&1 &
+    echo "$(date -Is) lean warm start (MemAvailable=${avail} kB session_pss=${pss} profile=$LEAN_PROFILE)"
+    ff --new-window about:blank >>"$LOG" 2>&1 &
     if move_to_scratchpad; then
       touch "$MARK"
-      echo "$(date -Is) preload ready"
+      echo "$(date -Is) lean warm ready (scratchpad)"
     else
-      echo "$(date -Is) preload: firefox started but window not mapped in time"
-      # Still mark — process is warm; open path will focus/wait.
+      # Never leave a workspace Firefox at idle — kill warm attempt; Super+B still uses lean profile.
+      echo "$(date -Is) warm: could not hide firefox — killing to protect ≤500 MiB idle" >>"$LOG"
+      pkill -x firefox >/dev/null 2>&1 || true
       touch "$MARK"
+    fi
+    # Final hygiene: if still visible on a workspace, kill.
+    sleep 0.5
+    if firefox_visible_on_ws; then
+      echo "$(date -Is) warm: still visible — kill" >>"$LOG"
+      sway_firefox kill >/dev/null 2>&1 || pkill -x firefox >/dev/null 2>&1 || true
     fi
   } &
   exit 0
@@ -138,6 +229,7 @@ preload() {
 status() {
   printf 'default_browser=%s\n' "$(default_browser)"
   printf 'preload_enabled=%s\n' "$(preload_enabled && echo yes || echo no)"
+  printf 'lean_profile=%s\n' "$LEAN_PROFILE"
   printf 'firefox_running=%s\n' "$(firefox_running && echo yes || echo no)"
   printf 'firefox_mapped=%s\n' "$(firefox_mapped && echo yes || echo no)"
   printf 'ready_mark=%s\n' "$([[ -f "$MARK" ]] && echo yes || echo no)"
@@ -150,6 +242,7 @@ case "${1:-}" in
   --help|-h)
     echo "Usage: etheris-browser [--preload|--status] [url...]"
     echo "Default browser: $(default_browser)  (change with etheris-browsers)"
+    echo "Lean profile: $LEAN_PROFILE"
     echo "Disable warm preload: browser_preload=off in ~/.config/etheris/settings.conf"
     exit 0
     ;;
@@ -161,19 +254,21 @@ if firefox_running; then
     if show_from_scratchpad; then
       exit 0
     fi
-    # Process up but no window yet — wait briefly for preload race.
     if [[ -f "$MARK" ]]; then
       if show_from_scratchpad; then
         exit 0
       fi
     fi
-    exec "$BIN" --new-window about:blank
+    ensure_lean_profile
+    exec "$BIN" -profile "$LEAN_PROFILE" --new-window about:blank
   fi
-  exec "$BIN" "$@"
+  ensure_lean_profile
+  exec "$BIN" -profile "$LEAN_PROFILE" "$@"
 fi
 
-# Cold path (no warm process): blank start is leaner/faster than about:home.
+# Cold path (no warm process): lean blank start.
+ensure_lean_profile
 if [[ $# -eq 0 ]]; then
-  exec "$BIN" about:blank
+  exec "$BIN" -profile "$LEAN_PROFILE" about:blank
 fi
-exec "$BIN" "$@"
+exec "$BIN" -profile "$LEAN_PROFILE" "$@"

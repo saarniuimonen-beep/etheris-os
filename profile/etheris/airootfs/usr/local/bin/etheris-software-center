@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Etheris Software Center — curated package groups (GTK4)."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
+try:
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except (ImportError, ValueError) as exc:
+    print(f"etheris-software-center: GTK4 required ({exc})", file=sys.stderr)
+    print("Fallback: etheris packages list", file=sys.stderr)
+    os.execvp("etheris-packages", ["etheris-packages", "list"])
+
+GROUPS = Path(os.environ.get("ETHERIS_GROUPS_DIR", "/usr/local/share/etheris/groups"))
+
+
+def group_names() -> list[str]:
+    if not GROUPS.is_dir():
+        return []
+    return sorted(p.stem for p in GROUPS.glob("*.list"))
+
+
+def group_pkgs(name: str) -> list[str]:
+    path = GROUPS / f"{name}.list"
+    if not path.is_file():
+        return []
+    out: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        out.append(line)
+    return out
+
+
+def run_install(name: str) -> None:
+    cmd = ["pkexec", "etheris-packages", "install", name]
+    try:
+        subprocess.Popen(cmd)
+    except OSError:
+        subprocess.Popen(["etheris-packages", "install", name])
+
+
+class SoftwareCenter(Gtk.Application):
+    def __init__(self) -> None:
+        super().__init__(application_id="os.etheris.software")
+
+    def do_activate(self) -> None:  # noqa: N802
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Software")
+        win.set_default_size(720, 480)
+        css = Gtk.CssProvider()
+        css.load_from_data(
+            b"""
+            window { background: #07111f; color: #e8f4fc; }
+            .card {
+              background: alpha(#0f2136, 0.92);
+              border: 1px solid alpha(#38bdf8, 0.18);
+              border-radius: 14px; padding: 14px 16px; margin: 8px 12px;
+            }
+            label.heading { font-size: 15px; font-weight: 650; }
+            label.caption { color: #9db6cc; font-size: 12px; }
+            label.trust { color: #2dd4bf; font-size: 11px; font-weight: 600; }
+            """
+        )
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        head.set_margin_top(18)
+        head.set_margin_start(20)
+        head.set_margin_end(20)
+        t = Gtk.Label(label="Software", xalign=0)
+        t.add_css_class("heading")
+        c = Gtk.Label(
+            label="Curated Etheris groups → Arch official repos. AUR is not listed here.",
+            xalign=0,
+            wrap=True,
+        )
+        c.add_css_class("caption")
+        head.append(t)
+        head.append(c)
+        root.append(head)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        names = group_names()
+        if not names:
+            empty = Gtk.Label(label="No groups found under /usr/local/share/etheris/groups", xalign=0)
+            empty.add_css_class("caption")
+            empty.set_margin_start(20)
+            box.append(empty)
+        for name in names:
+            pkgs = group_pkgs(name)
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            card.add_css_class("card")
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            left.set_hexpand(True)
+            title = Gtk.Label(label=name.title(), xalign=0)
+            title.add_css_class("heading")
+            trust = Gtk.Label(label="Trust: Etheris curated → Arch", xalign=0)
+            trust.add_css_class("trust")
+            cap = Gtk.Label(label=f"{len(pkgs)} packages", xalign=0)
+            cap.add_css_class("caption")
+            left.append(title)
+            left.append(trust)
+            left.append(cap)
+            btn = Gtk.Button(label="Install")
+            btn.connect("clicked", lambda _b, n=name: run_install(n))
+            row.append(left)
+            row.append(btn)
+            card.append(row)
+            # show a few package names
+            preview = Gtk.Label(label=", ".join(pkgs[:8]) + ("…" if len(pkgs) > 8 else ""), xalign=0, wrap=True)
+            preview.add_css_class("caption")
+            card.append(preview)
+            box.append(card)
+        scroll.set_child(box)
+        root.append(scroll)
+
+        foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        foot.set_margin_bottom(12)
+        foot.set_margin_start(20)
+        cli = Gtk.Button(label="CLI: etheris packages")
+        cli.connect(
+            "clicked",
+            lambda *_: subprocess.Popen(
+                ["foot", "-e", "bash", "-lc", "etheris packages list; read -r -p 'Enter…'"]
+            ),
+        )
+        foot.append(cli)
+        root.append(foot)
+
+        win.set_child(root)
+        win.present()
+
+
+def main() -> int:
+    app = SoftwareCenter()
+    return app.run(None)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

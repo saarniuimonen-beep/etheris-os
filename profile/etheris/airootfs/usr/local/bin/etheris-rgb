@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""Etheris OS — RGB / fan lighting CLI (OpenRGB wrapper).
+
+ARGB motherboard headers start at 0 LEDs until resized; this tool always
+passes --size when targeting fan zones so lights actually change.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+CONF_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "etheris"
+CONF_FILE = CONF_DIR / "rgb.conf"
+
+DEFAULTS = {
+    "color": "#38BDF8",
+    "mode": "Static",
+    "brightness": "100",
+    "led_count": "60",
+    "fans_only": "on",
+}
+
+PRESETS = {
+    "ocean": "#38BDF8",
+    "teal": "#2DD4BF",
+    "mint": "#4ADE80",
+    "amber": "#FBBF24",
+    "rose": "#FB7185",
+    "violet": "#A78BFA",
+    "white": "#FFFFFF",
+    "red": "#FF0000",
+    "green": "#00FF00",
+    "blue": "#0088FF",
+}
+
+
+def load_conf() -> dict[str, str]:
+    data = dict(DEFAULTS)
+    if CONF_FILE.is_file():
+        for line in CONF_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            data[key.strip()] = val.strip()
+    return data
+
+
+def save_conf(data: dict[str, str]) -> None:
+    CONF_DIR.mkdir(parents=True, exist_ok=True)
+    lines = [f"{k}={data.get(k, DEFAULTS[k])}" for k in DEFAULTS]
+    CONF_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def openrgb_bin() -> str | None:
+    return shutil.which("openrgb")
+
+
+def run_openrgb(args: list[str], timeout: float = 30.0) -> subprocess.CompletedProcess[str]:
+    bin_path = openrgb_bin()
+    if not bin_path:
+        raise SystemExit("openrgb not found — install with: pacman -S openrgb")
+    return subprocess.run(
+        [bin_path, "--noautoconnect", *args],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def normalize_hex(color: str) -> str:
+    c = color.strip()
+    if c.startswith("#"):
+        c = c[1:]
+    name = PRESETS.get(c.lower())
+    if name:
+        c = name[1:]
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", c):
+        raise SystemExit(f"Invalid color: {color} (use RRGGBB or a preset name)")
+    return c.upper()
+
+
+def parse_devices(detailed: str) -> list[dict]:
+    devices: list[dict] = []
+    current: dict | None = None
+    modes: list[str] = []
+    zones: list[str] = []
+    zone_leds: dict[str, int] = {}
+    header_re = re.compile(r"^(\d+):\s*(.+)\s*$")
+    field_re = re.compile(r"^\s{2}([A-Za-z ]+):\s*(.+)\s*$")
+    token_re = re.compile(r"('[^']+'|\[[^\]]+\]|[^\s]+)")
+
+    def flush() -> None:
+        nonlocal current, modes, zones, zone_leds
+        if current is None:
+            return
+        current["modes"] = modes
+        current["zones"] = zones
+        current["zone_leds"] = zone_leds
+        devices.append(current)
+        current, modes, zones, zone_leds = None, [], [], {}
+
+    for line in detailed.splitlines():
+        head = header_re.match(line)
+        if head:
+            flush()
+            current = {"index": int(head.group(1)), "name": head.group(2).strip()}
+            continue
+        if current is None:
+            continue
+        field = field_re.match(line)
+        if not field:
+            continue
+        key = field.group(1).strip().lower()
+        value = field.group(2).strip()
+        if key == "type":
+            current["type"] = value
+        elif key == "description":
+            current["description"] = value
+        elif key == "modes":
+            for tok in token_re.findall(value):
+                mode = tok.strip("[]'").strip()
+                if mode and mode.lower() != "off":
+                    modes.append(mode)
+        elif key == "zones":
+            for tok in token_re.findall(value):
+                zone = tok.strip("'").strip()
+                if zone:
+                    zones.append(zone)
+        elif key == "leds":
+            for tok in token_re.findall(value):
+                led = tok.strip("'").strip()
+                if not led:
+                    continue
+                zone_name = led.split(",", 1)[0].strip() if "," in led else led
+                zone_leds[zone_name] = zone_leds.get(zone_name, 0) + 1
+    flush()
+    return devices
+
+
+def motherboard(devices: list[dict]) -> dict | None:
+    for d in devices:
+        if d.get("type", "").lower() == "motherboard":
+            return d
+    return devices[0] if devices else None
+
+
+def fan_zone_indexes(device: dict) -> list[int]:
+    out: list[int] = []
+    for i, zone in enumerate(device.get("zones", [])):
+        z = zone.lower()
+        if any(k in z for k in ("d_led", "argb", "addressable", "led_strip", "12v rgb")):
+            out.append(i)
+    return out
+
+
+def list_devices() -> list[dict]:
+    r = run_openrgb(["-ld"])
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "openrgb -ld failed").strip()
+        raise SystemExit(msg)
+    return parse_devices(r.stdout)
+
+
+def cmd_status(_: argparse.Namespace) -> int:
+    conf = load_conf()
+    if not openrgb_bin():
+        print("openrgb: missing")
+        print(json.dumps({"ok": False, "error": "openrgb not installed"}, indent=2))
+        return 1
+    devices = list_devices()
+    board = motherboard(devices)
+    fans = fan_zone_indexes(board) if board else []
+    fan_leds = 0
+    if board:
+        for i in fans:
+            name = board["zones"][i]
+            fan_leds += board.get("zone_leds", {}).get(name, 0)
+    print(f"devices: {len(devices)}")
+    if board:
+        print(f"motherboard: {board.get('name')} (#{board.get('index')})")
+        print(f"fan zones: {', '.join(board['zones'][i] for i in fans) or '(none)'}")
+        print(f"fan LEDs currently sized: {fan_leds}")
+    print(
+        f"saved: color={conf['color']} mode={conf['mode']} "
+        f"brightness={conf['brightness']} leds={conf['led_count']} fans_only={conf['fans_only']}"
+    )
+    for d in devices:
+        print(f"  [{d['index']}] {d.get('type', '?')}: {d.get('name')}")
+    return 0
+
+
+def cmd_list(_: argparse.Namespace) -> int:
+    for d in list_devices():
+        print(f"{d['index']}: {d.get('name')}")
+        print(f"  Type: {d.get('type', '')}")
+        print(f"  Modes: {' '.join(d.get('modes', []))}")
+        print(f"  Zones: {' '.join(d.get('zones', []))}")
+        zl = d.get("zone_leds", {})
+        if zl:
+            print("  LED counts: " + ", ".join(f"{k}={v}" for k, v in zl.items()))
+    return 0
+
+
+def build_apply_args(
+    devices: list[dict],
+    *,
+    color: str,
+    mode: str,
+    brightness: int,
+    led_count: int,
+    fans_only: bool,
+    off: bool,
+) -> list[str]:
+    args: list[str] = []
+    paint = "000000" if off else color
+    use_mode = "Static" if off else mode
+
+    def append_color(target: list[str], with_size: bool) -> None:
+        if with_size:
+            target.extend(["-sz", str(led_count)])
+        target.extend(["-m", use_mode, "-c", paint, "-b", str(0 if off else brightness)])
+
+    if fans_only:
+        board = motherboard(devices)
+        if not board:
+            raise SystemExit("No motherboard RGB controller found (try --all)")
+        zones = fan_zone_indexes(board)
+        idx = board["index"]
+        if not zones:
+            args.extend(["-d", str(idx)])
+            append_color(args, False)
+        else:
+            for z in zones:
+                args.extend(["-d", str(idx), "-z", str(z)])
+                append_color(args, True)
+    else:
+        append_color(args, False)
+    return args
+
+
+def cmd_set(ns: argparse.Namespace) -> int:
+    conf = load_conf()
+    color = normalize_hex(ns.color or conf["color"])
+    mode = ns.mode or conf["mode"]
+    brightness = int(ns.brightness if ns.brightness is not None else conf["brightness"])
+    led_count = int(ns.leds if ns.leds is not None else conf["led_count"])
+    fans_only = not ns.all
+    if ns.fans_only:
+        fans_only = True
+
+    devices = list_devices()
+    args = build_apply_args(
+        devices,
+        color=color,
+        mode=mode,
+        brightness=brightness,
+        led_count=led_count,
+        fans_only=fans_only,
+        off=False,
+    )
+    r = run_openrgb(args)
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "apply failed").strip()
+        raise SystemExit(msg)
+
+    conf.update(
+        {
+            "color": f"#{color}",
+            "mode": mode,
+            "brightness": str(brightness),
+            "led_count": str(led_count),
+            "fans_only": "on" if fans_only else "off",
+        }
+    )
+    save_conf(conf)
+    scope = "fans" if fans_only else "all devices"
+    print(f"Applied #{color} ({mode}, {led_count} LEDs/header) → {scope}")
+    return 0
+
+
+def cmd_off(ns: argparse.Namespace) -> int:
+    conf = load_conf()
+    devices = list_devices()
+    fans_only = not ns.all
+    args = build_apply_args(
+        devices,
+        color="000000",
+        mode="Static",
+        brightness=0,
+        led_count=int(conf["led_count"]),
+        fans_only=fans_only,
+        off=True,
+    )
+    r = run_openrgb(args)
+    if r.returncode != 0:
+        msg = (r.stderr or r.stdout or "off failed").strip()
+        raise SystemExit(msg)
+    print("Lights off")
+    return 0
+
+
+def cmd_get(_: argparse.Namespace) -> int:
+    conf = load_conf()
+    for k, v in conf.items():
+        print(f"{k}={v}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="etheris-rgb", description="Etheris RGB / fan lighting")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status", help="Show devices and saved settings")
+    sub.add_parser("list", help="Detailed OpenRGB device list")
+    sub.add_parser("get", help="Print saved rgb.conf")
+
+    p_set = sub.add_parser("set", help="Apply a color")
+    p_set.add_argument("color", nargs="?", help="RRGGBB, #RRGGBB, or preset name")
+    p_set.add_argument("--mode", default=None, help="Static, Breathing, …")
+    p_set.add_argument("--brightness", type=int, default=None)
+    p_set.add_argument("--leds", type=int, default=None, help="LEDs per ARGB header")
+    p_set.add_argument("--all", action="store_true", help="All OpenRGB devices")
+    p_set.add_argument("--fans-only", action="store_true", help="Motherboard ARGB only")
+
+    p_off = sub.add_parser("off", help="Turn lights off (black Static)")
+    p_off.add_argument("--all", action="store_true")
+
+    p_presets = sub.add_parser("presets", help="List named presets")
+    p_presets.set_defaults(cmd="presets")
+
+    ns = parser.parse_args()
+    if ns.cmd == "status":
+        return cmd_status(ns)
+    if ns.cmd == "list":
+        return cmd_list(ns)
+    if ns.cmd == "get":
+        return cmd_get(ns)
+    if ns.cmd == "set":
+        return cmd_set(ns)
+    if ns.cmd == "off":
+        return cmd_off(ns)
+    if ns.cmd == "presets":
+        for name, hexv in PRESETS.items():
+            print(f"{name:8} {hexv}")
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except subprocess.TimeoutExpired:
+        print("openrgb timed out", file=sys.stderr)
+        raise SystemExit(1)

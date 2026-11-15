@@ -6,16 +6,104 @@
   <title>Control Center — Etheris Phase 2</title>
   <link rel="stylesheet" href="preview.css" />
   <style>
-    .cc { width:min(360px,92vw); padding:16px; position:absolute; top:64px; right:24px; z-index:40; }
-    .tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
-    .tile { padding:12px; border-radius:12px; border:1px solid var(--eth-border); background:var(--eth-highlight); min-height:68px; }
-    .tile.on { border-color:var(--eth-accent); background:var(--eth-accent-soft); }
-    .tile .label { font-size:11px; color:var(--eth-fg-muted); margin-bottom:4px; }
-    .tile .value { font-size:14px; font-weight:600; }
-    .row-ctrl { display:flex; align-items:center; gap:12px; margin:10px 0; }
-    .row-ctrl span { width:78px; font-size:12px; color:var(--eth-fg-muted); }
-    .power { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:12px; }
-    .power .btn { padding:10px 6px; font-size:11px; }
+    .cc {
+      width: min(344px, 92vw);
+      padding: 16px;
+      position: absolute;
+      top: 36px;
+      right: 12px;
+      z-index: 40;
+      border-radius: 14px;
+    }
+    .cc-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .cc-head .mark { width: 18px; height: 18px; }
+    .cc-head .brand-col { display: flex; flex-direction: column; gap: 0; }
+    .cc-head .brand-word { font-weight: 600; font-size: 12px; letter-spacing: 0.04em; }
+    .cc-head .quick {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--eth-fg-muted);
+    }
+    .cc-head .grow { flex: 1; }
+    .cc-head .link {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--eth-border);
+      color: var(--eth-accent);
+      background: transparent;
+    }
+    .tiles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .tile {
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--eth-border);
+      background: var(--eth-highlight);
+      min-height: 68px;
+      text-align: left;
+    }
+    .tile.on {
+      border-color: color-mix(in srgb, var(--eth-accent) 55%, transparent);
+      background: var(--eth-accent-soft);
+    }
+    .tile .label { font-size: 11px; color: var(--eth-fg-muted); margin-bottom: 4px; }
+    .tile .value { font-size: 14px; font-weight: 600; }
+    .row-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0;
+    }
+    .row-ctrl .cap {
+      width: 56px;
+      font-size: 12px;
+      color: var(--eth-fg-muted);
+      flex-shrink: 0;
+    }
+    .row-ctrl .slider { flex: 1; }
+    .session {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .session .btn { padding: 10px 6px; font-size: 11px; border-radius: 8px; }
+    .foot {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .foot .hint {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--eth-fg-subtle);
+    }
+    .diff {
+      position: absolute;
+      left: 24px;
+      bottom: 24px;
+      max-width: 280px;
+      z-index: 30;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--eth-menu);
+      border: 1px solid var(--eth-border);
+      font-size: 12px;
+      color: var(--eth-fg-muted);
+    }
+    .diff strong { color: var(--eth-fg); font-weight: 600; }
   </style>
 </head>
 <body class="stage-wrap">
@@ -37,32 +125,42 @@
       <span class="brand-word">etheris</span>
       <span class="sep"></span>
       <div class="ws"><span class="on"></span><span></span><span></span></div>
-      <span class="pill cc" style="border-color:var(--eth-accent)">Quick</span>
+      <span class="pill cc" style="border-color:var(--eth-accent)">quick</span>
       <span class="clock">Thu 20:18</span>
     </header>
-    <aside class="glass cc pop" aria-label="Control Center">
-      <h2 style="margin:0 0 12px;font-size:16px">Control Center</h2>
-      <div class="tiles">
-        <div class="tile on"><div class="label">Network</div><div class="value">Etheris‑5G</div></div>
-        <div class="tile"><div class="label">Bluetooth</div><div class="value">Off</div></div>
-        <div class="tile on"><div class="label">Notifications</div><div class="value">On</div></div>
-        <div class="tile"><div class="label">Do Not Disturb</div><div class="value">Off</div></div>
+    <aside class="glass cc pop" aria-label="Etheris Quick">
+      <div class="cc-head">
+        <img class="mark" src="assets/mark.svg" alt="" />
+        <div class="brand-col">
+          <span class="brand-word">etheris</span>
+          <span class="quick">Quick</span>
+        </div>
+        <span class="grow"></span>
+        <a class="link" href="settings.html">Settings</a>
       </div>
-      <div class="row-ctrl"><span>Audio</span><input class="slider" type="range" value="64" aria-label="Volume" /></div>
-      <div class="row-ctrl"><span>Bright</span><input class="slider" type="range" value="80" aria-label="Brightness" /></div>
-      <div class="row-ctrl"><span>Battery</span><strong style="font-size:13px">72% · Balanced</strong></div>
-      <div class="power">
+      <div class="tiles">
+        <button type="button" class="tile on"><div class="label">Network</div><div class="value">Wired</div></button>
+        <button type="button" class="tile on"><div class="label">Atmosphere</div><div class="value">Ocean Glass</div></button>
+        <button type="button" class="tile"><div class="label">Quiet</div><div class="value">Off</div></button>
+        <button type="button" class="tile on"><div class="label">Power</div><div class="value">Balanced</div></button>
+      </div>
+      <div class="row-ctrl"><span class="cap">Audio</span><input class="slider" type="range" value="64" aria-label="Volume" /></div>
+      <div class="row-ctrl"><span class="cap">Bright</span><input class="slider" type="range" value="80" aria-label="Brightness" /></div>
+      <div class="session">
         <button type="button" class="btn btn-ghost">Lock</button>
         <button type="button" class="btn btn-ghost">Sleep</button>
         <button type="button" class="btn btn-ghost">Log out</button>
         <button type="button" class="btn btn-danger">Power</button>
       </div>
-      <div style="margin-top:12px;display:flex;gap:8px">
-        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none">Settings</a>
-        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none">Wallpaper</a>
+      <div class="foot">
+        <a class="btn btn-ghost" href="settings.html" style="text-decoration:none;font-size:12px">Wallpaper</a>
+        <span class="hint">Esc · Super+A</span>
       </div>
     </aside>
-    <p class="note-banner">Mutually exclusive with Launcher / Notification Center / Shortcut Center (see INTERACTIONS.md).</p>
+    <p class="diff">
+      <strong>Not a GNOME clone.</strong>
+      Ocean accent, glass sheet, square tiles, Atmosphere + Quiet + Power — no purple pills or circular utility chrome.
+    </p>
   </div>
   <script src="stage.js"></script>
 </body>

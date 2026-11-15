@@ -1,0 +1,6 @@
+# Etheris live defaults — ReGreet CACHE_PATH is state.toml (not cache.toml).
+# skip_selection requires last_user + a mapped last session (desktop Name=).
+last_user = "etheris"
+
+[user_to_last_sess]
+etheris = "Etheris (Sway)"

@@ -15,7 +15,10 @@ wallpaper=/usr/local/share/etheris/wallpapers/ocean-glass.png
 accent=#38bdf8
 blur=off
 animations=off
-launcher_style=wide
+launcher_style=slim
+dnd=off
+panel_layout=floating
+shell=waybar
 EOF
 
 get_setting() {
@@ -54,7 +57,7 @@ apply_wallpaper() {
 }
 
 apply_theme() {
-  # Neo-Aero: generate waybar/wofi/mako/foot/sway/GTK from design tokens
+  # Flow: generate waybar/rofi/mako/foot/sway/GTK from design tokens
   if [[ -x /usr/local/bin/etheris-theme-apply ]]; then
     etheris-theme-apply >/dev/null 2>&1 || etheris-theme-apply || true
   else
@@ -68,6 +71,10 @@ apply_theme() {
       set_setting accent "${ACCENT:-$accent}"
     fi
     pkill -USR2 waybar 2>/dev/null || true
+  fi
+  # Best-effort DND restore if mako already running (session start also runs restore-dnd)
+  if [[ -x /usr/local/bin/etheris-notifications ]]; then
+    etheris-notifications restore-dnd >/dev/null 2>&1 || true
   fi
   apply_wallpaper
   # Standard user folders for the file manager (Home, Downloads, Pictures, …)
@@ -88,7 +95,7 @@ apply_theme() {
     "$HOME/Downloads/Etheris Transfers" \
     "$HOME/Downloads/Bluetooth" \
     2>/dev/null || true
-  # GTK Places sidebar for Etheris Files (PCManFM) — keep Neo-Aero Places list current
+  # GTK Places sidebar for Etheris Files (PCManFM) — keep Places list current
   _bm="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks"
   mkdir -p "$(dirname "$_bm")"
   cat >"$_bm" <<EOF
@@ -119,8 +126,16 @@ Usage:
   etheris                 Interactive menu
   etheris help            This help
   etheris status          Theme / session info
-  etheris ram             Idle RAM check (target ≤500MB)
+  etheris ram [idle-check]  Session RSS idle gate (target ≤500 MiB; preload OK)
   etheris auth            Verify login / sudo / polkit
+  etheris doctor [--json] Aggregate auth + security + units + greeter
+  etheris report create   Redacted support bundle
+  etheris packages …      Curated package groups (gaming/dev/multimedia)
+  etheris software …      Alias → packages (Software Center CLI)
+  etheris privacy …       Privacy dashboard (policy + security)
+  etheris software-center GTK Software Center (groups)
+  etheris monitor …       System monitor (RAM/perf/sensors)
+  etheris profiles …      Workspace profiles (save/load settings)
   etheris update …        Channel status / upgrades (see etheris-update)
   etheris security …      Privacy / firewall / audit helpers
   etheris desktops        List login sessions
@@ -139,7 +154,7 @@ Usage:
   etheris welcome         Alias for guide
   etheris shortcuts       Shortcut Center (also Super+/)
   etheris sound …         Startup sound enable/preview/volume
-  etheris settings        Neo-Aero Settings (GTK) · Super+,
+  etheris settings        Settings (GTK) · Super+,
   etheris defaults …      Default browser / terminal / AI agent
   etheris timezone …      3D globe city / timezone picker
   etheris timezone-auto … Travel-aware timezone updates
@@ -149,47 +164,85 @@ Usage:
   etheris drivers …       Driver recommendations (etheris-drivers)
   etheris performance …   Performance profiles (etheris-perf)
   etheris gpu …           GPU Manager (etheris-gpu)
+  etheris rgb …           Fan / case RGB (etheris-rgb); GUI: etheris-rgb-manager
   etheris gaming          Gaming stack notes
   etheris install         Install to disk (pick desktop first)
   etheris edit            Open settings in editor
   etheris list-themes
   etheris list-wallpapers
 
-≤500MB idle: use session "Etheris (Sway)" only; keep Steam closed when measuring.
+≤500 MiB idle: Etheris (Sway) with lean browser preload allowed; no other apps.
+Metric: session_rss via `etheris ram idle-check` (not MemAvailable alone).
 Hyprland / Plasma / XFCE are optional and use more RAM.
 
 Live login: etheris / etheris
 EOF
 }
 
-# Used MiB from /proc/meminfo (MemTotal - MemAvailable)
+# System used MiB from /proc/meminfo (MemTotal - MemAvailable) — includes caches.
 used_ram_mib() {
   awk '/MemTotal:/ {t=$2} /MemAvailable:/ {a=$2} END {printf "%d", (t-a)/1024}' /proc/meminfo
 }
 
+# Idle gate metric: prefer sum of Pss from smaps_rollup (less double-counting than VmRSS).
+session_rss_mib() {
+  local uid sum=0 pss
+  uid="$(id -u)"
+  for p in /proc/[0-9]*; do
+    [[ -r "$p/status" ]] || continue
+    awk -v u="$uid" 'BEGIN{ok=0} /^Uid:/{if ($2==u) ok=1} END{exit !ok}' "$p/status" 2>/dev/null || continue
+    if [[ -r "$p/smaps_rollup" ]]; then
+      pss="$(awk '/^Pss:/{s+=$2} END{print s+0}' "$p/smaps_rollup" 2>/dev/null || echo 0)"
+    else
+      pss="$(awk '/^VmRSS:/{print $2+0}' "$p/status" 2>/dev/null || echo 0)"
+    fi
+    sum=$((sum + pss))
+  done
+  printf '%d\n' $(( (sum + 512) / 1024 ))
+}
+
 cmd_ram() {
-  local used target=500
+  local used session target=500 mode="${1:-}" fox=no
   used="$(used_ram_mib)"
+  session="$(session_rss_mib)"
+  pgrep -u "$USER" -x firefox >/dev/null 2>&1 && fox=yes
   echo "Etheris RAM check"
-  echo "  used:     ${used} MiB"
-  echo "  target:   ≤ ${target} MiB idle (Etheris Light)"
-  echo "  session:  ${XDG_CURRENT_DESKTOP:-unknown}"
+  echo "  system_used:  ${used} MiB  (MemTotal - MemAvailable)"
+  echo "  session_pss:  ${session} MiB  (sum of your processes' Pss)"
+  echo "  firefox:      ${fox}"
+  echo "  target:       ≤ ${target} MiB idle session_pss"
+  echo "  session:      ${XDG_CURRENT_DESKTOP:-unknown}"
+  echo "  metric:       idle-check gates on session_pss (lean profile OK; warm Firefox usually exceeds)"
   if [[ -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]; then
     local desk="${XDG_CURRENT_DESKTOP:-}${XDG_SESSION_DESKTOP:-}"
-    if [[ "$desk" == *labwc* || "$desk" == *Etheris* || "$desk" == *sway* || "$desk" == *Sway* ]]; then
-      if (( used <= target )); then
-        echo "  result:   OK — under ${target} MiB"
+    if [[ "$desk" == *Etheris* || "$desk" == *sway* || "$desk" == *Sway* || "$desk" == *labwc* ]]; then
+      if [[ "$fox" == yes ]]; then
+        echo "  result:       OVER — Firefox running (idle gate requires firefox: no)"
+      elif (( session <= target )); then
+        echo "  result:       OK — session_pss under ${target} MiB"
       else
-        echo "  result:   OVER — close apps; avoid Plasma/Hyprland/XFCE for the 500MB target"
+        echo "  result:       OVER — close apps/terminals; warm Firefox alone often exceeds the gate"
+      fi
+      if [[ "$mode" == "idle-check" ]]; then
+        if [[ "$fox" == yes ]] || (( session > target )); then
+          return 1
+        fi
       fi
     else
-      echo "  result:   N/A — 500MB target applies to Etheris Light (Sway) only"
+      echo "  result:       N/A — 500MB target applies to Etheris (Sway) only"
+      [[ "$mode" == "idle-check" ]] && return 2
     fi
   else
-    echo "  result:   (not in a graphical session)"
+    echo "  result:       (not in a graphical session)"
+    [[ "$mode" == "idle-check" ]] && return 2
   fi
   echo
   free -h | awk 'NR<=2 {print "  "$0}'
+  if command -v etheris-browser >/dev/null 2>&1; then
+    echo
+    echo "  browser:"
+    etheris-browser --status | sed 's/^/    /'
+  fi
 }
 
 cmd_status() {
@@ -296,7 +349,7 @@ cmd_wallpaper() {
 }
 
 cmd_logout() {
-  # Neo-Aero glass power menu (GTK4); wofi fallback only if GTK deps missing (exit 2)
+  # Power menu (GTK4); wofi fallback only if GTK deps missing (exit 2)
   if [[ -x /usr/local/bin/etheris-power-menu ]]; then
     /usr/local/bin/etheris-power-menu
     local rc=$?
@@ -450,8 +503,19 @@ main() {
     ""|menu) cmd_menu ;;
     help|-h|--help) cmd_help ;;
     status) cmd_status ;;
-    ram|memory|idle) cmd_ram ;;
+    ram|memory|idle)
+      # etheris ram [idle-check]
+      cmd_ram "${2:-}"
+      ;;
     auth|auth-check) exec etheris-auth-check ;;
+    doctor|diag|diagnose) exec etheris-doctor "$@" ;;
+    report) exec etheris-report "$@" ;;
+    packages|package|pkgs) exec etheris-packages "$@" ;;
+    software|store) exec etheris-packages "$@" ;;
+    software-center|store-ui) exec etheris-software-center "$@" ;;
+    privacy) exec etheris-privacy "$@" ;;
+    monitor|sysmon) exec etheris-monitor "$@" ;;
+    profiles|profile) exec etheris-profiles "$@" ;;
     update|channel) exec etheris-update "$@" ;;
     security) exec etheris-security "$@" ;;
     immutable) exec etheris-immutable "$@" ;;
@@ -472,6 +536,7 @@ main() {
     notifications|notif) exec etheris-overlay notifications "$@" ;;
     winctl|window) exec etheris-winctl "$@" ;;
     logout-menu) cmd_logout ;;
+    lock) exec etheris-lock ;;
     guide|welcome) exec etheris-guide "$@" ;;
     shortcuts|shortcut-center|keys) exec etheris-shortcuts "$@" ;;
     sound) exec etheris-sound "$@" ;;
@@ -487,6 +552,13 @@ main() {
     drivers|gpu-drivers) exec etheris-drivers "$@" ;;
     performance|perf) exec etheris-perf "$@" ;;
     gpu|gpu-manager) exec etheris-gpu "$@" ;;
+    rgb|rgb-manager|fans)
+      if [[ "${1:-}" == "gui" || "${1:-}" == "manager" ]]; then
+        shift || true
+        exec etheris-rgb-manager "$@"
+      fi
+      exec etheris-rgb "$@"
+      ;;
     gaming|steam-help) cmd_gaming ;;
     install) exec sudo etheris-installer "$@" ;;
     edit) ${EDITOR:-micro} "$SETTINGS" ;;

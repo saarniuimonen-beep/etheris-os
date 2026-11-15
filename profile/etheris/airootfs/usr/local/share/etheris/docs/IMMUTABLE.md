@@ -1,11 +1,17 @@
 # Etheris OS — Immutable Core & Recovery (Phase 20)
 
-**Status: DESIGN ONLY — not implemented / not verified**
+**Status: immutable-prep FOUNDATION shipped — A/B NOT implemented**
 
-Do **not** claim Etheris is immutable until A/B updates, rollback, and QEMU tests in this document pass.
+What exists today:
 
-Prerequisite from the project spec: first bootable **and** installable milestone must work.  
-Today: ISO boots (verified). Full install + immutable stack: **not verified**.
+- Installer Btrfs path writes `MODE=immutable-prep` and enables `etheris-immutable-protect.service`
+- `etheris-immutable status|protect|developer on|off` remounts `/usr` read-only when prep mode is active
+- Live ISO stays `MODE=mutable-classic` (fully writable)
+
+Do **not** claim Etheris is a full immutable OS until A/B updates, rollback, and QEMU gates below pass.
+
+Prerequisite: first bootable **and** installable milestone must work.  
+Today: ISO boots (verified). Full A/B atomic updates: **not shipped**.
 
 ---
 
@@ -86,15 +92,15 @@ Investigation candidates (not chosen yet):
 
 | Property | Today |
 |----------|--------|
-| Root | **Mutable** (classic Arch) |
-| Default FS in installer | ext4 (simple) |
-| Btrfs path | Optional; creates future-friendly subvolumes **without** A/B |
-| Updates | Normal `pacman -Syu` |
+| Root | **Mutable** by default; Btrfs installs can protect `/usr` (immutable-prep) |
+| Default FS in installer | ext4 (simple) → `MODE=mutable-classic` |
+| Btrfs path | `@` / `@home` / `@var_log` + `MODE=immutable-prep` + boot protect oneshot |
+| Updates | Normal `pacman -Syu` (use `etheris-immutable developer on` first if `/usr` is ro) |
 | Recovery | Live USB ISO |
 
-Flag file on installed systems (when present):
+Flag file:
 
-`/etc/etheris/system-mode.conf` → `MODE=mutable-classic`
+`/etc/etheris/system-mode.conf` → `MODE=mutable-classic` \| `immutable-prep`
 
 ---
 

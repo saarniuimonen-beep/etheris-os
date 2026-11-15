@@ -1,30 +1,125 @@
 #!/usr/bin/env bash
-# Status helper for Phase 20 — does NOT enable immutability.
+# Etheris immutable-prep helpers (Phase 20 foundation — NOT full A/B immutability).
 set -euo pipefail
+
 MODE_FILE=/etc/etheris/system-mode.conf
 DOC=/usr/local/share/etheris/docs/IMMUTABLE.md
+DEV_FLAG=/var/lib/etheris/developer-mode
+STATE_DIR=/var/lib/etheris
+SELF=/usr/local/bin/etheris-immutable
 
-mode=mutable-classic
-[[ -f "$MODE_FILE" ]] && mode="$(grep -E '^MODE=' "$MODE_FILE" | cut -d= -f2- | tail -1)"
+mode() {
+  local m=mutable-classic
+  [[ -f "$MODE_FILE" ]] && m="$(grep -E '^MODE=' "$MODE_FILE" | cut -d= -f2- | tail -1 || true)"
+  printf '%s\n' "${m:-mutable-classic}"
+}
 
-cat <<EOF
+usr_ro() {
+  findmnt -n -o OPTIONS /usr 2>/dev/null | grep -qE '(^|,)ro(,|$)'
+}
+
+developer_on() {
+  [[ -f "$DEV_FLAG" ]] && grep -qxiE '1|on|true|yes' "$DEV_FLAG" 2>/dev/null
+}
+
+elevate() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    if command -v pkexec >/dev/null 2>&1; then
+      exec pkexec "$SELF" "$@"
+    fi
+    echo "Root required. Try: sudo $SELF $*" >&2
+    exit 1
+  fi
+}
+
+cmd_status() {
+  local m ro=no dev=off
+  m="$(mode)"
+  usr_ro && ro=yes
+  developer_on && dev=on
+  cat <<EOF
 Etheris deployment mode
-  mode:     ${mode}
-  status:   immutable A/B is NOT active on this system
-  docs:     ${DOC}
+  mode:           ${m}
+  /usr read-only: ${ro}
+  developer-mode: ${dev}
+  A/B updates:    NOT shipped (immutable-prep only)
+  docs:           ${DOC}
 
-Current experimental Etheris uses a classic mutable root.
-Atomic updates / rollback are a planned architecture — see the doc.
-Do not assume /usr is protected against root or package managers.
+immutable-prep protects /usr when enabled; /etc /var /home stay writable.
+This is not ostree/bootc A/B immutability.
 EOF
+}
 
-case "${1:-}" in
-  ""|status) ;;
-  help|-h|--help)
-    echo "Usage: etheris-immutable status"
-    ;;
+cmd_protect() {
+  elevate protect
+  mkdir -p "$STATE_DIR"
+  if developer_on; then
+    echo "developer-mode is on — refuse protect. Run: etheris-immutable developer off" >&2
+    exit 1
+  fi
+  case "$(mode)" in
+    immutable-prep|immutable-ab) ;;
+    *)
+      echo "MODE=$(mode) — protect is for immutable-prep installs (Btrfs). Aborting." >&2
+      exit 1
+      ;;
+  esac
+  if findmnt -n /usr >/dev/null 2>&1 && ! findmnt -n -o TARGET,SOURCE /usr | grep -q ' /$'; then
+    mount -o remount,ro /usr
+  else
+    mount --bind /usr /usr 2>/dev/null || true
+    mount -o remount,ro,bind /usr
+  fi
+  echo "Protected: /usr is read-only (developer-mode off)."
+}
+
+cmd_developer() {
+  local act="${1:-}"
+  case "$act" in
+    on|off) ;;
+    *)
+      echo "Usage: etheris-immutable developer on|off" >&2
+      exit 1
+      ;;
+  esac
+  elevate developer "$act"
+  mkdir -p "$STATE_DIR"
+  if [[ "$act" == on ]]; then
+    cat >&2 <<'EOF'
+WARNING: developer-mode remounts /usr read-write.
+Package/app writes can modify the OS tree. Recovery is your responsibility until A/B ships.
+EOF
+    printf '1\n' >"$DEV_FLAG"
+    chmod 644 "$DEV_FLAG"
+    mount -o remount,rw /usr 2>/dev/null || mount -o remount,rw,bind /usr 2>/dev/null || true
+    echo "developer-mode: on (/usr writable)"
+  else
+    printf '0\n' >"$DEV_FLAG"
+    chmod 644 "$DEV_FLAG"
+    if [[ "$(mode)" == immutable-prep || "$(mode)" == immutable-ab ]]; then
+      "$SELF" protect || true
+    fi
+    echo "developer-mode: off"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  etheris-immutable status
+  etheris-immutable protect          # remount /usr read-only (immutable-prep)
+  etheris-immutable developer on|off
+EOF
+}
+
+case "${1:-status}" in
+  ""|status) cmd_status ;;
+  protect) cmd_protect ;;
+  developer) cmd_developer "${2:-}" ;;
+  help|-h|--help) usage ;;
   *)
-    echo "Unknown command: $1 (only 'status' is available until Phase 20 ships)"
+    echo "Unknown command: $1" >&2
+    usage >&2
     exit 1
     ;;
 esac

@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = sway
+
+[Action]
+Description = Etheris: hide stock Sway session (prefer Etheris)
+When = PostTransaction
+Exec = /usr/local/bin/etheris-hide-stock-sway

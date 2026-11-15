@@ -1,13 +1,13 @@
 # Etheris OS — Visual Identity Guide (Design Phase 1)
 
 **Status:** Design proposal — **not implemented** in the live OS.  
-**Direction:** Neo-Aero / Neo-Frutiger Aero (original Etheris identity — not a Vista or Windows 7 clone).
+**Direction:** Cool blue / Ocean Glass look (original Etheris identity — not a Vista or Windows 7 clone).
 
 ---
 
 ## Brand essence
 
-Etheris OS feels like **clear air over water at dawn**: luminous, calm, precise, and optimistic. Interfaces use soft glass, cool aqua–turquoise light, and nature atmospheres without nostalgia cosplay or heavy chrome ornament.
+Etheris OS should feel **calm and clear**: soft panels, cool aqua–turquoise accents, and nature-based theme packs — without nostalgia cosplay or heavy decoration.
 
 | Attribute | Expression |
 |-----------|------------|

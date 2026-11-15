@@ -2,7 +2,8 @@
 # No Waybar / desktop chrome — greeter owns the viewport.
 
 xwayland disable
-output * bg /usr/local/share/etheris/wallpapers/ocean-glass.png fill
+# Solid seat bg only — ReGreet draws the wallpaper (avoid double paint on TCG/virtio).
+output * bg #061018 solid_color
 
 # Seat input
 input type:touchpad {
@@ -18,6 +19,7 @@ default_border none
 default_floating_border none
 
 exec dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
-exec "regreet; swaymsg exit"
+# Cairo GTK renderer: virtio software GL blanks/corrupts ReGreet without it.
+exec "etheris-greeter; swaymsg exit"
 
 bindsym Mod4+Shift+e exec swaynag -t warning -m 'Power?' -b 'Reboot' 'systemctl reboot' -b 'Shut down' 'systemctl poweroff' -b 'Cancel' ''

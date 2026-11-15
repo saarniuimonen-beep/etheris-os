@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
 try:
     import gi
 
@@ -199,7 +201,22 @@ class PerfApp(Gtk.Application):
             self._busy = False
         self._status.set_text(f"Active profile: {active}")
         self._metrics.set_text(run_out(["etheris-perf", "monitor"]) or "metrics unavailable")
-        self._caps.set_text(run_out(["etheris-perf", "capabilities"]) or "capabilities unavailable")
+        caps = run_out(["etheris-perf", "capabilities"]) or "capabilities unavailable"
+        # Virtio / sparse sysfs: profiles still apply where possible, but knobs may be empty.
+        low = caps.lower()
+        if (
+            "none" in low
+            or "unavailable" in low
+            or "virtio" in low
+            or caps.strip() in ("", "{}", "[]")
+            or ("cpu" not in low and "gpu" not in low and "intel" not in low and "amd" not in low)
+        ):
+            caps = (
+                caps
+                + "\n\nNote: few or no tunable knobs on this hardware (common on virtio VMs). "
+                "Profile selection is saved and applied where interfaces exist."
+            )
+        self._caps.set_text(caps)
 
     def _tick(self) -> bool:
         if not self._busy:

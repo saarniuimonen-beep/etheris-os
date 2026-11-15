@@ -22,6 +22,32 @@ need_root() {
   [[ "$(id -u)" -eq 0 ]] || { echo "Run as root: sudo etheris-update $*" >&2; exit 1; }
 }
 
+LOCK_FILE="${ETHERIS_UPDATE_LOCK:-$STATE_DIR/update.lock}"
+
+acquire_lock() {
+  local op="$1"
+  mkdir -p "$STATE_DIR"
+  if [[ -f "$LOCK_FILE" ]]; then
+    local old
+    old="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+    if pgrep -x pacman >/dev/null 2>&1; then
+      echo "Update lock held and pacman is running. Wait or inspect: $LOCK_FILE" >&2
+      echo "  ($old)" >&2
+      exit 1
+    fi
+    echo "WARNING: stale update lock found (no pacman process). Removing." >&2
+    echo "  was: $old" >&2
+    rm -f "$LOCK_FILE"
+  fi
+  printf '%s pid=%s op=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$op" >"$LOCK_FILE"
+  trap 'rm -f "$LOCK_FILE"' EXIT
+}
+
+release_lock() {
+  rm -f "$LOCK_FILE"
+  trap - EXIT
+}
+
 utc_stamp_days_ago() {
   local days="$1"
   if date -u -d "today - ${days} days" +%Y/%m/%d >/dev/null 2>&1; then
@@ -192,10 +218,23 @@ cmd_refresh() {
 
 cmd_upgrade() {
   need_root upgrade
+  acquire_lock upgrade
   local ch
   ch="$(current_channel)"
   echo "Upgrading as a single pacman transaction on channel=${ch} snapshot=$(current_snapshot)"
+  echo "If interrupted: see /usr/local/share/etheris/docs/UPDATE-RECOVERY.md"
+  echo "Then: sudo etheris-update recover"
+  set +e
   pacman -Syu --noconfirm
+  local rc=$?
+  set -e
+  release_lock
+  if ((rc != 0)); then
+    echo "ERROR: pacman upgrade failed (exit $rc)."
+    echo "Recovery: sudo etheris-update recover"
+    echo "Docs: /usr/local/share/etheris/docs/UPDATE-RECOVERY.md"
+    exit "$rc"
+  fi
   echo "Upgrade finished."
   echo "If something is wrong: sudo etheris-update recover"
 }
@@ -217,13 +256,22 @@ SECURITY UPDATE PATH
 EOF
   read -r -p "Type SECURITY to continue: " ans
   [[ "$ans" == SECURITY ]] || { echo "Aborted"; exit 1; }
+  acquire_lock security
   save_previous
   stamp="$(utc_stamp_days_ago "$SECURITY_LAG_DAYS")"
   write_archive_mirrorlist "$stamp" "$ch" "SECURITY snapshot (${SECURITY_LAG_DAYS}d lag) — validate deps after upgrade"
   printf 'security\n' > "$STATE_DIR/last-security-mode"
   echo "Security snapshot ${stamp} applied."
   echo "Running upgrade…"
+  set +e
   pacman -Syu --noconfirm
+  local rc=$?
+  set -e
+  release_lock
+  if ((rc != 0)); then
+    echo "ERROR: security upgrade failed (exit $rc). Try: sudo etheris-update recover"
+    exit "$rc"
+  fi
   echo "Done. Review: pacman -Q linux; journalctl -p err -b"
 }
 
@@ -234,6 +282,7 @@ cmd_recover() {
   echo "Previous channel:  $(cat "$STATE_DIR/previous-channel" 2>/dev/null || echo unknown)"
   read -r -p "Type RECOVER to restore previous known-good mirrors: " ans
   [[ "$ans" == RECOVER ]] || { echo "Aborted"; exit 1; }
+  acquire_lock recover
   # Save current as previous before restore (swap)
   local tmp="$STATE_DIR/.recover-tmp"
   mkdir -p "$tmp"
@@ -252,15 +301,24 @@ cmd_recover() {
 
   echo "Restored mirrors. Syncing & aligning packages to previous snapshot…"
   echo "NOTE: downgrades may be required for a coherent state."
+  echo "Docs: /usr/local/share/etheris/docs/UPDATE-RECOVERY.md"
+  set +e
   pacman -Sy
-  if pacman -Suu --noconfirm; then
-    echo "Recovery upgrade/downgrade transaction completed."
-  else
+  local rc_sy=$?
+  local rc_suu=0
+  if ((rc_sy == 0)); then
+    pacman -Suu --noconfirm
+    rc_suu=$?
+  fi
+  set -e
+  release_lock
+  if ((rc_sy != 0 || rc_suu != 0)); then
     echo "ERROR: pacman transaction failed. Mirrors were restored; fix manually."
     echo "  mirrorlist → $MIRRORLIST"
     echo "  snapshot   → $(current_snapshot)"
     exit 1
   fi
+  echo "Recovery upgrade/downgrade transaction completed."
 }
 
 cmd_help() {
@@ -277,6 +335,10 @@ Usage:
   etheris-update recover             Restore previous known-good mirrors
 
 Default channel: stable (${STABLE_LAG_DAYS}-day lag)
+
+Lock: ${LOCK_FILE} during upgrade/security/recover
+Docs: /usr/local/share/etheris/docs/UPDATE-RECOVERY.md
+      /usr/local/share/etheris/docs/SECURITY-UPDATES.md
 
 This does NOT run a custom Etheris package mirror — only retargets pacman.
 Long-term multi-year support repos are deferred until ISO/install are reliable.

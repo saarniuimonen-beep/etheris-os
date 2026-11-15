@@ -1,50 +1,389 @@
 # Etheris OS — Session log (continue here)
 
-**Last updated:** 2026-11-10T21:10+02:00
+**Last updated:** 2026-11-15T22:45+0200  
 **Version:** 0.1.0-alpha  
-**Host:** Fedora (builds via Podman; tests via `qemu:///session` only — no host package installs / no physical disks without approval)
+**Host:** Omarchy (Arch-like; builds via Podman `--network=host`; tests via `qemu:///session`)
 
 Use this file to resume. Detail lives in the linked docs; this is the handoff.
 
 ---
 
-## Status snapshot
+## Status snapshot — CONTINUE HERE (2026-11-15 · Idle RAM ≤500 MiB ROCK-SOLID PASS)
 
-**Launch progress (2026-11-10 evening):**
-- Cursor repo: https://cursor.com/codebase/saarniuimonen/etheris-os (pushed)
-- ISO rebake **PASS**: `out/etheris-2026.11.10-x86_64.iso` · SHA256 `7a5ea54b9b11dc7aa2a981f9887d94c2cc7007707c834f6692556607ba7416f0`
-- Performance Manager verified in bake airootfs; VM booting new ISO
-- GitHub public/Pages/Release: **blocked on `gh auth login`** (device code in chat)
+### Idle RAM criteria (extremely strict)
+
+| Item | Status |
+|------|--------|
+| `docs/IDLE-RAM-CRITERIA.md` · `scripts/measure-idle-ram.sh` | **PASS** |
+| Pre-fix (2× before fix) | A **167 MiB** (after pkill) · B **972 MiB OVER** (warm Firefox) |
+| Fix | `browser_preload=off` default · lean Super+B kept · idle-check requires `firefox: no` |
+| Post-fix cold boots (no guest-apply) | A **169 MiB** · B **169 MiB** · both OK |
+| IR4 | auth **12 OK** · nftables/NM **active** · PipeWire · Menu Super+A · launcher Super+D |
+| ISO | `out/etheris-2026.11.15-x86_64.iso` · SHA256 `eb677f92d3d6a336b1eca3f6b8f64de4e649badabf22c17366468c3a4b05dfd6` |
+| Evidence | [`out/VERIFICATION-IDLE-RAM-ROCKSOLID-20261115.md`](out/VERIFICATION-IDLE-RAM-ROCKSOLID-20261115.md) · `out/qemu-idle-ram-verify-20261115T203447Z/` |
+
+## Status snapshot — CONTINUE HERE (2026-11-15 · Bug criteria ROCK-SOLID PASS)
+
+### Bug criteria (extremely strict)
+
+| Item | Status |
+|------|--------|
+| `docs/BUG-CRITERIA.md` · `scripts/test-bugs.sh` | **PASS — host B0–B2 green** |
+| Live B3 | **PASS** — password-first · auth **12 OK** · doctor **0 FAIL** · perf active · hover · 10× soak |
+| Menu clip bug (hardcoded X=890) | **Fixed** (B1.21) · shipped in ISO |
+| ISO | `2783b15843106eb920e80fcb66fb7b725c9065439eef90e0114021a7c337326c` |
+| Evidence | [`out/VERIFICATION-BUGS-ROCKSOLID-20261115.md`](out/VERIFICATION-BUGS-ROCKSOLID-20261115.md) · `out/qemu-bugs-20261115T201952Z/` |
 
 
+## Status snapshot — CONTINUE HERE (2026-11-15 · Security criteria PASS)
 
-**2026-11-10:** Rename Stage C **PASS** · CPU/GPU Performance Manager + GPU Manager in tree · official website scaffold started · **no public GitHub/visibility/domain changes**.
+### Security criteria (stricter / rock-solid)
+
+| Item | Status |
+|------|--------|
+| `docs/SECURITY-CRITERIA.md` · `scripts/test-security.sh` | **PASS — 22 OK, 0 FAIL** |
+| ISO | `49ee87b5…` (validate-iso **30 OK**) |
+| Live auth-check / sshd masked | **PASS** |
+| Audit hardening in ISO | sshd masked · forward drop · no :22 · `as_root` |
+
+Evidence: [`out/VERIFICATION-SECURITY-20261115.md`](out/VERIFICATION-SECURITY-20261115.md)
+
+## Prior — Rock-solid reliability PASS
+
+### Rock-solid reliability (stricter than prior smoke)
+
+| Item | Status |
+|------|--------|
+| Criteria | [`docs/RELIABILITY-CRITERIA.md`](docs/RELIABILITY-CRITERIA.md) + [`docs/STABILITY-CRITERIA.md`](docs/STABILITY-CRITERIA.md) R1–R11 |
+| Host `reliability-check.sh` | **21 OK, 0 FAIL** (P0 ≥44 · bash -n · py_compile · ISO squashfs markers) |
+| ISO | `out/etheris-2026.11.15-x86_64.iso` · SHA256 `49ee87b5e8db6c309e4f051873d82ae7c6036b51e9f13e2f5de7ff9c3625fc25` |
+| Live 15× soak · auth 12/12 · doctor 0 FAIL · perf active · swap 0 · 2nd cold boot | **PASS** · **no guest-apply** |
+| Evidence | [`out/VERIFICATION-STABILITY-ROCKSOLID-20261115.md`](out/VERIFICATION-STABILITY-ROCKSOLID-20261115.md) · `out/qemu-rocksolid-20261115T195200Z/` |
 
 
-**Tonight (2026-11-09 ~22:00–23:20): trademark-safe rename → Etheris, gaming/Defaults fixes, lean browser warm path, ISO re-bake.**  
-**Earlier today:** large Neo-Aero shell + apps pass + live VM  
-**Prior (2026-11-08):** M0–M6 · Neo-Aero P0 · power menu · Design Phase 2 · Stage 1 tokens · WP-S1–S5  
+## Status snapshot — CONTINUE HERE (2026-11-15 · Maturity STRICT PASS)
 
-**Checkpoint:** Fresh ISO baked with branding + gaming/Defaults + browser RAM/warm-start; VM shut off  
-**ADR:** `docs/ADR-NEO-AERO-DESKTOP.md`  
-**Decorations architecture:** `docs/WINDOW-DECORATIONS.md`  
-**ISO (latest bake, 23:17):** `out/etheris-2026.11.09-x86_64.iso` (~2.1 GiB)  
-**SHA256:** `6fb625b048bdbb9f21d404d11955dc5183af84ce4d654df2b8f654863662b174`  
-**Prior same-day bake:** SHA `84779b4c…` (superseded; branding/gaming/browser not fully in that image)  
-**Prior ISO (WP-S5):** `out/etheris-2026.11.08-x86_64.iso` · `3ce76275c7978edae208e0cd0697ae1b732dcb2b7571f7db9e4d6149773d14d0`
+### Maturity STRICT (rock-solid Must)
 
-**Honesty notes still true:**
-- Transparency / glass styling is in tree; **true background blur is off** (Sway cannot do frosted blur)
-- 3D timezone globe needs WebKit/WebGL; VM often falls back to Neo-Aero GTK city search UI
-- Extra browsers install on demand (not all baked into ISO)
-- Virgin Firefox cold start cannot hit &lt;1 s; Super+B &lt;1 s needs scratchpad **warm preload**
+| Item | Status |
+|------|--------|
+| `docs/MATURITY-CRITERIA.md` | **Strict** — no CONDITIONAL PASS; soak · doctor · units Must |
+| `scripts/maturity-check.sh` | **PASS — 15 OK** |
+| Live M2/M3 (guest-apply) | **PASS** — doctor 0 FAIL · auth×2 · 5× Menu/launcher soak |
+| Evidence | [`out/VERIFICATION-MATURITY-STRICT-20261115.md`](out/VERIFICATION-MATURITY-STRICT-20261115.md) |
 
-**Next:**
-1. Inject/bake Performance Manager (`out/perf-gpu-apply.tgz`) and VM-verify profiles + Settings/CC sync
-2. Full-system integration audit report (`docs/INTEGRATION-REPORT.md`) — honest untested marks
-3. Finish official website (`website/`) locally; **owner approval** before public deploy
-4. Git init + GitHub prep (templates/docs) — **do not make repos public without approval**
-5. WP-S6 idle RSS · optional Quickshell · decorations soak
+### Reliability criteria + product fixes
+
+| Item | Status |
+|------|--------|
+| `docs/RELIABILITY-CRITERIA.md` · `scripts/reliability-check.sh` | **Added** · host **11 OK** |
+| R3.6 `etheris doctor` (guest-apply) | **PASS** — 9 OK / 0 FAIL / 2 WARN |
+| R3.7 product-relevant failed units | **PASS** — `systemd-loop@*` WARN only |
+| `etheris-perf` HOME unbound | **Fixed** — `: "${HOME:=/root}"` + unit `Environment=HOME=/root` · live **active** |
+
+Evidence: [`out/VERIFICATION-RELIABILITY-CRITERIA-20261115.md`](out/VERIFICATION-RELIABILITY-CRITERIA-20261115.md) · `out/qemu-reliability-criteria-20261115/`  
+**Next bake:** ship perf/doctor/security without inject.
+
+### Stability criteria + product fixes
+
+| Item | Status |
+|------|--------|
+| `docs/STABILITY-CRITERIA.md` | **Added** (A1–A9 · B1–B11) |
+| `scripts/test-stability.sh` | **PASS — 5 OK, 0 FAIL** |
+| `check-profile` keybind Must | Super+A Menu · Super+D launcher · Waybar Menu |
+| Firefox preload B11 | **Fixed in tree** (`firefox_visible_on_ws`) |
+| Maturity F1/F2/F3 | **Fixed in tree** — live doctor PASS via guest-apply; rebake to ship |
+
+Evidence: [`out/VERIFICATION-STABILITY-CRITERIA-20261115.md`](out/VERIFICATION-STABILITY-CRITERIA-20261115.md)
+
+### Maturity test + criteria (full L0–L3 + doctor)
+
+| Gate | Result |
+|------|--------|
+| Criteria | [`docs/MATURITY-CRITERIA.md`](docs/MATURITY-CRITERIA.md) · `scripts/maturity-check.sh` **PASSED** |
+| L0/L1 | **PASS** |
+| L2/L3 desktop Must | **PASS** (greeter/Menu/launcher/auth/nftables) |
+| M3.6/M3.7 doctor | **PASS** after guest-apply (ISO bake still needs rebake to ship) |
+
+Reports: [`out/VERIFICATION-MATURITY-20261115.md`](out/VERIFICATION-MATURITY-20261115.md) · [`out/VERIFICATION-MATURITY-CRITERIA-20261115.md`](out/VERIFICATION-MATURITY-CRITERIA-20261115.md)
+
+### Reliability test (Alpha 0.2 L0–L3 retest)
+
+| Gate | Result |
+|------|--------|
+| L0 profile + P0 | **PASS** (profile + 30 OK) |
+| L1 `validate-iso` | **PASS** (23 OK) |
+| L2 UEFI smoke | **PASS** (boot menu; OVMF 4m path fixed in `test-iso-smoke.sh`) |
+| Password-first greeter | **PASS** (cold live) |
+| Desktop + Super+A/D | **PASS** |
+| `etheris-auth-check` | **12 OK / 0 FAIL** |
+| nftables + hide-sway + regreet-cache + menu-hover | **active / running** |
+
+Report: [`out/VERIFICATION-RELIABILITY-SMOKE-20261115-retest.md`](out/VERIFICATION-RELIABILITY-SMOKE-20261115-retest.md) · shots `out/qemu-reliability-smoke-20261115-retest/`
+
+### Stability test (Beta 0.5)
+
+| Gate | Result |
+|------|--------|
+| L0 profile + P0 | **PASS** (14 + 30 OK) |
+| L1 `validate-iso` | **PASS** (23 OK) |
+| Channel soak scaffold | **PASS** — `out/channel-soak-20261115T185121Z/` |
+| Live desktop 5× Menu/launcher | **PASS** — session held |
+| Password-first greeter | **PASS** (cold boot) |
+| `etheris-auth-check` ×2 | **12 OK / 0 FAIL** |
+| nftables + hide-sway + sway/waybar/hover | **active / running** |
+
+Report: [`out/VERIFICATION-STABILITY-20261115.md`](out/VERIFICATION-STABILITY-20261115.md) · shots `out/qemu-stability-20261115/`
+
+### Prior stretch — remaining gates closed
+
+| Item | Status |
+|------|--------|
+| LUKS install + unlock E2E | **PASS** — [`out/VERIFICATION-LUKS-E2E-20261115.md`](out/VERIFICATION-LUKS-E2E-20261115.md) |
+| Neo-Aero D2/D3 | **Done (tree)** — lock/launcher/CC/profiles/monitor |
+| Secure Boot Alpha | **Done as unsupported** — OVMF secboot probe + plan |
+| Hardware matrix honesty | **Done** — QEMU + host inventory; physical DUT **BLOCKED** |
+| Channel validate/soak scaffold | **Done** — `out/channel-soak-20261115T183848Z/` (+ re-run `…T185121Z`) |
+| Build image pin | **Done** — `out/build-image.pin` |
+| P0 | **30 OK** |
+
+Rollup: [`out/VERIFICATION-REMAINING-GATES-20261115.md`](out/VERIFICATION-REMAINING-GATES-20261115.md)
+
+### ISO (current)
+
+| ISO | SHA256 | Notes |
+|-----|--------|-------|
+| `out/etheris-2026.11.15-x86_64.iso` | `79106f8b47177585a113075d79153141e13ccbfd97363911768318e1ecb8b105` | Phase impl · reliability + stability PASS · LUKS E2E PASS |
+
+### Still open (honest — not claimable without DUT / owner)
+
+- Physical Etheris-on-DUT GPU rows (≥3)  
+- Secure Boot **signed** images / “supported” claim  
+- Multi-day operator channel soak  
+- Rebake to ship `etheris-lock` CSS on live ISO  
+- **1.0** release / `PUBLISH-APPROVAL`  
+
+---
+
+## Prior — Phases 0.2→1.0 scaffolding
+
+### Done this stretch (beyond Alpha 0.2 Critical)
+
+| Area | Deliverable |
+|------|-------------|
+| 0.2 tail | `INSTALLER-FAILURE-MODES.md`, `UPDATE-RECOVERY.md` + update locks, HW matrix QEMU rows, `pin-build-image.sh` |
+| 0.3 | `LUKS-PLAN` / `SECURE-BOOT-PLAN` / `SELINUX-STUDY` / `SECURITY-UPDATES` (**plans only** — no LUKS/SB merge) |
+| 0.4 | `etheris-packages` groups · `etheris software` · `etheris-report` · `etheris privacy` |
+| Beta | `RECOVERY.md` · `REPRODUCIBILITY.md` · `RELEASE-PREP-1.0.md` |
+| Neo-Aero | DESIGN.md glossary (D0); tokens already synced (D1) |
+
+### Still open (needs HW / long E2E / GTK)
+
+- LUKS installer implementation + E2E  
+- Secure Boot prototype on OVMF  
+- Physical GPU matrix rows  
+- GTK Software Center / CC Privacy tile  
+- Neo-Aero D2–D3 chrome  
+- Install persistence E2E re-run on `37566bb8…`
+
+---
+
+## Prior — Alpha 0.2 Critical impl
+
+### Done (tree — needs rebake for ISO proof)
+
+| Item | Change |
+|------|--------|
+| `scripts/validate-iso.sh` | L1 squashfs gates + SHA256SUMS update |
+| Password-first greeter | Seed **`/var/lib/regreet/state.toml`** (upstream CACHE_PATH); drop wrong `cache.toml`/`cache.json` |
+| `etheris doctor` | New `etheris-doctor` + hub `etheris doctor` |
+| Token SoT | phase-2 → share JSON **panel 28/0**; skel **`blur=off`**; prepare-profile syncs |
+| Gaming leaner | Installer default **`ETHERIS_INSTALL_GAMING=0`** (opt-in `=1`); live ISO still ships stack |
+
+**Root cause (greeter):** ReGreet reads `/var/lib/regreet/state.toml` with `last_user` + `[user_to_last_sess]` keyed by desktop **Name=** (`Etheris (Sway)`), not `cache.toml` with path fields.
+
+**Still not claimed:** LUKS / Secure Boot / SELinux / Software Center · install E2E re-run on this ISO
+
+**Gates:** profile PASSED · P0 30 OK · **validate-iso 15 OK** · greeter password-first **PASS** (screenshots)
+
+### ISO
+
+| ISO | SHA256 | Notes |
+|-----|--------|-------|
+| `out/etheris-2026.11.15-x86_64.iso` | `37566bb8dce73bc2f2ef31ce29c331bf447b2e72e8d9f48e724a7ddabdb8d4d4` | Alpha 0.2 Critical · validate-iso + password-first |
+
+Evidence: [`out/VERIFICATION-ALPHA02-CRITICAL-20261115.md`](out/VERIFICATION-ALPHA02-CRITICAL-20261115.md) · `out/qemu-alpha02-greeter-20261115/`
+
+### Next
+
+```bash
+# Optional: login → etheris doctor · Super+A/D on this bake
+# Then Alpha 0.3 prep (LUKS research only) when ready
+```
+### Prior — Menu polish (2026-11-15 afternoon)
+
+Hot-patched + verified on `etheris-os` VM — evidence `out/qemu-menu-polish-20261115/`.  
+Previous ISO bake-2 `682bc46e…` had chrome only (Menu polish was tree-only until this rebake).
+
+
+## Prior snapshot — 2026-11-13 night (install persistence)
+
+### Rebake + KVM + install persistence E2E — **DONE**
+
+**ISO:** `out/etheris-2026.11.13-x86_64.iso`  
+**SHA256:** `ebb52857a123dbc9e01539a905e13f3cb2b90f3aaa748673cc903a1932247f0a`  
+**KVM:** host SVM on · `scripts/vm-use-kvm.sh` applied · guest `-accel kvm`  
+**E2E report:** [`out/VERIFICATION-INSTALL-PERSISTENCE-E2E-20261113.md`](out/VERIFICATION-INSTALL-PERSISTENCE-E2E-20261113.md)
+
+| Gate | Result |
+|------|--------|
+| Password after cold reboot | **PASS** (`demo`/`demo` greeter → desktop) |
+| Keyboard (console `fi`) | **PASS** |
+| Timezone Helsinki + NTP | **PASS** |
+| Locale | **PASS** |
+| NM autoconnect | **PASS** |
+| Bootloader `etheris.conf` | **PASS** |
+| Display save | N/A (not saved) |
+
+**Shipped in this ISO:** auth-check libxcrypt/`ctypes`; hide stock Sway on **live** via `etheris-hide-stock-sway` hook.  
+**In tree for next bake:** installer copies `etheris.desktop` + hide sway + ReGreet cache (installed systems were missing Etheris session).  
+**Open:** OOBE polkit interactive auth fragility; ReGreet password card needs a submit before it appears.
+
+### Prior — Agent 1 reliability smoke (superseded ISO `107e6538…`)
+
+**ISO:** `out/etheris-2026.11.13-x86_64.iso` (earlier same-day)  
+**SHA256:** `107e65381737c8ce05eeed4150fa6df8f8b4ecefb6d04be5946df8ef27c157c2`
+
+**Live results:**
+- Boot → ReGreet → **desktop PASS** (Waybar + Sway)
+- Flow/reliability bits confirmed in squashfs + guest
+- **`nftables` is-active** (RemainAfterExit working)
+
+**Found during smoke → fixed in tree (next bake):**
+- `etheris-auth-check` false FAIL on Python 3.13 (`crypt` removed) → libcrypt ctypes (**live-verified 12 OK** after guest-apply)
+- Greeter offering stock **Sway** beside **Etheris (Sway)** → hide stock `sway.desktop`
+
+**Report:** [`out/VERIFICATION-RELIABILITY-SMOKE-20261113.md`](out/VERIFICATION-RELIABILITY-SMOKE-20261113.md)  
+**Screenshots:** `out/qemu-reliability-smoke-20261113/`
+
+### Auth-check `crypt` false-FAIL — **FIXED + LIVE-VERIFIED** (2026-11-13 ~20:30)
+
+| Item | Status |
+|------|--------|
+| Bug | Python 3.13+ has no stdlib `crypt` → `etheris-auth-check` reported password mismatch (false FAIL) |
+| Fix | `profile/.../etheris-auth-check` verifies via **libxcrypt/`ctypes`** (stdlib `crypt` fallback); ImportError never counts as bad password |
+| Live retest | Guest-applied over QEMU `10.0.2.2` HTTP → **`12 OK, 0 FAIL, 0 SKIP`** (password matches) |
+| P0 | `./scripts/test-p0-security.sh` still **30 OK** |
+| Ship | **In tree** — needs next ISO rebake (reliability ISO `107e6538…` still has old checker) |
+| Note | Live `airootfs` overlay hit **100%** during session (cow 2G); free cache before large guest writes |
+| Agent 2 QA | `~/etheris-os-agent2` branch `agent2/flow-foundation` → `design/agent-2/qa/POST-REBAKE-REPORT.md` · screenshots `out/qemu-agent2-qa-20261113/` |
+
+### Reliability rebake — **LIVE SMOKE PASS** (2026-11-13 ~19:54–20:20)
+
+| Item | Status |
+|------|--------|
+| ISO SHA256 | `107e65381737c8ce05eeed4150fa6df8f8b4ecefb6d04be5946df8ef27c157c2` |
+| Boot → desktop | **PASS** (TCG) |
+| Flow tokens / theme-apply / DND restore / winctl overlay / nftables RemainAfterExit | **In ISO** + content-verified |
+| `nftables` is-active | **PASS** |
+| Auth-check `crypt` FAIL on Py3.13 | **Fixed + live-verified** (see above) — next bake to ship |
+| Hide stock `sway.desktop` | **Fixed in tree** — next bake |
+| Evidence | [`out/VERIFICATION-RELIABILITY-SMOKE-20261113.md`](out/VERIFICATION-RELIABILITY-SMOKE-20261113.md) · `out/qemu-reliability-smoke-20261113/` · Agent 2 `out/qemu-agent2-qa-20261113/` |
+
+### Reliability / maturity pass — **baked + live** (follow-ups in tree)
+
+| Item | Status |
+|------|--------|
+| DND restore after login | `etheris-notifications restore-dnd` + sway/session |
+| Window controls / overlay mutex | safer `etheris-winctl`; Super+Shift+A via overlay |
+| Overview/notifications prefer Rofi | wofi fallback kept |
+| Alt+Tab focus edge case | fixed when focus has no pid |
+| First-login guide | auto once on installed systems (live no-op) |
+| nftables status honesty | `RemainAfterExit=yes` drop-in |
+| Evidence | [`out/VERIFICATION-RELIABILITY-20261113.md`](out/VERIFICATION-RELIABILITY-20261113.md) |
+
+### Etheris Flow M1 — **in latest ISO** + live
+
+| Item | Status |
+|------|--------|
+| Design system entry | [`docs/FLOW.md`](docs/FLOW.md) · Agent 1 plan [`docs/AGENT1-M1-FLOW-HANDOFF.md`](docs/AGENT1-M1-FLOW-HANDOFF.md) |
+| Reliability fixes | `animations=` → GTK + reduced-motion CSS; Settings/CC force re-apply; UI font → Noto Sans (Outfit if installed) |
+| Evidence | [`out/VERIFICATION-FLOW-M1.md`](out/VERIFICATION-FLOW-M1.md) · reliability smoke (squashfs + desktop) |
+
+### Live smoke — maturity ISO **PASS** (TCG, ~19:18–19:30)
+
+| Check | Result |
+|-------|--------|
+| Boot → Etheris/Sway + Waybar + Firefox | **PASS** (~210 s TCG) |
+| MOTD / `BUILD_ID=rolling-lag14` / RGB 755 / avahi active | **PASS** |
+| greetd + ReGreet + `etheris.desktop` | **PASS** |
+| Evidence | [`out/VERIFICATION-MATURITY-SMOKE-20261113.md`](out/VERIFICATION-MATURITY-SMOKE-20261113.md) · `out/qemu-maturity-smoke-20261113/` |
+
+**Follow-ups since maturity smoke:** polkit share path shipped in reliability bake; auth-check privileged probes + **libcrypt ctypes** fix live-verified 20:30 (next bake to ship). P0 **30 OK**.
+
+### Maturity rebake — **baked into ISO** (2026-11-13 ~19:14)
+
+| Item | Status |
+|------|--------|
+| MOTD (Sway-only; no fake DE picker) | **In ISO** + live-verified |
+| `BUILD_ID=rolling-lag14` ↔ channels | **In ISO** + live-verified |
+| Avahi unmasked (Warpinator) | **In ISO** + live-verified |
+| RGB tools 755 + profiledef | **In ISO** + live-verified |
+| On-ISO docs / auth-check greetd (not SDDM) | **In ISO** + live-verified |
+| Squashfs spot-check | **PASS** — [`out/VERIFICATION-MATURITY-20261113.md`](out/VERIFICATION-MATURITY-20261113.md) |
+
+### Host / accel
+
+- **SVM disabled in BIOS** → guest is **TCG** (everything feels glacial). Enable AMD SVM, reboot host, then: `~/etheris-os/scripts/vm-use-kvm.sh`
+- `build.sh` uses Podman `--network=host` (bridge DNS broken on this host).
+
+### Latest ISO (reliability rebake; same-day)
+
+| Item | Value |
+|------|--------|
+| File | `out/etheris-2026.11.13-x86_64.iso` (~2.1 GiB) |
+| SHA256 | `107e65381737c8ce05eeed4150fa6df8f8b4ecefb6d04be5946df8ef27c157c2` |
+| Libvirt image | hardlinked at `~/.local/share/libvirt/images/etheris-2026.11.13-x86_64.iso` |
+| Console log | `out/build-reliability-20261113T174758Z.console.log` |
+| Reports | reliability smoke + Agent 2 post-rebake QA · prior maturity SHA `3e5d1fc5…` superseded |
+
+### UX fixes shipped in this ISO
+
+- ReGreet: Cairo via `etheris-greeter`, `skip_selection=true`, Noto Sans, focus CSS, TUI fallback, lighter clock
+- All core GTK Etheris apps: `GSK_RENDERER=cairo`
+- Settings Sound → `pavucontrol`; CC Animations starts/stops `etheris-motion`; brightness honesty; Transfer missing-tool notifies
+- Launcher: **slim** default, `launcher_icons=auto` (off on VMs)
+
+### Idle RAM (morning measure, still valid metric)
+
+| Check | Result |
+|-------|--------|
+| Idle **no** Firefox | **PASS — session_pss ≈ 124 MiB** |
+
+### Install persistence (priority — 2026-11-13)
+
+Gates in [`docs/INSTALL-PERSISTENCE.md`](docs/INSTALL-PERSISTENCE.md): password, keyboard, timezone, locale, network autoconnect, display layout, bootloader after updates.  
+Code: installer keymap + btrfs `rootflags=subvol=@`, NM iwd + timesyncd, scoped polkit, live-only `etheris-auth-setup`, `etheris-keymap-apply`, `etheris-display`, bootctl pacman hook.  
+Checklist: [`out/VERIFICATION-INSTALL-PERSISTENCE.md`](out/VERIFICATION-INSTALL-PERSISTENCE.md) — **needs cold-reboot E2E after next ISO bake**.
+
+### Next (ordered)
+
+1. Optional rebake to ship **installer** `etheris.desktop` + hide-sway + ReGreet cache seed
+2. Harden OOBE keymap apply (no interactive polkit / faillock trap)
+3. ReGreet: show password row without dummy submit; keep website local
+
+### Quick resume commands
+
+```bash
+cd ~/etheris-os
+cat out/SHA256SUMS
+# latest ISO: ebb52857a123dbc9e01539a905e13f3cb2b90f3aaa748673cc903a1932247f0a
+./scripts/vm-use-kvm.sh   # already KVM if SVM on
+virsh -c qemu:///session start etheris-os
+virt-viewer --connect qemu:///session --attach etheris-os &
+# installed E2E disk: etheris-persist-e2e.qcow2 · demo / demo
+# live: etheris / etheris — prefer session "Etheris (Sway)"
+```
 
 ---
 
@@ -55,23 +394,27 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 | `~/etheris-os/` | Project root |
 | `profile/etheris/` | Archiso profile + airootfs |
 | `build.sh` | Podman + mkarchiso (**multilib**; pacman cache in `work/pacman-cache`) |
-| `out/etheris-2026.11.09-x86_64.iso` | Latest ISO — panel dock, gaming stack, Rofi launcher, wallpapers, transfers, ReGreet, Files Neo-Aero |
+| `out/etheris-2026.11.13-x86_64.iso` | **Latest ISO** (idle Pss + UX/login/Cairo/launcher) |
 | `out/SHA256SUMS` | ISO checksums |
-| `docs/GAMING.md` · `docs/TRANSFERS.md` · `docs/LOGIN.md` · `docs/KEYBOARD.md` | Updated today |
-| `design/phase-2/` | Neo-Aero blueprint + previews (not OS) |
+| `out/VERIFICATION-IDLE-RAM.md` | Idle/perf QEMU evidence (2026-11-12) |
+| `docs/IMMUTABLE.md` · `docs/INTEGRATION-REPORT.md` · `docs/PERFORMANCE-MANAGER.md` | Updated |
+| `design/phase-2/` | Etheris blueprint + previews (not OS) |
 | `MASTER-CHECKLIST.md` | Phase status |
 | `SESSION-LOG.md` | **This handoff** |
+| `website/` | Local-only official site preview |
 
 ### VM (libvirt user session)
 
 ```text
 Connection: qemu:///session
 Domain:     etheris-os
-State:      shut off (as of log update)
-RAM:        ~3584 MiB (3670016 KiB) — raised for Firefox / desktop; was 2560 then 4096 earlier
+State:      running (as of 2026-11-12T17:34 — may be left up; destroy/shutdown OK)
+RAM:        3584 MiB (3670016 KiB)
+Boot:       cdrom then hd
 Disk:       ~/.local/share/libvirt/images/etheris-os.qcow2
-Inject:     ~/.local/share/libvirt/images/etheris-inject.img  (optional; latest ISO should not need injects)
-ISO:        out/etheris-2026.11.09-x86_64.iso  (copy/attach for CDROM boot)
+Inject:     ~/.local/share/libvirt/images/etheris-inject.img
+ISO:        ~/.local/share/libvirt/images/etheris-2026.11.12-x86_64.iso
+            (= out/etheris-2026.11.12-x86_64.iso)
 Prior E2E:  ~/.local/share/libvirt/images/etheris-e2e-stage1.qcow2  (demo/demo)
 WP-S5 live: ~/.local/share/libvirt/images/etheris-wps5-live.qcow2
 ```
@@ -84,7 +427,8 @@ Installed E2E login: `demo` / `demo`
 - Super+A Control Center · Super+N notifications
 - Super+W overview · Super+, Settings · Super+Shift+A window menu
 - Super+B browser · Super+Return terminal · Super+I AI agent
-- Super+Shift+E power menu · `etheris ram`
+- Super+Shift+E power menu · `etheris ram` · `etheris ram idle-check`
+- `etheris-perf get` · `etheris-immutable status`
 - Settings → Shell → Panel position (Top / Bottom dock) · Launcher style
 - `etheris-wallpaper` · `etheris-transfer` · `etheris-browsers` · `etheris-defaults` · `etheris-timezone`
 
@@ -141,14 +485,14 @@ Iterative clearance (rejected Ethereal / Eclipse / Galaxy / Elixir / Ether / Flo
 
 ---
 
-## What we accomplished — 2026-11-09 earlier (Neo-Aero shell + apps)
+## What we accomplished — 2026-11-09 earlier (Etheris shell + apps)
 
 ### 1. Panel placement — top floating vs bottom dock
 
 | Item | Detail |
 |------|--------|
 | Setting | Shell → **Panel position**: Top panel (`floating`) / Bottom dock (`dock`) |
-| Top | Existing Neo-Aero Waybar: workspaces, title, winctl, status |
+| Top | Existing Etheris Waybar: workspaces, title, winctl, status |
 | Bottom | Centered island dock: launcher + Files/Term/Set pins + workspaces + clock + status; taller/rounder; no title/winctl chrome |
 | Wiring | `etheris-shell-layout`, Settings, Control Center, waybar style template |
 
@@ -172,7 +516,7 @@ Steam was already on the live ISO; today made it default on disk installs too an
 |------|--------|
 | Engine | **Rofi** (not wofi) for main launcher |
 | UX | Opens on **Pinned**; tabs: Pinned · Apps · Run · Windows |
-| Theme | Neo-Aero glass via `etheris-theme-apply`; prompt branded **Etheris**; Papirus icons |
+| Theme | Etheris glass via `etheris-theme-apply`; prompt branded **Etheris**; Papirus icons |
 | Branding | Panel wordmark **Etheris**; wofi prompts capitalized consistently |
 | Style option | Settings → Shell → Application launcher: **Wide** (680px, default) / **Slim** (380px); also Control Center toggle |
 | Files | `etheris-launcher` · `share/etheris/rofi/{etheris,etheris-slim}.rasi` · `favorites.mode` |
@@ -199,7 +543,7 @@ Steam was already on the live ISO; today made it default on disk installs too an
 | Firewall | Warpinator ports + mDNS; Avahi enabled |
 | Docs | `docs/TRANSFERS.md` |
 
-### 6. Etheris Files Places + Neo-Aero GTK look
+### 6. Etheris Files Places + Etheris GTK look
 
 | Item | Detail |
 |------|--------|
@@ -226,8 +570,8 @@ Steam was already on the live ISO; today made it default on disk installs too an
 | `./build.sh` | **PASS** → `out/etheris-2026.11.09-x86_64.iso` |
 | SHA256 | `84779b4c00f771e6a9a0edb4aa318864fb02c415ab9f9477fb203289e623f4d2` |
 | VM | CDROM boot of 2026.11.09 ISO; virt-viewer session |
-| Evidence | `out/verification-neo-aero-vm-login.png` · `out/verification-neo-aero-vm-desktop.png` |
-| Glass honesty | Translucent Neo-Aero surfaces yes; **true blur no** (`blur=off`) |
+| Evidence | `out/verification-etheris-desktop-vm-login.png` · `out/verification-etheris-desktop-vm-desktop.png` |
+| Glass honesty | Translucent Etheris surfaces yes; **true blur no** (`blur=off`) |
 
 ### 9. Browser warm-start (Firefox felt ~5s)
 
@@ -270,7 +614,7 @@ Not all browsers baked into ISO (size/RAM). Manager installs on demand:
 |------|--------|
 | App | `etheris-timezone` — OOBE / first-login city-precise picker |
 | Globe | Three.js WebGL globe + city search (`share/etheris/timezone/`) behind WebKit |
-| VM reality | WebKit/WebGL unreliable on virtio → Neo-Aero **GTK search UI** with hub cities pinned |
+| VM reality | WebKit/WebGL unreliable on virtio → Etheris **GTK search UI** with hub cities pinned |
 | Travel | `etheris-timezone-auto` — IP/geolocation country change → set timezone + notify (on by default; toggle in picker) |
 | Live overlays | `out/timezone-apply.tgz` · `out/tz-polish-apply.tgz` (and related injects) |
 
@@ -301,7 +645,7 @@ Kept for continuity; details were verified on WP-S5 ISO.
 
 **Snappy defaults:** `animations=off`; theme-apply session stamp; PNG wallpapers preferred; deferred OOBE/guide; waybar 15–30 s; `99-etheris-snappy.conf`.
 
-### B. Neo-Aero WP-S5
+### B. Etheris WP-S5
 
 Settings (`etheris-settings` · Super+,), workspace overview (Super+W), optional widgets (`widgets=off|clock`), decorations honesty doc, shell-layout wiring. Verified on disposable live VM — report `out/VERIFICATION-WP-S5-SETTINGS.md`.
 
@@ -330,28 +674,25 @@ Settings (`etheris-settings` · Super+,), workspace overview (Super+W), optional
 
 ## Suggested next session
 
-1. **Boot latest ISO** — confirm Etheris branding, Defaults installs (pkexec), `etheris-gaming-setup status`, Super+B warm &lt;1 s (`etheris-browser --status` / `out/bench-browser.sh`).
-2. Owner soak of ReGreet + dock + Rofi launcher + Files Places on clean live boot.
-3. **WP-S6** performance: idle RSS/CPU with only Waybar/mako/sway (**before** browser preload).
-4. Optional: Quickshell Path B behind `shell=quickshell` — must pass ADR gates.
-5. Optional: richer GTK Control Center sheet without dropping wofi fallback.
-6. Soak decorations; only then expand WP-S4 motion (honour reduced-motion / off).
+**Primary (2026-11-15 handoff):** rebake → attach `etheris-2026.11.15` ISO → live-verify Quick/Session frost + thin bar (see **CONTINUE HERE** at top).
+
+Then, if chrome soaks clean:
+1. Boot branding / Defaults / Super+B warm (`etheris-browser --status`).
+2. Owner soak ReGreet + launcher + Files Places.
+3. **WP-S6** idle RSS/CPU (Waybar/mako/sway only, before browser preload).
+4. Optional Quickshell Path B behind `shell=quickshell` (ADR gates).
+5. Soak decorations; expand WP-S4 motion only after.
 
 ### Quick resume commands
 
 ```bash
 cd ~/etheris-os
+# see top-of-file CONTINUE HERE (2026-11-15) for rebake + chrome verify
 df -h .
-cat out/SHA256SUMS
-# attach latest ISO to CDROM if needed, then:
+tail -5 out/SHA256SUMS
 virsh -c qemu:///session start etheris-os
 virt-viewer --connect qemu:///session --attach etheris-os &
-# live: etheris / etheris
-# Super+D / Super+Space → Etheris launcher
-# Super+W overview · Super+, Settings · Super+A CC
-# Super+B browser · etheris-browser --status · etheris ram
-# etheris-defaults · etheris-gaming-setup status · etheris-steam
-# optional live apply: tar xf out/browser-ram-apply.tgz && ./browser-ram-apply/apply.sh
+# live: etheris / etheris · Super+A Quick · Super+Shift+E Session
 ```
 
 ---
@@ -361,17 +702,18 @@ virt-viewer --connect qemu:///session --attach etheris-os &
 | Area | Files |
 |------|--------|
 | Panel top/dock | `etheris-shell-layout` · waybar config/style · Settings Shell |
+| Frosted glass | `share/etheris/lib/etheris_glass.py` · Quick + Session |
 | Rofi launcher | `etheris-launcher` · `share/etheris/rofi/*` |
 | Wallpapers | `etheris-wallpaper` |
 | Transfers | `etheris-transfer` · Warpinator / Blueman / gvfs |
-| Files Neo-Aero | GTK templates · PCManFM skel · xdg-user-dirs / bookmarks |
+| Files Etheris | GTK templates · PCManFM skel · xdg-user-dirs / bookmarks |
 | Login | `/etc/greetd/*` · `regreet.css` · `etheris-greeter-tui` |
 | Browser warm / lean | `etheris-browser` · `/etc/firefox/policies/policies.json` · session preload · `browser_preload` |
 | Browsers manager | `etheris-browsers` · `etheris-browsers-ui` · `browsers/catalog.json` |
 | Defaults | `etheris-defaults` · `etheris-defaults-ui` · `defaults/catalog.json` (pkexec elevation) |
 | AI agent | `etheris-agent` |
 | Timezone | `etheris-timezone` · `etheris-timezone-auto` · `share/etheris/timezone/` |
-| Settings / CC | `etheris-settings` · `etheris-control-center` |
+| Settings / Quick | `etheris-settings` · `etheris-control-center` |
 | Gaming | `packages.x86_64` · `etheris-steam` · `etheris-gaming-setup` · `99-etheris-gaming.conf` |
 | Overview / widgets | `etheris-workspace-overview` · `etheris-widgets` · `etheris-widget-clock` |
 | Window controls | `etheris-winctl` · Waybar `custom/winctl` |
@@ -379,7 +721,7 @@ virt-viewer --connect qemu:///session --attach etheris-os &
 | Theme apply | `etheris-theme-apply` (session stamp) |
 | Tokens / GTK CSD | `share/etheris/design/templates/gtk.css.tmpl` |
 | Overlay mutex | `etheris-overlay` |
-| Power menu | `etheris-power-menu` · `etheris logout-menu` |
+| Session / power | `etheris-power-menu` · `etheris logout-menu` |
 | Live cow | `profiledef.sh` `kernel_params` · `etheris-live-ready.service` |
 | Zram | `zram-generator` · `/etc/systemd/zram-generator.conf` |
 | Session / OOBE | `etheris-session` · `etheris-oobe` |

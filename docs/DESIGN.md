@@ -1,10 +1,23 @@
 # Etheris OS — Visual Polish & Unified Desktop Design
 
-**Status:** Neo-Aero **P0 landed** (tokens + apply pipeline). Full Atmospheres / widgets / Quickshell / Settings UI remain gated.
+**Status:** Theme foundations **landed** (tokens + apply pipeline). Panel geometry SoT is phase-2 tokens (**28**/0); blur default **off**.
 
-**Authority:** Master roadmap + `docs/NEO-AERO-P0.md`. Do not replace Sway or ship Quickshell until evaluated with the working fallback preserved.
+**Authority:** Master roadmap + `docs/ETHERIS-DESKTOP-P0.md` + [AGENT1-M1-FLOW-HANDOFF.md](AGENT1-M1-FLOW-HANDOFF.md) + [NEO-AERO-DESIGN.md](NEO-AERO-DESIGN.md). Do not replace Sway or ship Quickshell until evaluated with the working fallback preserved.
 
-Related: `docs/LOGIN.md`, `docs/OOBE.md`, baseline `out/BASELINE-NEO-AERO-P0.md`.
+Related: `docs/LOGIN.md`, `docs/OOBE.md`, `docs/FLOW.md`, baseline `out/BASELINE-ETHERIS-DESKTOP-P0.md`.
+
+---
+
+## 0. Glossary (Neo-Aero ⊂ Flow)
+
+| Term | Meaning |
+|------|---------|
+| **Neo-Aero** | Design **language** — glass, ocean atmospheres, motion, IA (see NEO-AERO-DESIGN) |
+| **Flow** | Design **engine** — `etheris.tokens.json` → `tokens-*.conf` → `etheris-theme-apply` |
+| **Path A** | Compositor stays **Sway**; Rofi launcher; GTK Menu/Session sheets |
+| **Path B** | Experimental shells/compositors — gated; not default |
+
+Neo-Aero is expressed **through** Flow tokens; they are not competing systems.
 
 ---
 
@@ -16,17 +29,17 @@ Etheris Light is a **Sway + small Wayland toolkit** stack, not a full DE shell.
 |---------|-----------------|------------|
 | Compositor / chrome | **Sway** (fallback + default) | Client borders via `config.d/20-etheris-colors` |
 | Panel | Waybar | Generated CSS from tokens |
-| App launcher | **wofi** (`drun`) | Generated CSS |
+| App launcher | **Rofi** Kickoff via `etheris-launcher` (wofi fallback) | Generated / themed rasi |
 | Notifications | mako | Generated config |
 | Terminal | foot | `colors-dark` / `colors-light` from tokens |
 | GTK 3/4 apps | Adwaita (+ dark) + Papirus | `settings.ini` from theme pack |
 | File manager | PCManFM | Mostly GTK |
 | Lock | swaylock solid color | Color from tokens |
 | Session apply | `etheris apply-session` → `etheris-theme-apply` + wallpaper | Soft reload (no session restart) |
-| Theme packs | Neo-Aero `*.theme` + `design/tokens-{dark,light}.conf` | Shared design system |
+| Theme packs | Etheris `*.theme` + `design/tokens-{dark,light}.conf` | Shared design system |
 | Wallpapers | SVG (ocean-glass, arctic-glow, aurora, meadow, midnight-ocean, …) | Brand assets |
-| Power / logout | `etheris logout-menu` | CLI/TUI — branded dialog later |
-| Quick settings | Partial | Control Center = P1 |
+| Power / logout | **`etheris-power-menu`** Session sheet · `etheris logout-menu` entry | Ocean-glass list (not tile grid) |
+| Quick settings / Menu | **`etheris-control-center`** GTK sheet · wofi `--menu` fallback | Path A landed; Quickshell optional later |
 | Quickshell | **Not in tree** | Shell only if adopted later; never confuses with compositor |
 
 **Principle:** Shared tokens + generators. Do **not** swap Sway for aesthetics alone.
@@ -44,11 +57,11 @@ Etheris Light is a **Sway + small Wayland toolkit** stack, not a full DE shell.
 
 ## 3. Etheris design system (proposed)
 
-### 3.1 Brand character (Neo-Aero)
+### 3.1 Brand character
 
-- **Atmosphere:** sky/ocean aqua–blue glass, turquoise accents, cool whites; dark mode uses deep ocean blues/greens.
-- **Tone:** luminous glass surfaces without Vista cosplay; efficiency over perpetual blur/particles.
-- **Name in UI:** “etheris” mark in panel; full “Etheris OS” on lock/login/OOBE/guide.
+- **Atmosphere:** cool ocean blues, turquoise accents, soft whites; dark mode uses deep blues/greens.
+- **Tone:** translucent panels where useful, without heavy blur or decorative effects; keep it light and readable.
+- **Name in UI:** “etheris” mark in panel; full “Etheris OS” on lock/login/first-boot/guide.
 
 ### 3.2 Color tokens (semantic) — shipped P0
 
@@ -204,8 +217,8 @@ Fix cramped layouts by enforcing spacing tokens—not one-off pixel tweaks.
 
 | ID | Milestone | Exit criteria |
 |----|-----------|---------------|
-| **P0** | Neo-Aero foundations | **Done** — tokens, packs, `etheris-theme-apply`, baseline ≤500 MiB; Sway fallback kept |
-| **P1 / V2** | First usable Neo-Aero desktop | Panel/launcher polish, Control Center stub, wallpaper UX, basic widgets, Settings foundation |
+| **P0** | Theme foundations | **Done** — tokens, packs, `etheris-theme-apply`, baseline ≤500 MiB; Sway fallback kept |
+| **P1 / V2** | First usable Etheris desktop | Panel/launcher polish, Control Center stub, wallpaper UX, basic widgets, Settings foundation |
 | **P2 / V3+** | Complete Etheris identity | Atmospheres product, expanded widgets, icon/sound polish |
 | **P3** | Future | Widget marketplace, advanced effects — not blocking installable OS |
 

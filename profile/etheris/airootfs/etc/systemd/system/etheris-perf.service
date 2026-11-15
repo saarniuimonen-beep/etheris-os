@@ -6,6 +6,8 @@ ConditionPathExists=/usr/local/bin/etheris-perf
 
 [Service]
 Type=oneshot
+# Script is set -u safe for unset HOME; still give a sane default for apply path
+Environment=HOME=/root
 ExecStart=/usr/local/bin/etheris-perf apply
 RemainAfterExit=yes
 

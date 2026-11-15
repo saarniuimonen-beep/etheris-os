@@ -2,7 +2,7 @@
 Type=Application
 Name=Power Menu
 GenericName=Session power controls
-Comment=Neo-Aero lock, sleep, logout, reboot, shutdown
+Comment=Lock, sleep, logout, reboot, or shut down
 Exec=etheris-power-menu
 Icon=system-shutdown
 Terminal=false

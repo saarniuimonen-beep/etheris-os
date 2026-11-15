@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Etheris lock screen — Neo-Aero ocean-glass brand colors (swaylock)
+set -euo pipefail
+# Prefer tokenized BG when available
+BG="#0a1628"
+RING="#38bdf8"
+TEXT="#e8f4fc"
+WRONG="#fb7185"
+if [[ -f /usr/local/share/etheris/design/tokens-dark.conf ]]; then
+  # shellcheck disable=SC1091
+  source /usr/local/share/etheris/design/tokens-dark.conf 2>/dev/null || true
+  BG="${BG:-#0a1628}"
+  RING="${ACCENT:-#38bdf8}"
+  TEXT="${FG:-#e8f4fc}"
+  WRONG="${DANGER:-#fb7185}"
+fi
+exec swaylock -f \
+  --color "${BG#\#}" \
+  --inside-color "${BG#\#}" \
+  --ring-color "${RING#\#}" \
+  --key-hl-color "${TEXT#\#}" \
+  --line-color 00000000 \
+  --separator-color 00000000 \
+  --text-color "${TEXT#\#}" \
+  --inside-wrong-color "${BG#\#}" \
+  --ring-wrong-color "${WRONG#\#}" \
+  --text-wrong-color "${TEXT#\#}" \
+  --inside-ver-color "${BG#\#}" \
+  --ring-ver-color "${RING#\#}" \
+  --text-ver-color "${TEXT#\#}"

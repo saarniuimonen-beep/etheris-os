@@ -13,7 +13,7 @@ Legend: **Working** · **Partial** · **Broken** · **Untested**
 |-----------|--------|----------|
 | Bootloader branding | Working (tree) | syslinux/GRUB/EFI titles Etheris |
 | Live ISO startup | Partial | Prior QEMU live verifications; soak fresh ISO still queued |
-| ReGreet login | Working (tree + prior) | Neo-Aero greeter |
+| ReGreet login | Working (tree + prior) | Graphical greeter |
 | Desktop session | Working (prior) | Sway session verified historically |
 | Startup sound | Working (prior) | guide/shortcuts/sound verification |
 | First-boot OOBE | Partial | M6 OOBE pass; fresh bake E2E without inject still open |

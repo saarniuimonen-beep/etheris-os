@@ -1,244 +1,1035 @@
-#!/usr/bin/env bash
-# Etheris OS — Control Center (Path A, WP-S2).
-# Quick settings via wofi; entry points Super+A / panel. GTK/Quickshell may replace later.
-set -euo pipefail
+#!/usr/bin/env python3
+"""Etheris OS — Control Center (Menu sheet).
 
-CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
-SETTINGS="$CONF_DIR/settings.conf"
-mkdir -p "$CONF_DIR"
-[[ -f "$SETTINGS" ]] || cat >"$SETTINGS" <<'EOF'
-theme=ocean-glass
-animations=off
-tray=panel
-dnd=off
-panel_layout=floating
-shell=waybar
-EOF
+Frosted ocean-glass menu over a one-shot blurred backdrop.
+Tiles, sliders, session row — not a GNOME clone. GTK4 + layer-shell;
+falls back to wofi (--menu) or a floating host without layer-shell.
 
-get_setting() {
-  local key="$1" def="${2:-}"
-  local v
-  v="$(grep -E "^${key}=" "$SETTINGS" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
-  [[ -n "$v" ]] && echo "$v" || echo "$def"
-}
+The top Waybar stays visible: layer-shell host is inset below the 28px bar
+so the toolbar does not vanish under the scrim.
+"""
+from __future__ import annotations
 
-set_setting() {
-  local key="$1" val="$2"
-  if grep -qE "^${key}=" "$SETTINGS" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${val}|" "$SETTINGS"
-  else
-    echo "${key}=${val}" >>"$SETTINGS"
-  fi
-}
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 
-net_state="$(nmcli -t -f STATE,CONNECTIVITY g 2>/dev/null | head -1 | tr ':' '/' || echo unknown)"
-audio_raw="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || true)"
-audio_sink="$(awk '{print $2}' <<<"$audio_raw" 2>/dev/null || echo '?')"
-muted="no"
-grep -qi muted <<<"$audio_raw" && muted="yes"
-theme="$(get_setting theme ocean-glass)"
-anim="$(get_setting animations on)"
-tray="$(get_setting tray panel)"
-panel_layout="$(get_setting panel_layout floating)"
-case "$panel_layout" in
-  dock|bottom) panel_layout=dock ;;
-  *) panel_layout=floating ;;
-esac
-dnd="$(get_setting dnd off)"
-launcher_style="$(get_setting launcher_style wide)"
-case "$launcher_style" in
-  slim|narrow|thin|compact) launcher_style=slim ;;
-  *) launcher_style=wide ;;
-esac
-perf_profile="$(get_setting performance_profile balanced)"
-if command -v etheris-perf >/dev/null 2>&1; then
-  perf_profile="$(etheris-perf get 2>/dev/null || echo "$perf_profile")"
-fi
-case "$perf_profile" in
-  maximum|balanced|quiet|powersave) ;;
-  *) perf_profile=balanced ;;
-esac
-if command -v makoctl >/dev/null 2>&1; then
-  if makoctl mode 2>/dev/null | grep -qiE 'dnd|do-not-disturb'; then
-    dnd="on"
-  fi
-fi
+if "GSK_RENDERER" not in os.environ:
+    os.environ.setdefault("GSK_RENDERER", "cairo")
 
-pick="$(printf '%s\n' \
-  "══ Quick settings ══" \
-  "Network (${net_state})" \
-  "Volume +5%" \
-  "Volume −5%" \
-  "Mute toggle (now muted=${muted}, vol ${audio_sink})" \
-  "Brightness +5%" \
-  "Brightness −5%" \
-  "Performance profile (${perf_profile})" \
-  "══ Session ══" \
-  "Notifications center" \
-  "Do not disturb (${dnd})" \
-  "Panel layout (${panel_layout})" \
-  "Tray policy (${tray})" \
-  "Theme (${theme})" \
-  "Wallpaper" \
-  "File transfers" \
-  "Defaults (browser / terminal / AI)" \
-  "Launcher style (${launcher_style})" \
-  "Animations (${anim})" \
-  "Workspace overview" \
-  "Etheris Settings" \
-  "Performance Manager" \
-  "GPU Manager" \
-  "Shortcut Center" \
-  "Power menu" \
-  "Cancel" \
-  | wofi --dmenu -p 'control center › ' -I 2>/dev/null || true)"
+_LIB = Path(__file__).resolve().parent.parent / "share" / "etheris" / "lib"
+if _LIB.is_dir():
+    sys.path.insert(0, str(_LIB))
 
-[[ -n "$pick" && "$pick" != Cancel && "$pick" != ══* ]] || exit 0
+CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "etheris")
+SETTINGS = os.path.join(CONF_DIR, "settings.conf")
+APP_ID = "os.etheris.ControlCenter"
 
-case "$pick" in
-  Network*)
-    if command -v nm-connection-editor >/dev/null 2>&1; then
-      exec nm-connection-editor
-    else
-      exec foot -e nmtui
-    fi
-    ;;
-  "Volume +5%")
-    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ >/dev/null 2>&1 || true
-    ;;
-  "Volume −5%"|"Volume -5%")
-    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- >/dev/null 2>&1 || true
-    ;;
-  Mute*)
-    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle >/dev/null 2>&1 || true
-    ;;
-  "Brightness +5%")
-    brightnessctl set +5% >/dev/null 2>&1 || true
-    ;;
-  "Brightness −5%"|"Brightness -5%")
-    brightnessctl set 5%- >/dev/null 2>&1 || true
-    ;;
-  "Performance profile"*)
-    case "$perf_profile" in
-      balanced) next=quiet ;;
-      quiet) next=powersave ;;
-      powersave) next=maximum ;;
-      *) next=balanced ;;
-    esac
-    # Sub-menu for explicit pick when wofi available
-    choice="$(printf '%s\n' \
-      "maximum — Maximum Performance" \
-      "balanced — Balanced" \
-      "quiet — Quiet" \
-      "powersave — Power Saving" \
-      "Cancel" \
-      | wofi --dmenu -p 'performance › ' 2>/dev/null || true)"
-    case "$choice" in
-      maximum*) next=maximum ;;
-      balanced*) next=balanced ;;
-      quiet*) next=quiet ;;
-      powersave*) next=powersave ;;
-      Cancel|"") exit 0 ;;
-    esac
-    if command -v etheris-perf >/dev/null 2>&1; then
-      etheris-perf set "$next" >/dev/null 2>&1 || true
-      set_setting performance_profile "$next"
-      notify-send -a Etheris 'Performance' "Profile → ${next}" 2>/dev/null || true
-    fi
-    ;;
-  "Notifications center")
-    exec etheris-overlay menu etheris-notifications
-    ;;
-  "Do not disturb"*)
-    if [[ "$dnd" == on ]]; then
-      makoctl mode -r dnd >/dev/null 2>&1 || true
-      set_setting dnd off
-      notify-send -a Etheris 'Notifications' 'Do not disturb off' 2>/dev/null || true
-    else
-      makoctl mode -a dnd >/dev/null 2>&1 || true
-      set_setting dnd on
-    fi
-    ;;
-  "Panel layout"*)
-    if [[ "$panel_layout" == dock ]]; then
-      next=floating
-    else
-      next=dock
-    fi
-    etheris-shell-layout panel "$next"
-    notify-send -a Etheris 'Panel' "Layout → ${next} (floating top · dock bottom)" 2>/dev/null || true
-    ;;
-  "Tray policy"*)
-    next=panel
-    case "$tray" in
-      panel) next=off ;;
-      off) next=cc ;;
-      cc) next=panel ;;
-      *) next=panel ;;
-    esac
-    etheris-shell-layout tray "$next"
-    notify-send -a Etheris 'Tray' "Policy → ${next} (panel|off|cc)" 2>/dev/null || true
-    ;;
-  Theme*)
-    exec etheris themes
-    ;;
-  Wallpaper)
-    if [[ -x /usr/local/bin/etheris-wallpaper ]]; then
-      exec etheris-wallpaper
-    fi
-    exec etheris wallpaper
-    ;;
-  "File transfers")
-    if [[ -x /usr/local/bin/etheris-transfer ]]; then
-      exec etheris-transfer
-    fi
-    ;;
-  Defaults*)
-    exec etheris-defaults
-    ;;
-  "Launcher style"*)
-    if [[ "$launcher_style" == slim ]]; then
-      set_setting launcher_style wide
-      notify-send -a Etheris 'Launcher' 'Style → Wide' 2>/dev/null || true
-    else
-      set_setting launcher_style slim
-      notify-send -a Etheris 'Launcher' 'Style → Slim' 2>/dev/null || true
-    fi
-    ;;
-  Animations*)
-    if [[ "$anim" == on ]]; then
-      set_setting animations off
-      notify-send -a Etheris 'Motion' 'Reduced motion preferred (saved).' 2>/dev/null || true
-    else
-      set_setting animations on
-      notify-send -a Etheris 'Motion' 'Animations enabled (saved).' 2>/dev/null || true
-    fi
-    ;;
-  "Workspace overview")
-    exec etheris-workspace-overview
-    ;;
-  "Etheris Settings")
-    if [[ -x /usr/local/bin/etheris-settings ]]; then
-      exec etheris-settings
-    fi
-    exec etheris settings
-    ;;
-  "Performance Manager")
-    if [[ -x /usr/local/bin/etheris-performance ]]; then
-      exec etheris-performance
-    fi
-    exec etheris-perf status
-    ;;
-  "GPU Manager")
-    if [[ -x /usr/local/bin/etheris-gpu-manager ]]; then
-      exec etheris-gpu-manager
-    fi
-    exec etheris-gpu status
-    ;;
-  "Shortcut Center")
-    exec etheris-shortcuts
-    ;;
-  "Power menu")
-    exec etheris-overlay power
-    ;;
-esac
+
+def ensure_settings() -> None:
+    os.makedirs(CONF_DIR, exist_ok=True)
+    if not os.path.isfile(SETTINGS):
+        with open(SETTINGS, "w", encoding="utf-8") as fh:
+            fh.write(
+                "theme=ocean-glass\n"
+                "blur=on\n"
+                "animations=on\n"
+                "tray=panel\n"
+                "dnd=off\n"
+                "panel_layout=floating\n"
+                "shell=waybar\n"
+            )
+
+
+def get_setting(key: str, default: str = "") -> str:
+    ensure_settings()
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return default
+
+
+def set_setting(key: str, val: str) -> None:
+    ensure_settings()
+    lines: list[str] = []
+    found = False
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith(f"{key}="):
+                    lines.append(f"{key}={val}\n")
+                    found = True
+                else:
+                    lines.append(line if line.endswith("\n") else line + "\n")
+    except OSError:
+        lines = []
+    if not found:
+        lines.append(f"{key}={val}\n")
+    with open(SETTINGS, "w", encoding="utf-8") as fh:
+        fh.writelines(lines)
+
+
+def run_cmd(cmd: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, check=check, text=True, capture_output=True)
+
+
+def notify(title: str, body: str) -> None:
+    if shutil.which("notify-send"):
+        subprocess.Popen(["notify-send", "-a", "Etheris", title, body], start_new_session=True)
+
+
+def net_label() -> tuple[str, bool]:
+    try:
+        out = run_cmd(["nmcli", "-t", "-f", "STATE,CONNECTIVITY", "g"]).stdout.strip()
+        state = (out.split(":", 1)[0] if out else "unknown").lower()
+        if state in ("connected", "full"):
+            # Prefer active connection name
+            active = run_cmd(
+                ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]
+            ).stdout.strip()
+            for line in active.splitlines():
+                parts = line.split(":")
+                if len(parts) >= 2 and parts[1] in ("802-3-ethernet", "ethernet", "wifi", "802-11-wireless"):
+                    name = parts[0] or "Network"
+                    kind = "Wired" if "ethernet" in parts[1] or parts[1] == "802-3-ethernet" else name
+                    return kind[:18], True
+            return "Online", True
+        if state == "connecting":
+            return "Connecting…", False
+        return "Offline", False
+    except (OSError, subprocess.SubprocessError):
+        return "Network", False
+
+
+def volume_state() -> tuple[float, bool]:
+    try:
+        raw = run_cmd(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"]).stdout.strip()
+        # Volume: 0.64 [MUTED]
+        parts = raw.split()
+        vol = float(parts[1]) if len(parts) >= 2 else 0.0
+        muted = "MUTED" in raw.upper()
+        return max(0.0, min(1.0, vol)), muted
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return 0.64, False
+
+
+def set_volume(frac: float) -> None:
+    frac = max(0.0, min(1.5, frac))
+    try:
+        run_cmd(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{frac:.3f}"])
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def toggle_mute() -> None:
+    try:
+        run_cmd(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def brightness_state() -> float | None:
+    if not shutil.which("brightnessctl"):
+        return None
+    try:
+        out = run_cmd(["brightnessctl", "-m"]).stdout.strip()
+        # device,class,...,current,percent%,max
+        pct = out.split(",")[3].rstrip("%")
+        return max(0.0, min(1.0, float(pct) / 100.0))
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def set_brightness(frac: float) -> None:
+    if not shutil.which("brightnessctl"):
+        return
+    pct = int(round(max(0.01, min(1.0, frac)) * 100))
+    try:
+        run_cmd(["brightnessctl", "set", f"{pct}%"])
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def dnd_on() -> bool:
+    if get_setting("dnd", "off") == "on":
+        return True
+    if shutil.which("makoctl"):
+        try:
+            modes = run_cmd(["makoctl", "mode"]).stdout.lower()
+            return "dnd" in modes or "do-not-disturb" in modes
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return False
+
+
+def set_dnd(enabled: bool) -> None:
+    if shutil.which("makoctl"):
+        try:
+            if enabled:
+                run_cmd(["makoctl", "mode", "-a", "dnd"])
+            else:
+                run_cmd(["makoctl", "mode", "-r", "dnd"])
+        except (OSError, subprocess.SubprocessError):
+            pass
+    set_setting("dnd", "on" if enabled else "off")
+    if not enabled:
+        notify("Notifications", "Do not disturb off")
+
+
+def perf_profile() -> str:
+    if shutil.which("etheris-perf"):
+        try:
+            p = run_cmd(["etheris-perf", "get"]).stdout.strip().lower()
+            if p in ("maximum", "balanced", "quiet", "powersave"):
+                return p
+        except (OSError, subprocess.SubprocessError):
+            pass
+    p = get_setting("performance_profile", "balanced")
+    return p if p in ("maximum", "balanced", "quiet", "powersave") else "balanced"
+
+
+def cycle_perf() -> str:
+    order = ["balanced", "quiet", "powersave", "maximum"]
+    cur = perf_profile()
+    nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "balanced"
+    if shutil.which("etheris-perf"):
+        try:
+            run_cmd(["etheris-perf", "set", nxt])
+        except (OSError, subprocess.SubprocessError):
+            pass
+    set_setting("performance_profile", nxt)
+    notify("Performance", f"Profile → {nxt}")
+    return nxt
+
+
+def theme_name() -> str:
+    return get_setting("theme", "ocean-glass")
+
+
+def open_network() -> None:
+    if shutil.which("nm-connection-editor"):
+        subprocess.Popen(["nm-connection-editor"], start_new_session=True)
+    elif shutil.which("foot"):
+        subprocess.Popen(["foot", "-e", "nmtui"], start_new_session=True)
+
+
+def open_settings() -> None:
+    for cmd in (["etheris-settings"], ["etheris", "settings"]):
+        if shutil.which(cmd[0]) or cmd[0].startswith("etheris"):
+            subprocess.Popen(cmd, start_new_session=True)
+            return
+
+
+def open_wallpaper() -> None:
+    if os.access("/usr/local/bin/etheris-wallpaper", os.X_OK):
+        subprocess.Popen(["etheris-wallpaper"], start_new_session=True)
+    else:
+        subprocess.Popen(["etheris", "wallpaper"], start_new_session=True)
+
+
+def open_themes() -> None:
+    subprocess.Popen(["etheris", "themes"], start_new_session=True)
+
+
+def open_privacy() -> None:
+    subprocess.Popen(
+        ["foot", "-e", "bash", "-lc", "etheris privacy; read -r -p 'Enter…'"],
+        start_new_session=True,
+    )
+
+
+def open_software() -> None:
+    if Path("/usr/local/bin/etheris-software-center").is_file():
+        subprocess.Popen(["etheris-software-center"], start_new_session=True)
+    else:
+        subprocess.Popen(
+            ["foot", "-e", "bash", "-lc", "etheris packages list; read -r -p 'Enter…'"],
+            start_new_session=True,
+        )
+
+
+def open_updates() -> None:
+    subprocess.Popen(
+        ["foot", "-e", "bash", "-lc", "etheris-update status; echo; etheris-update check; read -r -p 'Enter…'"],
+        start_new_session=True,
+    )
+
+
+def open_power() -> None:
+    subprocess.Popen(["etheris-overlay", "power"], start_new_session=True)
+
+
+def do_lock() -> None:
+    for cmd in (["swaylock", "-f", "-c", "0a1628"], ["loginctl", "lock-session"]):
+        try:
+            subprocess.Popen(cmd, start_new_session=True)
+            return
+        except OSError:
+            continue
+
+
+def do_sleep() -> None:
+    subprocess.Popen(["systemctl", "suspend"], start_new_session=True)
+
+
+def do_logout() -> None:
+    try:
+        subprocess.Popen(["swaymsg", "exit"], start_new_session=True)
+    except OSError:
+        subprocess.Popen(
+            ["loginctl", "terminate-user", os.environ.get("USER", "")],
+            start_new_session=True,
+        )
+
+
+# ── wofi fallback ────────────────────────────────────────────────────────────
+
+
+def run_wofi_menu() -> int:
+    ensure_settings()
+    net, _ = net_label()
+    vol, muted = volume_state()
+    theme = theme_name()
+    dnd = "on" if dnd_on() else "off"
+    perf = perf_profile()
+    anim = get_setting("animations", "on")
+    lines = [
+        "══ Etheris Menu ══",
+        f"Network ({net})",
+        f"Volume +5%  (now {int(vol * 100)}%{' muted' if muted else ''})",
+        "Volume −5%",
+        "Mute toggle",
+        "Brightness +5%",
+        "Brightness −5%",
+        f"Performance ({perf})",
+        f"Do not disturb ({dnd})",
+        f"Theme ({theme})",
+        f"Animations ({anim})",
+        "Wallpaper",
+        "Privacy",
+        "Software / Apps",
+        "Etheris Settings",
+        "Power menu",
+        "Cancel",
+    ]
+    try:
+        pick = subprocess.run(
+            ["wofi", "--dmenu", "-p", "etheris menu › ", "-I"],
+            input="\n".join(lines),
+            text=True,
+            capture_output=True,
+            check=False,
+        ).stdout.strip()
+    except OSError:
+        print("etheris-control-center: wofi unavailable", file=sys.stderr)
+        return 1
+    if not pick or pick == "Cancel" or pick.startswith("══"):
+        return 0
+    if pick.startswith("Network"):
+        open_network()
+    elif pick.startswith("Volume +"):
+        set_volume(min(1.5, volume_state()[0] + 0.05))
+    elif pick.startswith("Volume"):
+        set_volume(max(0.0, volume_state()[0] - 0.05))
+    elif pick.startswith("Mute"):
+        toggle_mute()
+    elif pick.startswith("Brightness +"):
+        cur = brightness_state()
+        if cur is None:
+            notify("Brightness", "No backlight on this hardware (common in VMs).")
+        else:
+            set_brightness(min(1.0, cur + 0.05))
+    elif pick.startswith("Brightness"):
+        cur = brightness_state()
+        if cur is None:
+            notify("Brightness", "No backlight on this hardware (common in VMs).")
+        else:
+            set_brightness(max(0.01, cur - 0.05))
+    elif pick.startswith("Performance"):
+        cycle_perf()
+    elif pick.startswith("Do not disturb"):
+        set_dnd(not dnd_on())
+    elif pick.startswith("Theme"):
+        open_themes()
+    elif pick.startswith("Animations"):
+        nxt = "off" if anim == "on" else "on"
+        set_setting("animations", nxt)
+        subprocess.Popen(
+            ["env", "ETHERIS_THEME_FORCE=1", "etheris-theme-apply"],
+            start_new_session=True,
+        )
+        notify("Motion", f"Animations {nxt}")
+    elif pick == "Wallpaper":
+        open_wallpaper()
+    elif pick == "Privacy":
+        open_privacy()
+    elif pick.startswith("Software"):
+        open_software()
+    elif pick == "Etheris Settings":
+        open_settings()
+    elif pick == "Power menu":
+        open_power()
+    return 0
+
+
+# ── GTK sheet ────────────────────────────────────────────────────────────────
+
+
+def try_gtk_sheet() -> int:
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Gdk", "4.0")
+        from gi.repository import Gdk, GLib, Gtk
+    except (ImportError, ValueError) as exc:
+        print(f"etheris-control-center: GTK4 unavailable ({exc})", file=sys.stderr)
+        return run_wofi_menu()
+
+    try:
+        from etheris_glass import (
+            GLASS_MOTION_CSS,
+            animations_on,
+            close_ms,
+            prepare_frosted_backdrop,
+        )
+    except ImportError as exc:
+        print(f"etheris-control-center: glass helper missing ({exc})", file=sys.stderr)
+        return run_wofi_menu()
+
+    layer = None
+    try:
+        gi.require_version("Gtk4LayerShell", "1.0")
+        from gi.repository import Gtk4LayerShell as layer  # type: ignore
+    except (ImportError, ValueError):
+        layer = None
+
+    tmp = tempfile.mkdtemp(prefix="etheris-cc-")
+    backdrop_path = os.path.join(tmp, "blur.png")
+    has_blur = prepare_frosted_backdrop(backdrop_path, strength="soft")
+
+    class ControlCenter(Gtk.Application):
+        def __init__(self) -> None:
+            super().__init__(application_id=APP_ID)
+            self._vol_scale: Gtk.Scale | None = None
+            self._bri_scale: Gtk.Scale | None = None
+            self._perf_value: Gtk.Label | None = None
+            self._dnd_tile: Gtk.Button | None = None
+            self._dnd_value: Gtk.Label | None = None
+            self._net_value: Gtk.Label | None = None
+            self._theme_value: Gtk.Label | None = None
+            self._vol_btn: Gtk.Button | None = None
+            self._sheet_w: Gtk.Widget | None = None
+            self._scrim: Gtk.Widget | None = None
+            self._closing = False
+
+        def do_activate(self) -> None:  # noqa: N802
+            wins = self.get_windows()
+            if wins:
+                self._quit(None)
+                return
+            self._build()
+
+        def _build(self) -> None:
+            # Empty title so the Waybar window module does not swap chrome for "Menu".
+            win = Gtk.ApplicationWindow(application=self, title="")
+            win.set_decorated(False)
+            win.set_resizable(False)
+
+            # Layer-shell when the compositor exposes it. Do NOT call init_for_window
+            # when is_supported() is false — that leaves a 360×1 stub window.
+            # Inset TOP by the 28px bar so the toolbar never disappears under the scrim.
+            bar_h = 28
+            use_layer = bool(layer is not None and layer.is_supported())
+            if use_layer:
+                layer.init_for_window(win)
+                layer.set_layer(win, layer.Layer.TOP)
+                layer.set_namespace(win, "etheris-control-center")
+                layer.set_anchor(win, layer.Edge.TOP, True)
+                layer.set_anchor(win, layer.Edge.RIGHT, True)
+                layer.set_anchor(win, layer.Edge.BOTTOM, True)
+                layer.set_anchor(win, layer.Edge.LEFT, True)
+                layer.set_margin(win, layer.Edge.TOP, bar_h)
+                layer.set_margin(win, layer.Edge.RIGHT, 0)
+                layer.set_exclusive_zone(win, -1)
+                layer.set_keyboard_mode(win, layer.KeyboardMode.ON_DEMAND)
+                # Anchored to all edges → fills the output; size is a hint only.
+                win.set_default_size(640, 480)
+            else:
+                # Floating top-right host — avoid fullscreen so the bar stays put.
+                win.set_default_size(380, 520)
+                GLib.idle_add(self._sway_float_corner)
+
+            overlay = Gtk.Overlay()
+            win.set_child(overlay)
+
+            # Frosted backdrop (or dim catcher)
+            if has_blur and os.path.isfile(backdrop_path):
+                picture = Gtk.Picture.new_for_filename(backdrop_path)
+                picture.set_content_fit(Gtk.ContentFit.COVER)
+                picture.set_hexpand(True)
+                picture.set_vexpand(True)
+                overlay.set_child(picture)
+            else:
+                catcher_bg = Gtk.Box()
+                catcher_bg.set_hexpand(True)
+                catcher_bg.set_vexpand(True)
+                catcher_bg.add_css_class("cc-catcher-solid")
+                overlay.set_child(catcher_bg)
+
+            scrim = Gtk.Box()
+            scrim.add_css_class("cc-catcher")
+            scrim.add_css_class("eth-scrim-enter" if animations_on() else "eth-scrim-open")
+            scrim.set_hexpand(True)
+            scrim.set_vexpand(True)
+            self._scrim = scrim
+            click = Gtk.GestureClick()
+            click.connect("pressed", lambda *_: self._quit(win))
+            scrim.add_controller(click)
+            overlay.add_overlay(scrim)
+
+            sheet = self._make_sheet(win)
+            sheet.set_halign(Gtk.Align.END)
+            sheet.set_valign(Gtk.Align.START)
+            # Bar already cleared via layer margin; keep a small gap under it.
+            sheet.set_margin_top(8 if use_layer else 36)
+            sheet.set_margin_end(14)
+            sheet.add_css_class("eth-glass-enter" if animations_on() else "eth-glass-open")
+            self._sheet_w = sheet
+            stop = Gtk.GestureClick()
+            stop.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            stop.connect("pressed", lambda *_: True)
+            sheet.add_controller(stop)
+            # Keep Menu open while the pointer is over the sheet (hover UX).
+            motion = Gtk.EventControllerMotion()
+            motion.connect("enter", lambda *_: self._hover_sheet(True))
+            motion.connect("leave", lambda *_: self._hover_sheet(False))
+            sheet.add_controller(motion)
+            overlay.add_overlay(sheet)
+
+            self._apply_css()
+
+            key = Gtk.EventControllerKey()
+            key.connect("key-pressed", self._on_key, win)
+            win.add_controller(key)
+
+            win.connect("close-request", lambda *_: self._quit(win) or True)
+            win.present()
+            GLib.idle_add(self._play_open)
+            GLib.timeout_add(80, self._refresh_live)
+
+        def _play_open(self) -> bool:
+            if self._sheet_w and animations_on():
+                self._sheet_w.remove_css_class("eth-glass-enter")
+                self._sheet_w.add_css_class("eth-glass-open")
+            if self._scrim and animations_on():
+                self._scrim.remove_css_class("eth-scrim-enter")
+                self._scrim.add_css_class("eth-scrim-open")
+            return False
+
+        def _sway_float_corner(self) -> bool:
+            """Position fallback host top-right under the bar (no fullscreen steal).
+
+            Never hardcode X for a single resolution — that clips the Menu off the
+            right edge on smaller outputs (and drifts on multi-monitor).
+            """
+            win_w, win_h = 380, 520
+            margin = 14
+            bar = 36
+            x, y = max(margin, 1280 - win_w - margin), bar
+            try:
+                import json
+
+                raw = subprocess.check_output(
+                    ["swaymsg", "-t", "get_outputs", "-r"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                outputs = json.loads(raw)
+                focused = next((o for o in outputs if o.get("focused")), None)
+                active = focused or next((o for o in outputs if o.get("active")), None)
+                if active:
+                    rect = active.get("rect") or {}
+                    ox = int(rect.get("x") or 0)
+                    oy = int(rect.get("y") or 0)
+                    ow = int(rect.get("width") or 1280)
+                    x = ox + max(margin, ow - win_w - margin)
+                    y = oy + bar
+            except (OSError, subprocess.SubprocessError, ValueError, TypeError, StopIteration):
+                pass
+            try:
+                subprocess.Popen(
+                    [
+                        "swaymsg",
+                        f'[app_id="{APP_ID}"] floating enable, sticky enable, '
+                        f"border pixel 0, move position {x} {y}, resize set {win_w} {win_h}",
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                pass
+            return False
+
+        def _hover_sheet(self, inside: bool) -> None:
+            # Touch a stamp so etheris-menu-hover keeps the sheet open while over it.
+            stamp = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "etheris-menu-hover"
+            try:
+                if inside:
+                    stamp.write_text("sheet\n", encoding="utf-8")
+                elif stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == "sheet":
+                    stamp.write_text("open\n", encoding="utf-8")
+            except OSError:
+                pass
+
+        def _on_key(self, _c, keyval, _code, _state, win) -> bool:
+            if keyval == Gdk.KEY_Escape:
+                self._quit(win)
+                return True
+            return False
+
+        def _quit(self, win: Gtk.Window | None) -> None:
+            if self._closing:
+                return
+            self._closing = True
+            stamp = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "etheris-menu-hover"
+            try:
+                stamp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if animations_on() and self._sheet_w:
+                self._sheet_w.remove_css_class("eth-glass-open")
+                self._sheet_w.add_css_class("eth-glass-leave")
+                if self._scrim:
+                    self._scrim.remove_css_class("eth-scrim-open")
+                    self._scrim.add_css_class("eth-scrim-leave")
+                GLib.timeout_add(close_ms() or 1, lambda: self.quit() or False)
+            else:
+                self.quit()
+
+        def _make_sheet(self, win: Gtk.Window) -> Gtk.Widget:
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            outer.add_css_class("cc-sheet")
+            # 344 content + 18px pad each side ≈ 380 — must fit float host / layer sheet.
+            outer.set_size_request(340, -1)
+
+            # Brand header — mark word + "Menu"
+            head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            head.add_css_class("cc-head")
+            mark = Gtk.Box()
+            mark.add_css_class("cc-mark")
+            mark.set_size_request(18, 18)
+            mark.set_valign(Gtk.Align.CENTER)
+            brand = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            word = Gtk.Label(label="Etheris", xalign=0)
+            word.add_css_class("cc-brand")
+            sub = Gtk.Label(label="Menu", xalign=0)
+            sub.set_can_focus(False)
+            sub.add_css_class("cc-sub")
+            word.set_can_focus(False)
+            brand.append(word)
+            brand.append(sub)
+            head.append(mark)
+            head.append(brand)
+            spacer = Gtk.Box()
+            spacer.set_hexpand(True)
+            head.append(spacer)
+            settings_btn = Gtk.Button(label="Settings")
+            settings_btn.add_css_class("cc-link")
+            settings_btn.connect(
+                "clicked",
+                lambda *_: (open_settings(), self._quit(win)),
+            )
+            head.append(settings_btn)
+            outer.append(head)
+
+            # 2×2 tiles
+            grid = Gtk.Grid()
+            grid.set_column_homogeneous(True)
+            grid.set_row_homogeneous(True)
+            grid.set_column_spacing(8)
+            grid.set_row_spacing(8)
+            grid.add_css_class("cc-grid")
+
+            net_name, net_on = net_label()
+            net_tile, self._net_value = self._tile("Network", net_name, net_on)
+            net_tile.connect("clicked", lambda *_: (open_network(), self._quit(win)))
+            grid.attach(net_tile, 0, 0, 1, 1)
+
+            theme = theme_name().replace("-", " ")
+            theme_tile, self._theme_value = self._tile("Atmosphere", theme.title(), True)
+            theme_tile.connect("clicked", lambda *_: (open_themes(), self._quit(win)))
+            grid.attach(theme_tile, 1, 0, 1, 1)
+
+            dnd = dnd_on()
+            dnd_tile, dnd_val = self._tile("Quiet", "On" if dnd else "Off", dnd)
+            self._dnd_tile = dnd_tile
+            self._dnd_value = dnd_val
+
+            def on_dnd(_btn: Gtk.Button) -> None:
+                now = not dnd_on()
+                set_dnd(now)
+                self._set_tile_state(dnd_tile, dnd_val, "On" if now else "Off", now)
+
+            dnd_tile.connect("clicked", on_dnd)
+            grid.attach(dnd_tile, 0, 1, 1, 1)
+
+            perf = perf_profile()
+            perf_tile, self._perf_value = self._tile("Power", perf.title(), perf != "powersave")
+            perf_tile.connect("clicked", self._on_perf)
+            grid.attach(perf_tile, 1, 1, 1, 1)
+
+            outer.append(grid)
+
+            # Sliders
+            sliders = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            sliders.add_css_class("cc-sliders")
+            vol, muted = volume_state()
+            self._vol_scale = self._slider_row(
+                sliders,
+                "Audio",
+                vol,
+                self._on_vol,
+                mute_cb=lambda: (toggle_mute(), self._refresh_live()),
+                muted=muted,
+            )
+            bri = brightness_state()
+            if bri is None:
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+                lab = Gtk.Label(label="Bright", xalign=0)
+                lab.add_css_class("cc-slider-label")
+                lab.set_size_request(56, -1)
+                hint = Gtk.Label(label="No backlight", xalign=0)
+                hint.add_css_class("cc-hint")
+                row.append(lab)
+                row.append(hint)
+                sliders.append(row)
+            else:
+                self._bri_scale = self._slider_row(sliders, "Bright", bri, self._on_bri)
+            outer.append(sliders)
+
+            # Session strip — text actions, not circular glyph chrome
+            session = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            session.add_css_class("cc-session")
+            for label, handler, danger in (
+                ("Lock", lambda: (do_lock(), self._quit(win)), False),
+                ("Sleep", lambda: (do_sleep(), self._quit(win)), False),
+                ("Log out", lambda: (do_logout(), self._quit(win)), False),
+                ("Power", lambda: (open_power(), self._quit(win)), True),
+            ):
+                b = Gtk.Button(label=label)
+                b.add_css_class("cc-session-btn")
+                if danger:
+                    b.add_css_class("cc-danger")
+                b.set_hexpand(True)
+                b.connect("clicked", lambda _b, h=handler: h())
+                session.append(b)
+            outer.append(session)
+
+            foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            foot.add_css_class("cc-foot")
+            wall = Gtk.Button(label="Wallpaper")
+            wall.add_css_class("cc-link")
+            wall.connect("clicked", lambda *_: (open_wallpaper(), self._quit(win)))
+            foot.append(wall)
+            priv = Gtk.Button(label="Privacy")
+            priv.add_css_class("cc-link")
+            priv.connect("clicked", lambda *_: (open_privacy(), self._quit(win)))
+            foot.append(priv)
+            apps = Gtk.Button(label="Apps")
+            apps.add_css_class("cc-link")
+            apps.connect("clicked", lambda *_: (open_software(), self._quit(win)))
+            foot.append(apps)
+            upd = Gtk.Button(label="Updates")
+            upd.add_css_class("cc-link")
+            upd.connect("clicked", lambda *_: (open_updates(), self._quit(win)))
+            foot.append(upd)
+            hint = Gtk.Label(label="Esc · Super+A")
+            hint.add_css_class("cc-hint")
+            hint.set_hexpand(True)
+            hint.set_xalign(1.0)
+            foot.append(hint)
+            outer.append(foot)
+
+            return outer
+
+        def _tile(self, label: str, value: str, on: bool) -> tuple[Gtk.Button, Gtk.Label]:
+            btn = Gtk.Button()
+            btn.add_css_class("cc-tile")
+            if on:
+                btn.add_css_class("cc-tile-on")
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            box.set_halign(Gtk.Align.START)
+            lab = Gtk.Label(label=label, xalign=0)
+            lab.add_css_class("cc-tile-label")
+            val = Gtk.Label(label=value, xalign=0)
+            val.add_css_class("cc-tile-value")
+            box.append(lab)
+            box.append(val)
+            btn.set_child(box)
+            return btn, val
+
+        def _set_tile_state(self, btn: Gtk.Button, val: Gtk.Label, text: str, on: bool) -> None:
+            val.set_label(text)
+            if on:
+                btn.add_css_class("cc-tile-on")
+            else:
+                btn.remove_css_class("cc-tile-on")
+
+        def _slider_row(
+            self,
+            parent: Gtk.Box,
+            label: str,
+            value: float,
+            on_change,
+            mute_cb=None,
+            muted: bool = False,
+        ) -> Gtk.Scale:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            if mute_cb:
+                icon = Gtk.Button(label="Mute" if muted else "Audio")
+                icon.add_css_class("cc-icon-btn")
+                icon.set_size_request(56, -1)
+                icon.connect("clicked", lambda *_: mute_cb())
+                self._vol_btn = icon
+                row.append(icon)
+            else:
+                lab = Gtk.Label(label=label, xalign=0)
+                lab.add_css_class("cc-slider-label")
+                lab.set_size_request(56, -1)
+                row.append(lab)
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.0, 1.0, 0.01)
+            scale.set_draw_value(False)
+            scale.set_hexpand(True)
+            scale.set_value(value)
+            scale.add_css_class("cc-scale")
+            scale.connect("value-changed", on_change)
+            row.append(scale)
+            parent.append(row)
+            return scale
+
+        def _on_vol(self, scale: Gtk.Scale) -> None:
+            set_volume(scale.get_value())
+
+        def _on_bri(self, scale: Gtk.Scale) -> None:
+            set_brightness(scale.get_value())
+
+        def _on_perf(self, *_args) -> None:
+            nxt = cycle_perf()
+            if self._perf_value:
+                self._perf_value.set_label(nxt.title())
+
+        def _refresh_live(self) -> bool:
+            vol, muted = volume_state()
+            if self._vol_scale is not None:
+                self._vol_scale.handler_block_by_func(self._on_vol)
+                self._vol_scale.set_value(vol)
+                self._vol_scale.handler_unblock_by_func(self._on_vol)
+            if self._vol_btn is not None:
+                self._vol_btn.set_label("Mute" if muted else "Audio")
+            net_name, net_on = net_label()
+            if self._net_value is not None and self._net_value.get_parent():
+                btn = self._net_value.get_parent().get_parent()
+                if isinstance(btn, Gtk.Button):
+                    self._set_tile_state(btn, self._net_value, net_name, net_on)
+            return False
+
+        def _apply_css(self) -> None:
+            css = Gtk.CssProvider()
+            css.load_from_data(
+                GLASS_MOTION_CSS
+                + b"""
+                .cc-catcher {
+                  background: alpha(#020617, 0.22);
+                }
+                .cc-catcher-solid {
+                  background: alpha(#020617, 0.55);
+                }
+                .cc-sheet {
+                  padding: 18px;
+                  border-radius: 20px;
+                  background: alpha(#0c1c30, 0.72);
+                  border: none;
+                  box-shadow: 0 24px 64px alpha(#000000, 0.45),
+                              inset 0 1px 0 alpha(#ffffff, 0.10);
+                }
+                .cc-head {
+                  margin-bottom: 14px;
+                }
+                .cc-mark {
+                  border-radius: 999px;
+                  background: #38bdf8;
+                  border: 2px solid alpha(#7dd3fc, 0.55);
+                  box-shadow: 0 0 0 3px alpha(#38bdf8, 0.18);
+                  min-width: 18px;
+                  min-height: 18px;
+                }
+                .cc-brand {
+                  font-size: 12px;
+                  font-weight: 600;
+                  letter-spacing: 0.04em;
+                  color: #e8f4fc;
+                  outline: none;
+                  border: none;
+                  box-shadow: none;
+                }
+                .cc-sub {
+                  font-size: 11px;
+                  letter-spacing: 0.18em;
+                  text-transform: uppercase;
+                  color: alpha(#a8c4d8, 0.9);
+                  outline: none;
+                  border: none;
+                  box-shadow: none;
+                }
+                label {
+                  outline: none;
+                }
+                .cc-grid {
+                  margin-bottom: 14px;
+                }
+                button.cc-tile {
+                  padding: 12px;
+                  border-radius: 14px;
+                  min-height: 68px;
+                  background: alpha(#ffffff, 0.07);
+                  background-image: none;
+                  border: none;
+                  box-shadow: none;
+                  outline: none;
+                  color: #e8f4fc;
+                  transition: 100ms ease;
+                }
+                button.cc-tile:hover {
+                  background: alpha(#38bdf8, 0.16);
+                }
+                button.cc-tile-on {
+                  background: alpha(#38bdf8, 0.20);
+                }
+                .cc-tile-label {
+                  font-size: 11px;
+                  color: #a8c4d8;
+                }
+                .cc-tile-value {
+                  font-size: 14px;
+                  font-weight: 600;
+                  color: #e8f4fc;
+                }
+                .cc-sliders {
+                  margin-bottom: 12px;
+                }
+                .cc-slider-label {
+                  font-size: 12px;
+                  color: #a8c4d8;
+                }
+                .cc-hint {
+                  font-size: 11px;
+                  color: alpha(#a8c4d8, 0.75);
+                }
+                scale.cc-scale trough {
+                  min-height: 6px;
+                  border-radius: 999px;
+                  background: alpha(#1e3a5f, 0.9);
+                }
+                scale.cc-scale highlight {
+                  border-radius: 999px;
+                  background: #38bdf8;
+                }
+                scale.cc-scale slider {
+                  min-width: 14px;
+                  min-height: 14px;
+                  margin: -5px;
+                  border-radius: 999px;
+                  background: #e8f4fc;
+                  border: none;
+                  box-shadow: 0 1px 4px alpha(#000000, 0.35);
+                }
+                button.cc-icon-btn {
+                  padding: 4px 8px;
+                  border-radius: 8px;
+                  background: alpha(#122338, 0.85);
+                  border: 1px solid alpha(#7dd3fc, 0.16);
+                  color: #e8f4fc;
+                }
+                .cc-session {
+                  margin-bottom: 10px;
+                }
+                button.cc-session-btn {
+                  padding: 10px 6px;
+                  border-radius: 10px;
+                  font-size: 11px;
+                  background: alpha(#ffffff, 0.07);
+                  background-image: none;
+                  border: none;
+                  box-shadow: none;
+                  outline: none;
+                  color: #e8f4fc;
+                  transition: 100ms ease;
+                }
+                button.cc-session-btn:hover {
+                  background: alpha(#38bdf8, 0.16);
+                }
+                button.cc-danger {
+                  background: alpha(#fb7185, 0.14);
+                  color: #fecdd3;
+                }
+                button.cc-danger:hover {
+                  background: alpha(#fb7185, 0.26);
+                }
+                button.cc-link {
+                  padding: 6px 10px;
+                  border-radius: 8px;
+                  font-size: 12px;
+                  background: transparent;
+                  border: none;
+                  color: #7dd3fc;
+                }
+                button.cc-link:hover {
+                  color: #e8f4fc;
+                  background: alpha(#ffffff, 0.08);
+                }
+                .cc-foot {
+                  margin-top: 2px;
+                }
+                window {
+                  background: transparent;
+                }
+                """
+            )
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                css,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+
+    app = ControlCenter()
+
+    def cleanup(_app=None):
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    app.connect("shutdown", cleanup)
+    return app.run(None)
+
+
+def main(argv: list[str]) -> int:
+    ensure_settings()
+    if "--menu" in argv or os.environ.get("ETHERIS_CC_MENU") == "1":
+        return run_wofi_menu()
+    if "--help" in argv or "-h" in argv:
+        print("Usage: etheris-control-center [--menu]")
+        print("  Default: Etheris Menu GTK sheet (hover / Super+A / panel).")
+        print("  --menu:  wofi fallback list.")
+        return 0
+    return try_gtk_sheet()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

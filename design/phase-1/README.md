@@ -1,6 +1,6 @@
 # Etheris OS — Design Phase 1
 
-**Neo-Aero / Neo-Frutiger Aero visual identity package**  
+**Visual identity package** (Ocean Glass / cool blue themes)  
 Status: **ready for owner review** · live OS / airootfs **not modified**
 
 ## Open the preview

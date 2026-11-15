@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Etheris OS — persist keyboard layout system-wide (console + greeter + localectl).
+# Usage: etheris-keymap-apply LAYOUT [VARIANT]
+# Safe for pkexec / installer chroot. Does not touch user passwords.
+set -euo pipefail
+
+LAYOUT="${1:-}"
+VARIANT="${2:-}"
+[[ -n "$LAYOUT" ]] || { echo "usage: etheris-keymap-apply LAYOUT [VARIANT]" >&2; exit 2; }
+# Defense-in-depth: reject anything that is not a safe keymap token before sed/localectl.
+[[ "$LAYOUT" =~ ^[a-z0-9_-]+$ ]] || {
+  echo "etheris-keymap-apply: invalid LAYOUT (expected [a-z0-9_-]+)" >&2
+  exit 2
+}
+[[ -z "$VARIANT" || "$VARIANT" =~ ^[a-z0-9_-]+$ ]] || {
+  echo "etheris-keymap-apply: invalid VARIANT (expected [a-z0-9_-]+)" >&2
+  exit 2
+}
+
+# Map common OOBE / locale-style ids to console KEYMAP names when needed
+console_map() {
+  case "$1" in
+    se) echo sv-latin1 ;;
+    sv) echo sv-latin1 ;;
+    uk) echo uk ;;
+    gb) echo uk ;;
+    de) echo de-latin1 ;;
+    fr) echo fr-latin9 ;;
+    fi) echo fi ;;
+    no) echo no-latin1 ;;
+    dk) echo dk-latin1 ;;
+    us|*) echo "$1" ;;
+  esac
+}
+
+CKEY="$(console_map "$LAYOUT")"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  # Prefer non-interactive elevation. Polkit grants YES for this program to
+  # active wheel (OOBE must never hit an interactive password / faillock trap).
+  if command -v pkexec >/dev/null 2>&1; then
+    exec pkexec --disable-internal-agent /usr/local/bin/etheris-keymap-apply "$LAYOUT" "$VARIANT"
+  fi
+  echo "etheris-keymap-apply: root required" >&2
+  exit 1
+fi
+
+# Console
+{
+  echo "KEYMAP=${CKEY}"
+  echo "FONT=lat9w-16"
+  [[ -n "$VARIANT" ]] && echo "# XKBVARIANT=${VARIANT}"
+} >/etc/vconsole.conf
+
+# Greeter Sway seat (login screen)
+if [[ -f /etc/greetd/sway-config ]]; then
+  if grep -qE '^\s*xkb_layout\s+' /etc/greetd/sway-config; then
+    sed -i -E "s/^(\s*xkb_layout\s+).*/\1${LAYOUT}/" /etc/greetd/sway-config
+  else
+    # Insert into keyboard block or append
+    if grep -q 'input type:keyboard' /etc/greetd/sway-config; then
+      sed -i "/input type:keyboard {/,/}/ s/xkb_layout.*/xkb_layout ${LAYOUT}/" /etc/greetd/sway-config || true
+      if ! grep -q 'xkb_layout' /etc/greetd/sway-config; then
+        sed -i "/input type:keyboard {/a\\    xkb_layout ${LAYOUT}" /etc/greetd/sway-config
+      fi
+    else
+      cat >>/etc/greetd/sway-config <<EOF
+
+input type:keyboard {
+    xkb_layout ${LAYOUT}
+}
+EOF
+    fi
+  fi
+  if [[ -n "$VARIANT" ]]; then
+    if grep -qE '^\s*xkb_variant\s+' /etc/greetd/sway-config; then
+      sed -i -E "s/^(\s*xkb_variant\s+).*/\1${VARIANT}/" /etc/greetd/sway-config
+    else
+      sed -i "/xkb_layout ${LAYOUT}/a\\    xkb_variant ${VARIANT}" /etc/greetd/sway-config || true
+    fi
+  fi
+fi
+
+# X11/XWayland system default (best-effort)
+if command -v localectl >/dev/null 2>&1; then
+  if [[ -n "$VARIANT" ]]; then
+    localectl set-x11-keymap "$LAYOUT" "" "$VARIANT" 2>/dev/null || true
+  else
+    localectl set-x11-keymap "$LAYOUT" 2>/dev/null || true
+  fi
+  localectl set-keymap "$CKEY" 2>/dev/null || true
+fi
+
+echo "etheris-keymap-apply: KEYMAP=${CKEY} xkb_layout=${LAYOUT}${VARIANT:+ variant=$VARIANT}"

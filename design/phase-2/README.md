@@ -1,4 +1,4 @@
-# Etheris OS — Design Phase 2 (Final Neo-Aero Blueprint)
+# Etheris OS — Design Phase 2 (Desktop look blueprint)
 
 **Status:** Ready for owner review · **live OS / airootfs / ISO not modified**  
 **Supersedes Phase 1** for implementation planning (Phase 1 kept as archive).

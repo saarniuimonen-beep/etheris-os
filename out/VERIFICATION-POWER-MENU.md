@@ -1,4 +1,4 @@
-# Verification — Neo-Aero power menu + ISO bake
+# Verification — Etheris power menu + ISO bake
 
 **Date:** 2026-11-08  
 **Host:** Fedora · VM `ethereal-os` (`qemu:///session`)  

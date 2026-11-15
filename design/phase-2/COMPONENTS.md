@@ -39,9 +39,9 @@ radius 16 · width 420–520 confirmations · scrim rgba(4,10,18,0.35) · second
 
 ~360 wide · radius 14 · leading accent bar · title caption + muted body · stack top-right 8px gap
 
-## Panel (floating)
+## Panel (edge top bar)
 
-Pill · height 40 · top 14 · centered · mark + etheris · workspace dots · summary pills · clock · CC affordance
+Height 28 · flush top · bottom hairline · `etheris` wordmark · workspace dots · summaries · clock · menu chip
 
 ## Launcher
 
@@ -51,9 +51,13 @@ Search field first · pinned row · category chips · result rows with icon+name
 
 Focused border = accent · inactive = muted border · titlebar elevated+gloss (GTK/Sway); decorative traffic lights optional in mock only
 
-## Control Center sheet
+## Control Center sheet (Etheris Menu)
 
-≤360 wide · anchored top-right under panel · 2×2 tiles · sliders · DND · power row · Settings link
+≤360 wide · top-right · frosted one-shot blur backdrop · translucent glass (rgba + inset gloss) · fade/rise open (~280ms) · brand header · 2×2 tiles · sliders · session row · hover chip / Esc / click-outside / Super+A toggle. Bar stays visible (overlay inset below 28px). `blur=` / `animations=` in settings.conf. Ocean accent — not GNOME purple pills.
+
+## Session / power menu
+
+Centered frosted sheet · stronger blur backdrop · fade/rise · brand header (`etheris` + Session) · vertical rows (Lock · Sleep · Log out | Restart · Shut down) · Shut down danger only · Esc / click-outside / Super+Shift+E toggle · letter shortcuts. Not a 5-tile rainbow grid.
 
 ## Settings shell
 

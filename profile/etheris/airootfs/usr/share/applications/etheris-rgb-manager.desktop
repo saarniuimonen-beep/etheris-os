@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Etheris RGB Manager
+GenericName=Fan RGB
+Comment=Pick any color for your PC fans
+Exec=etheris-rgb-manager
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Settings;System;HardwareSettings;
+Keywords=rgb;fan;led;openrgb;lighting;argb;
+StartupNotify=true
+StartupWMClass=etheris-rgb-manager

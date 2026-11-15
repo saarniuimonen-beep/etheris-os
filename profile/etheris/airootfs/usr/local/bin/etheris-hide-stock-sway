@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Prefer Etheris (Sway) in greeters — hide stock sway.desktop without replacing the package file pre-pacstrap.
+set -euo pipefail
+f=/usr/share/wayland-sessions/sway.desktop
+[[ -f "$f" ]] || exit 0
+# Idempotent: ensure Hidden + NoDisplay
+if grep -q '^Hidden=true' "$f" && grep -q '^NoDisplay=true' "$f"; then
+  exit 0
+fi
+tmp="$(mktemp)"
+# Drop prior Hidden/NoDisplay lines then append
+grep -v -E '^(Hidden|NoDisplay)=' "$f" >"$tmp"
+printf 'NoDisplay=true\nHidden=true\n' >>"$tmp"
+# Soften comment if stock Comment present
+if grep -q '^Comment=' "$tmp"; then
+  sed -i 's/^Comment=.*/Comment=Hidden — use Etheris (Sway)/' "$tmp"
+fi
+install -m 644 "$tmp" "$f"
+rm -f "$tmp"

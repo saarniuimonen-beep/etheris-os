@@ -3,14 +3,22 @@
 # Boots ISO for a limited time and records whether the guest kernel starts.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ISO="${1:-$ROOT/out/etheris-2026.11.07-x86_64.iso}"
-[[ -f "$ISO" ]] || { echo "ISO missing: $ISO"; exit 1; }
+ISO="${1:-}"
+if [[ -z "$ISO" ]]; then
+  ISO="$(/bin/ls -1t "$ROOT"/out/etheris-*.iso 2>/dev/null | head -1 || true)"
+fi
+[[ -n "$ISO" && -f "$ISO" ]] || { echo "ISO missing: ${ISO:-<none>}. Pass path or build first."; exit 1; }
 
 WORKDIR="$ROOT/out/qemu-smoke"
 mkdir -p "$WORKDIR"
-CODE=/usr/share/edk2/ovmf/OVMF_CODE.fd
-VARS_SRC=/usr/share/OVMF/OVMF_VARS.fd
+# Prefer edk2 4m paths (current Arch/Omarchy); fall back to legacy OVMF layout.
+CODE=/usr/share/edk2/x64/OVMF_CODE.4m.fd
+VARS_SRC=/usr/share/edk2/x64/OVMF_VARS.4m.fd
+[[ -f "$CODE" ]] || CODE=/usr/share/edk2/ovmf/OVMF_CODE.fd
+[[ -f "$VARS_SRC" ]] || VARS_SRC=/usr/share/OVMF/OVMF_VARS.fd
 [[ -f "$CODE" ]] || CODE=/usr/share/OVMF/OVMF_CODE.fd
+[[ -f "$VARS_SRC" ]] || { echo "OVMF VARS missing (tried edk2 4m + OVMF paths)"; exit 1; }
+[[ -f "$CODE" ]] || { echo "OVMF CODE missing"; exit 1; }
 cp -f "$VARS_SRC" "$WORKDIR/OVMF_VARS.fd"
 OVMF_LOG="$WORKDIR/ovmf-debug.log"
 SERIAL_LOG="$WORKDIR/serial.log"

@@ -16,7 +16,7 @@
 | Capability | Sway support | Etheris approach |
 |------------|--------------|-------------------|
 | Coloured pixel / normal borders | Yes | Token-driven via `20-etheris-colors` |
-| Titlebar with window title | Yes (`default_border normal`) | Neo-Aero title strip (title text only) |
+| Titlebar with window title | Yes (`default_border normal`) | Etheris title strip (title text only) |
 | SSD close / min / max buttons | **No** | Not faked as compositor SSD |
 | Focused window controls | Via IPC | Panel `custom/winctl` + `etheris-winctl` + Super+Shift+A |
 | GTK CSD headerbar buttons | Client-side | `gtk.css` hover / pressed / disabled / close / min / max |

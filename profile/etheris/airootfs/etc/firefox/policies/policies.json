@@ -45,11 +45,15 @@
         "Status": "default"
       },
       "dom.ipc.processCount": {
-        "Value": 2,
+        "Value": 1,
         "Status": "default"
       },
       "dom.ipc.processCount.webIsolated": {
         "Value": 1,
+        "Status": "default"
+      },
+      "browser.cache.disk.enable": {
+        "Value": false,
         "Status": "default"
       },
       "toolkit.cosmeticAnimations.enabled": {
@@ -69,11 +73,11 @@
         "Status": "default"
       },
       "browser.cache.memory.capacity": {
-        "Value": 65536,
+        "Value": 32768,
         "Status": "default"
       },
       "media.memory_cache_max_size": {
-        "Value": 65536,
+        "Value": 32768,
         "Status": "default"
       },
       "network.prefetch-next": {

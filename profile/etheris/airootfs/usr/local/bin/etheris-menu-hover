@@ -1,0 +1,500 @@
+#!/usr/bin/env python3
+"""Etheris OS — Menu hover-to-open.
+
+Waybar paints the visible "Menu" label and handles click. This helper opens
+the sheet on hover:
+
+1. Prefer a gtk4-layer-shell overlay hitbox above Waybar (real hardware).
+2. If layer-shell is unavailable / fake (common in VMs — init succeeds but
+   the surface stays xdg_shell under Waybar), poll the absolute tablet /
+   pointer via evdev and open when the cursor is over the Menu rect.
+"""
+from __future__ import annotations
+
+import json
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+if "GSK_RENDERER" not in os.environ:
+    os.environ.setdefault("GSK_RENDERER", "cairo")
+
+APP_ID = "os.etheris.MenuHover"
+BAR_H = 28
+POWER_W = 36
+CHIP_W = 72
+ENTER_MS = 90
+LEAVE_MS = 360
+STAMP = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "etheris-menu-hover"
+LOG = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "etheris-menu-hover.log"
+
+# linux/input.h
+EV_ABS = 0x03
+EV_SYN = 0x00
+ABS_X = 0x00
+ABS_Y = 0x01
+ABS_MT_POSITION_X = 0x35
+ABS_MT_POSITION_Y = 0x36
+EVENT_FMT = "llHHi"
+EVENT_SZ = struct.calcsize(EVENT_FMT)
+
+
+def log(msg: str) -> None:
+    try:
+        with LOG.open("a", encoding="utf-8") as fh:
+            fh.write(msg + "\n")
+    except OSError:
+        pass
+
+
+def cc_running() -> bool:
+    try:
+        r = subprocess.run(
+            ["pgrep", "-f", "/usr/local/bin/etheris-control-center"],
+            capture_output=True,
+            check=False,
+        )
+        return r.returncode == 0
+    except OSError:
+        return False
+
+
+def stamp_state() -> str:
+    try:
+        if STAMP.is_file():
+            return STAMP.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    return ""
+
+
+def open_menu() -> None:
+    if cc_running():
+        return
+    try:
+        STAMP.write_text("open\n", encoding="utf-8")
+    except OSError:
+        pass
+    env = os.environ.copy()
+    env["ETHERIS_CC_FROM_HOVER"] = "1"
+    subprocess.Popen(
+        ["etheris-overlay", "control-center"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+
+
+def close_menu() -> None:
+    try:
+        STAMP.unlink(missing_ok=True)
+    except OSError:
+        pass
+    subprocess.Popen(
+        ["pkill", "-f", "/usr/local/bin/etheris-control-center"],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def focused_output_geom() -> tuple[int, int, int, int]:
+    try:
+        raw = subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"], text=True)
+        for out in json.loads(raw):
+            if out.get("focused"):
+                r = out.get("rect") or {}
+                return (
+                    int(r.get("x", 0)),
+                    int(r.get("y", 0)),
+                    int(r.get("width", 1280)),
+                    int(r.get("height", 800)),
+                )
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return 0, 0, 1280, 800
+
+
+def menu_rect() -> tuple[int, int, int, int]:
+    """Screen rect covering Waybar's Menu chip (left of the power button)."""
+    ox, oy, ow, _oh = focused_output_geom()
+    x = ox + max(0, ow - POWER_W - CHIP_W)
+    y = oy
+    return x, y, CHIP_W, BAR_H
+
+
+def point_in_menu(px: float, py: float) -> bool:
+    x, y, w, h = menu_rect()
+    return x <= px < x + w and y <= py < y + h
+
+
+def point_in_sheet(px: float, py: float) -> bool:
+    """Approx Menu sheet keep-alive zone (top-right panel)."""
+    ox, oy, ow, oh = focused_output_geom()
+    return px >= ox + ow - 400 and py >= oy + BAR_H and py < oy + min(oh, 720)
+
+
+def _find_abs_devices() -> list[tuple[str, int, int]]:
+    """Return [(path, max_x, max_y), ...] for absolute pointer devices."""
+    found: list[tuple[str, int, int]] = []
+    by_id = Path("/dev/input/by-id")
+    by_path = Path("/dev/input/by-path")
+    candidates: list[Path] = []
+    for root in (by_id, by_path, Path("/dev/input")):
+        if not root.is_dir():
+            continue
+        for p in sorted(root.iterdir()):
+            name = p.name.lower()
+            if p.is_dir():
+                continue
+            if root.name == "input" and not name.startswith("event"):
+                continue
+            if root.name.startswith("by-") and "event" not in name:
+                continue
+            candidates.append(p)
+
+    seen: set[str] = set()
+    for p in candidates:
+        try:
+            real = str(p.resolve())
+        except OSError:
+            continue
+        if real in seen:
+            continue
+        seen.add(real)
+        # Read ABS absinfo via ioctl EVIOCGABS
+        try:
+            fd = os.open(real, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            # EVIOCGABS(ABS_X) = 0x80184540 | abs
+            def absinfo(code: int) -> tuple[int, int] | None:
+                # struct input_absinfo: value,min,max,fuzz,flat,resolution — 6 ints
+                req = 0x80184540 | code
+                try:
+                    buf = struct.pack("iiiiii", 0, 0, 0, 0, 0, 0)
+                    # fcntl.ioctl with mutable buffer
+                    import fcntl
+
+                    out = fcntl.ioctl(fd, req, buf)
+                    vals = struct.unpack("iiiiii", out)
+                    return int(vals[1]), int(vals[2])  # min, max
+                except OSError:
+                    return None
+
+            ax = absinfo(ABS_X)
+            ay = absinfo(ABS_Y)
+            if not ax or not ay:
+                ax = absinfo(ABS_MT_POSITION_X)
+                ay = absinfo(ABS_MT_POSITION_Y)
+            if not ax or not ay:
+                continue
+            _xmin, xmax = ax
+            _ymin, ymax = ay
+            if xmax <= 0 or ymax <= 0:
+                continue
+            found.append((real, xmax, ymax))
+            log(f"abs_device {real} max={xmax}x{ymax}")
+        finally:
+            os.close(fd)
+    return found
+
+
+def run_pointer_watcher() -> int:
+    """Hover via absolute pointer coords (works under Waybar)."""
+    log("mode=pointer_watcher")
+    devices = _find_abs_devices()
+    if not devices:
+        log("no abs pointer devices — hover unavailable")
+        # Idle forever so systemd/session doesn't respawn-spam; click still works via Waybar.
+        while True:
+            time.sleep(3600)
+
+    fds: dict[int, tuple[str, int, int]] = {}
+    for path, xmax, ymax in devices:
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError as exc:
+            log(f"open fail {path}: {exc}")
+            continue
+        fds[fd] = (path, xmax, ymax)
+
+    if not fds:
+        log("no readable abs devices")
+        while True:
+            time.sleep(3600)
+
+    ox, oy, ow, oh = focused_output_geom()
+    px = float(ox + ow / 2)
+    py = float(oy + oh / 2)
+    inside = False
+    opened_by_hover = False
+    enter_at = 0.0
+    leave_at = 0.0
+    last_geom = time.monotonic()
+    open_cooldown_until = 0.0
+
+    log(f"watching {len(fds)} device(s) menu_rect={menu_rect()}")
+
+    while True:
+        try:
+            readable, _, _ = select.select(list(fds.keys()), [], [], 0.05)
+        except (OSError, ValueError):
+            time.sleep(0.1)
+            continue
+
+        for fd in readable:
+            _path, xmax, ymax = fds[fd]
+            try:
+                data = os.read(fd, EVENT_SZ * 64)
+            except OSError:
+                continue
+            for off in range(0, len(data) // EVENT_SZ * EVENT_SZ, EVENT_SZ):
+                _sec, _usec, etype, code, value = struct.unpack_from(EVENT_FMT, data, off)
+                if etype != EV_ABS:
+                    continue
+                if code in (ABS_X, ABS_MT_POSITION_X):
+                    px = ox + (value / max(1, xmax)) * ow
+                elif code in (ABS_Y, ABS_MT_POSITION_Y):
+                    py = oy + (value / max(1, ymax)) * oh
+
+        now = time.monotonic()
+        # Refresh output geometry periodically (multi-monitor / resize).
+        if now - last_geom >= 2.0:
+            ox, oy, ow, oh = focused_output_geom()
+            last_geom = now
+
+        over = point_in_menu(px, py) or (opened_by_hover and point_in_sheet(px, py))
+        if over and not inside:
+            inside = True
+            enter_at = now
+            leave_at = 0.0
+        elif not over and inside:
+            inside = False
+            leave_at = now
+            enter_at = 0.0
+
+        if (
+            inside
+            and enter_at
+            and point_in_menu(px, py)
+            and not cc_running()
+            and now >= open_cooldown_until
+        ):
+            if (now - enter_at) * 1000 >= ENTER_MS:
+                opened_by_hover = True
+                open_menu()
+                enter_at = 0.0
+                open_cooldown_until = now + 0.8
+
+        if not inside and leave_at and opened_by_hover:
+            if (now - leave_at) * 1000 >= LEAVE_MS:
+                close_menu()
+                opened_by_hover = False
+                leave_at = 0.0
+                open_cooldown_until = now + 0.4
+
+        if opened_by_hover and not cc_running() and stamp_state() == "":
+            opened_by_hover = False
+            leave_at = 0.0
+
+    return 0
+
+
+def layer_shell_really_works(layer) -> bool:
+    """True only when the compositor exposes layer-shell to GTK."""
+    try:
+        return bool(layer is not None and layer.is_supported())
+    except Exception:
+        return False
+
+
+def run_layer_hitbox(layer) -> int:
+    """Invisible overlay hitbox above Waybar (real layer-shell)."""
+    from gi.repository import Gdk, GLib, Gtk  # type: ignore
+
+    log("mode=layer_hitbox")
+
+    class HoverApp(Gtk.Application):
+        def __init__(self) -> None:
+            super().__init__(application_id=APP_ID)
+            self._win = None
+            self._inside = False
+            self._enter_src = 0
+            self._leave_src = 0
+            self._opened_by_hover = False
+
+        def do_activate(self) -> None:  # noqa: N802
+            if self._win is not None:
+                return
+            win = Gtk.ApplicationWindow(application=self, title="")
+            win.set_decorated(False)
+            win.set_resizable(False)
+            win.set_default_size(CHIP_W, BAR_H)
+            win.set_can_focus(False)
+            win.set_focusable(False)
+            if hasattr(win, "set_focus_on_click"):
+                win.set_focus_on_click(False)
+
+            layer.init_for_window(win)
+            layer.set_layer(win, layer.Layer.OVERLAY)
+            layer.set_namespace(win, "etheris-menu-hover")
+            layer.set_anchor(win, layer.Edge.TOP, True)
+            layer.set_anchor(win, layer.Edge.RIGHT, True)
+            layer.set_margin(win, layer.Edge.TOP, 0)
+            layer.set_margin(win, layer.Edge.RIGHT, POWER_W)
+            layer.set_exclusive_zone(win, -1)
+            layer.set_keyboard_mode(win, layer.KeyboardMode.NONE)
+
+            host = Gtk.Box()
+            host.set_hexpand(True)
+            host.set_vexpand(True)
+            host.set_can_focus(False)
+            host.add_css_class("menu-chip-host")
+            win.set_child(host)
+
+            css = Gtk.CssProvider()
+            css.load_from_data(
+                b"""
+                window { background: transparent; border: none; outline: none; }
+                .menu-chip-host {
+                  background-color: rgba(0, 0, 0, 0.01);
+                  border: none; outline: none;
+                }
+                """
+            )
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                css,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+
+            motion = Gtk.EventControllerMotion()
+            motion.connect("enter", self._on_enter)
+            motion.connect("leave", self._on_leave)
+            host.add_controller(motion)
+
+            click = Gtk.GestureClick()
+            click.connect("pressed", self._on_click)
+            host.add_controller(click)
+
+            self._win = win
+            win.present()
+            log("presented layer chip")
+            GLib.timeout_add(250, self._poll_leave)
+
+        def _cancel_enter(self) -> None:
+            if self._enter_src:
+                GLib.source_remove(self._enter_src)
+                self._enter_src = 0
+
+        def _cancel_leave(self) -> None:
+            if self._leave_src:
+                GLib.source_remove(self._leave_src)
+                self._leave_src = 0
+
+        def _on_enter(self, *_a) -> None:
+            self._inside = True
+            self._cancel_leave()
+
+            def _go() -> bool:
+                self._enter_src = 0
+                if self._inside and not cc_running():
+                    self._opened_by_hover = True
+                    open_menu()
+                return False
+
+            self._cancel_enter()
+            self._enter_src = GLib.timeout_add(ENTER_MS, _go)
+
+        def _on_leave(self, *_a) -> None:
+            self._inside = False
+            self._cancel_enter()
+            self._schedule_leave()
+
+        def _schedule_leave(self) -> None:
+            def _go() -> bool:
+                self._leave_src = 0
+                if self._inside or stamp_state() == "sheet":
+                    return False
+                if self._opened_by_hover or stamp_state() == "open":
+                    close_menu()
+                    self._opened_by_hover = False
+                return False
+
+            self._cancel_leave()
+            self._leave_src = GLib.timeout_add(LEAVE_MS, _go)
+
+        def _on_click(self, *_a) -> None:
+            self._cancel_enter()
+            self._cancel_leave()
+            if cc_running():
+                close_menu()
+                self._opened_by_hover = False
+            else:
+                self._opened_by_hover = False
+                open_menu()
+
+        def _poll_leave(self) -> bool:
+            if self._inside:
+                return True
+            state = stamp_state()
+            if state == "sheet":
+                return True
+            if cc_running() and self._opened_by_hover and state in ("", "open"):
+                if not self._leave_src:
+                    self._schedule_leave()
+            if not cc_running():
+                self._opened_by_hover = False
+            return True
+
+    return HoverApp().run(None)
+
+
+def main() -> int:
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None  # type: ignore
+    lock_path = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "etheris-menu-hover.lock"
+    lock_fh = open(lock_path, "w", encoding="utf-8")
+    if fcntl is not None:
+        try:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            log("already running")
+            return 0
+
+    log("starting")
+
+    layer = None
+    try:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        gi.require_version("Gdk", "4.0")
+        from gi.repository import Gtk
+
+        Gtk.init_check()
+        gi.require_version("Gtk4LayerShell", "1.0")
+        from gi.repository import Gtk4LayerShell as layer  # type: ignore
+    except (ImportError, ValueError) as exc:
+        log(f"GTK/layer import: {exc}")
+        layer = None
+
+    if layer_shell_really_works(layer):
+        log("layer_shell=True")
+        return run_layer_hitbox(layer)
+
+    log("layer_shell=False — pointer watcher fallback")
+    return run_pointer_watcher()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -151,7 +151,7 @@ for it in items:
 PY
 }
 
-# GUI installs cannot prompt on a TTY. Prefer pkexec (polkit grants wheel YES),
+  # GUI installs cannot prompt on a TTY. Prefer pkexec (polkit AUTH_ADMIN_KEEP for pacman),
 # then passwordless sudo, then an interactive terminal.
 run_pacman() {
   local args=("$@")

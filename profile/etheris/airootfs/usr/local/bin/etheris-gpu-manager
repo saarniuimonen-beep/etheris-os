@@ -2,8 +2,11 @@
 """Etheris OS — GPU Manager (GTK4). Hardware, drivers, performance link."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
 
 try:
     import gi
@@ -106,6 +109,12 @@ class GpuApp(Gtk.Application):
 
         def work() -> None:
             text = run_out(["etheris-gpu", "status"]) or "GPU status unavailable"
+            low = text.lower()
+            if "virtio" in low or "red hat" in low or "bochs" in low or "qxl" in low:
+                text += (
+                    "\n\nNote: virtual GPU detected — driver install / power knobs are limited. "
+                    "Use Performance Manager for host-visible profiles when available."
+                )
             GLib.idle_add(self._body.set_text, text)
 
         import threading

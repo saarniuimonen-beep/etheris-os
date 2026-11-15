@@ -1,0 +1,16 @@
+[Unit]
+Description=Etheris: ensure ReGreet state.toml owned by greeter (skip_selection)
+Documentation=file:///usr/local/share/etheris/docs/LOGIN.md
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service greetd.service
+ConditionPathExists=/var/lib/regreet
+
+[Service]
+Type=oneshot
+# greeter user comes from greetd package — chown only when present
+ExecStart=/bin/bash -c 'if id greeter >/dev/null 2>&1; then chown -R greeter:greeter /var/lib/regreet; chmod 755 /var/lib/regreet; chmod 644 /var/lib/regreet/state.toml 2>/dev/null || true; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

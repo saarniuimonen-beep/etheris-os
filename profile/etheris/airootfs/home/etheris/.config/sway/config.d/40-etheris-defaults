@@ -6,3 +6,10 @@ for_window [title="Etheris Settings"] floating enable, resize set 820 520, move 
 for_window [app_id="os.etheris.browsers"] floating enable, resize set 900 640, move position center
 for_window [app_id="os.etheris.timezone"] floating enable, resize set 1120 700, move position center
 for_window [title="Etheris · Timezone"] floating enable, resize set 1120 700, move position center
+# Menu / Session overlays — keep above tiled windows if layer-shell is unavailable
+for_window [app_id="os.etheris.ControlCenter"] floating enable, sticky enable, border pixel 0
+for_window [app_id="os.etheris.PowerMenu"] fullscreen enable, border pixel 0
+
+for_window [app_id="os.etheris.MenuHover"] floating enable, sticky enable, border pixel 0
+for_window [app_id="os.etheris.MenuHover"] opacity 0.02
+for_window [app_id="os.etheris.MenuHover"] focus tiling

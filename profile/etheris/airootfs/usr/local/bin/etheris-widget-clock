@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Etheris OS — optional Neo-Aero desktop clock widget (GTK4 floating).
+"""Etheris OS — optional desktop clock widget (GTK4 floating).
 
 Sticky floating window; Sway rules in config.d/30-etheris-widgets.
 Honours animations=off (no opacity tricks). Exit cleanly if widgets disabled.
@@ -10,6 +10,8 @@ import os
 import signal
 import sys
 from datetime import datetime
+
+os.environ.setdefault("GSK_RENDERER", "cairo")
 
 try:
     import gi

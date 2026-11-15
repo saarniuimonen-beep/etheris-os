@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Etheris diagnostic report bundle (redacted) for support
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Etheris report
+
+Usage:
+  etheris report create [outdir]   Write a redacted support bundle
+  etheris report help
+
+Never includes passwords, shadow hashes, or full mirrorlists with tokens.
+EOF
+}
+
+redact() {
+  # Strip obvious secrets from piped text
+  sed -E \
+    -e 's/(password|passwd|token|secret|api[_-]?key)[=:].*/\1=***REDACTED***/Ig'
+}
+
+cmd_create() {
+  local outdir="${1:-}"
+  local stamp host
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  host="$(hostname 2>/dev/null || echo host)"
+  if [[ -z "$outdir" ]]; then
+    outdir="${XDG_STATE_HOME:-$HOME/.local/state}/etheris/reports/report-${stamp}"
+  fi
+  mkdir -p "$outdir"
+  {
+    echo "Etheris diagnostic report"
+    echo "created_utc: $stamp"
+    echo "host: $host"
+    echo "version: $(cat /usr/local/share/etheris/VERSION 2>/dev/null || echo unknown)"
+    echo "user: $(id -un) uid=$(id -u)"
+  } >"$outdir/meta.txt"
+
+  if command -v etheris-doctor >/dev/null 2>&1; then
+    etheris-doctor 2>&1 | redact >"$outdir/doctor.txt" || true
+  fi
+  if command -v etheris-auth-check >/dev/null 2>&1; then
+    etheris-auth-check 2>&1 | redact >"$outdir/auth-check.txt" || true
+  fi
+  if command -v etheris-security >/dev/null 2>&1; then
+    etheris-security status 2>&1 | redact >"$outdir/security-status.txt" || true
+    etheris-security audit 2>&1 | redact >"$outdir/security-audit.txt" || true
+  fi
+  if command -v etheris-update >/dev/null 2>&1; then
+    etheris-update status 2>&1 | redact >"$outdir/update-status.txt" || true
+  fi
+  if command -v etheris-hw >/dev/null 2>&1; then
+    etheris-hw 2>&1 | redact >"$outdir/hardware.txt" || true
+  fi
+
+  uname -a >"$outdir/uname.txt" 2>/dev/null || true
+  {
+    echo "=== os-release ==="
+    cat /etc/os-release 2>/dev/null || true
+    echo "=== cmdline ==="
+    cat /proc/cmdline 2>/dev/null || true
+  } >"$outdir/system.txt"
+
+  systemctl --failed --no-pager >"$outdir/systemd-failed.txt" 2>/dev/null || true
+  journalctl -b -p err --no-pager -n 200 2>/dev/null | redact >"$outdir/journal-err.txt" || true
+
+  # Free disk / mem — no secrets
+  df -h >"$outdir/df.txt" 2>/dev/null || true
+  free -h >"$outdir/free.txt" 2>/dev/null || true
+
+  if command -v tar >/dev/null; then
+    local tarball="${outdir}.tar.gz"
+    tar -C "$(dirname "$outdir")" -czf "$tarball" "$(basename "$outdir")"
+    echo "Report directory: $outdir"
+    echo "Tarball:          $tarball"
+  else
+    echo "Report directory: $outdir"
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    create|new) shift; cmd_create "${1:-}" ;;
+    help|-h|--help|"") usage; [[ -n "${1:-}" ]] || exit 0 ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+main "$@"

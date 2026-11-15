@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 # Etheris OS — ensure live authentication always works at boot
 # Live ISO sets a documented shared password via chpasswd (see motd; do not log it).
+# CRITICAL: must NEVER run on an installed system (would reset the user password).
 set -euo pipefail
+
+log() { echo "etheris-auth-setup: $*"; }
+
+# Live-only guard (unit also has ConditionKernelCommandLine=archisobasedir
+# and ConditionPathExists=/run/archiso). Refuse unless BOTH signals match.
+if [[ ! -d /run/archiso ]] || ! grep -qw archisobasedir /proc/cmdline 2>/dev/null; then
+  log "not a live ISO — refusing to reset passwords (install persistence)"
+  exit 0
+fi
 
 LIVE_USER="etheris"
 LIVE_UID=1000
@@ -9,9 +19,7 @@ LIVE_GID=1000
 LIVE_PASS="etheris"
 LIVE_HOME="/home/${LIVE_USER}"
 
-log() { echo "etheris-auth-setup: $*"; }
-
-# System accounts from packages (sddm, dbus, polkit, …)
+# System accounts from packages (greetd, dbus, polkit, …)
 if command -v systemd-sysusers >/dev/null 2>&1; then
   systemd-sysusers || true
 fi
@@ -67,7 +75,7 @@ fi
 grep -qx '/usr/bin/bash' /etc/shells 2>/dev/null || echo /usr/bin/bash >> /etc/shells
 chsh -s /usr/bin/bash "$LIVE_USER" 2>/dev/null || true
 
-# SDDM must be able to read user list
+# Greeter (greetd) must be able to read user list
 chmod 644 /etc/passwd 2>/dev/null || true
 chmod 600 /etc/shadow 2>/dev/null || true
 

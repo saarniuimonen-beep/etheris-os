@@ -5,35 +5,57 @@ set -euo pipefail
 
 action="${1:-}"
 usage() {
-  echo "Usage: etheris-winctl close|float|fullscreen|scratch|menu" >&2
+  echo "Usage: etheris-winctl close|float|fullscreen|scratch|restore|menu" >&2
+}
+
+# Prefer Rofi (launcher stack); fall back to wofi.
+dmenu() {
+  local prompt="${1:-window › }"
+  shift || true
+  if command -v rofi >/dev/null 2>&1; then
+    printf '%s\n' "$@" | rofi -dmenu -p "$prompt" -i 2>/dev/null || true
+  elif command -v wofi >/dev/null 2>&1; then
+    printf '%s\n' "$@" | wofi --dmenu -p "$prompt" 2>/dev/null || true
+  else
+    return 1
+  fi
+}
+
+sway_ok() {
+  # Never abort the panel helper if focus/target is missing.
+  swaymsg "$@" >/dev/null 2>&1 || true
 }
 
 case "$action" in
   close|kill)
-    swaymsg kill >/dev/null
+    sway_ok kill
     ;;
   float|floating)
-    swaymsg floating toggle >/dev/null
+    sway_ok floating toggle
     ;;
   fullscreen|max)
-    swaymsg fullscreen toggle >/dev/null
+    sway_ok fullscreen toggle
     ;;
   scratch|min)
     # Scratchpad ≈ minimize for tiling WM
-    swaymsg move scratchpad >/dev/null
+    sway_ok move scratchpad
     ;;
   restore)
-    swaymsg scratchpad show >/dev/null
+    sway_ok scratchpad show
     ;;
   menu)
-    pick="$(printf '%s\n' \
+    # Mutual exclusion with launcher / CC / notifications
+    if [[ "${ETHERIS_OVERLAY_NESTED:-0}" != 1 ]] && command -v etheris-overlay >/dev/null 2>&1; then
+      export ETHERIS_OVERLAY_NESTED=1
+      exec etheris-overlay menu etheris-winctl menu
+    fi
+    pick="$(dmenu 'window › ' \
       'Close' \
       'Float / tile' \
       'Fullscreen' \
       'Hide (scratchpad)' \
       'Show scratchpad' \
-      'Cancel' \
-      | wofi --dmenu -p 'window › ' 2>/dev/null || true)"
+      'Cancel' || true)"
     case "$pick" in
       Close) exec etheris-winctl close ;;
       Float*) exec etheris-winctl float ;;

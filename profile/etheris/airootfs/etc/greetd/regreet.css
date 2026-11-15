@@ -1,12 +1,10 @@
-/* Etheris OS — Neo-Aero login (ReGreet / GTK4) */
-
-* {
-  font-family: "Outfit", "Cantarell", "Noto Sans", sans-serif;
-  color: #e8f4fc;
-}
+/* Etheris OS — login (ReGreet / GTK4)
+   Tuned for virtio/Cairo: opaque window, clear password + focus rings. */
 
 window {
-  background-color: transparent;
+  background-color: #061018;
+  color: #e8f4fc;
+  font-family: "Noto Sans", "Cantarell", sans-serif;
 }
 
 /* Soft atmospheric wash over wallpaper */
@@ -22,18 +20,15 @@ window > box {
 /* Clock */
 label {
   color: #e8f4fc;
-  text-shadow: 0 2px 18px rgba(6, 16, 24, 0.65);
 }
 
 /* Main glass login card */
 frame.background,
 frame {
-  background-color: rgba(10, 22, 40, 0.82);
+  background-color: rgba(10, 22, 40, 0.90);
   border: 1px solid rgba(56, 189, 248, 0.32);
   border-radius: 18px;
-  box-shadow:
-    0 22px 56px rgba(6, 16, 24, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(6, 16, 24, 0.45);
   padding: 8px;
 }
 
@@ -41,23 +36,25 @@ frame > border {
   border: none;
 }
 
-/* Entries */
+/* Entries — password row must be obvious */
 entry,
 entry.password {
-  background-color: rgba(18, 35, 56, 0.92);
+  background-color: rgba(18, 35, 56, 0.95);
   color: #e8f4fc;
-  border: 1px solid rgba(56, 189, 248, 0.28);
+  border: 1px solid rgba(56, 189, 248, 0.40);
   border-radius: 12px;
-  padding: 12px 14px;
-  min-height: 22px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  padding: 14px 16px;
+  min-height: 36px;
   caret-color: #38bdf8;
 }
 
 entry:focus,
-entry.password:focus {
+entry.password:focus,
+entry:focus-visible,
+entry.password:focus-visible {
   border-color: #38bdf8;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+  background-color: rgba(22, 42, 66, 0.98);
 }
 
 entry selection {
@@ -67,18 +64,12 @@ entry selection {
 
 /* Buttons */
 button {
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.10) 0%,
-    transparent 65%
-  );
   background-color: rgba(18, 35, 56, 0.95);
   color: #e8f4fc;
   border: 1px solid rgba(56, 189, 248, 0.30);
   border-radius: 12px;
   padding: 10px 16px;
-  min-height: 20px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  min-height: 28px;
 }
 
 button:hover {
@@ -91,13 +82,15 @@ button:active {
   background-color: rgba(56, 189, 248, 0.34);
 }
 
+button:focus,
+button:focus-visible {
+  outline: none;
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.45);
+}
+
 button.suggested-action,
 button.default {
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.22) 0%,
-    transparent 60%
-  );
   background-color: #38bdf8;
   color: #061018;
   border-color: rgba(56, 189, 248, 0.9);
@@ -110,19 +103,40 @@ button.default:hover {
   color: #061018;
 }
 
+button.suggested-action:focus-visible,
+button.default:focus-visible {
+  box-shadow: 0 0 0 2px rgba(6, 16, 24, 0.55), 0 0 0 4px rgba(56, 189, 248, 0.55);
+}
+
+button.destructive-action {
+  background-color: rgba(40, 18, 28, 0.92);
+  border-color: rgba(251, 113, 133, 0.45);
+  color: #fecdd3;
+}
+
 button.destructive-action:hover {
   background-color: rgba(251, 113, 133, 0.88);
   color: white;
   border-color: #fb7185;
 }
 
-/* Session / user combobox */
+button.destructive-action:focus-visible {
+  box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.55);
+}
+
+/* Session / user combobox (when selection shown) */
 combobox,
 dropdown {
   background-color: rgba(18, 35, 56, 0.9);
   border-radius: 12px;
   border: 1px solid rgba(56, 189, 248, 0.26);
   padding: 4px;
+}
+
+combobox:focus-within,
+dropdown:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28);
 }
 
 combobox > button,
@@ -139,7 +153,6 @@ popover > contents {
   border: 1px solid rgba(56, 189, 248, 0.30);
   border-radius: 14px;
   padding: 6px;
-  box-shadow: 0 14px 36px rgba(6, 16, 24, 0.5);
 }
 
 modelbutton,

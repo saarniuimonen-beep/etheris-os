@@ -6,7 +6,7 @@
 #   sudo etheris-installer --auto \
 #     --disk /dev/vda --confirm YES \
 #     --user NAME --password PASS \
-#     [--hostname H] [--locale L] [--timezone TZ] [--fs ext4|btrfs] [--no-reboot]
+#     [--hostname H] [--locale L] [--timezone TZ] [--keymap KM] [--fs ext4|btrfs] [--no-reboot]
 set -euo pipefail
 
 VERSION="$(cat /usr/local/share/etheris/VERSION 2>/dev/null || cat /etc/etheris-version 2>/dev/null || echo 0.1.0-alpha)"
@@ -40,6 +40,10 @@ USERNAME=""
 PASS1=""
 LOCALE=en_US.UTF-8
 TZ=UTC
+KEYMAP=us
+LUKS="${ETHERIS_INSTALL_LUKS:-0}"
+LUKS_PASS="${ETHERIS_LUKS_PASSPHRASE:-}"
+CRYPTNAME=cryptroot
 
 usage() {
   cat <<'EOF'
@@ -55,8 +59,19 @@ Auto flags:
   --hostname NAME     Default: etheris
   --locale LOCALE     Default: en_US.UTF-8
   --timezone TZ       Default: UTC
+  --keymap KEYMAP     Console/XKB layout (default: us) — persists after reboot
   --fs ext4|btrfs     Default: ext4
+  --luks              Encrypt root with LUKS2 (opt-in)
+  --luks-passphrase P LUKS passphrase (default: same as user password)
   --no-reboot         Do not reboot at end
+
+Env: ETHERIS_INSTALL_LUKS=1  ETHERIS_LUKS_PASSPHRASE=…  ETHERIS_INSTALL_GAMING=1
+
+Persistence gates (docs/INSTALL-PERSISTENCE.md): password, keymap, timezone,
+locale, NetworkManager autoconnect, display (etheris-display save), bootloader.
+
+Failure modes / recovery: docs/INSTALLER-FAILURE-MODES.md
+LUKS recovery: docs/LUKS-PLAN.md
 EOF
 }
 
@@ -71,7 +86,10 @@ while [[ $# -gt 0 ]]; do
     --hostname) HOSTNAME="${2:-}"; shift 2 ;;
     --locale) LOCALE="${2:-}"; shift 2 ;;
     --timezone) TZ="${2:-}"; shift 2 ;;
+    --keymap) KEYMAP="${2:-}"; shift 2 ;;
     --fs) FS="${2:-}"; shift 2 ;;
+    --luks) LUKS=1; shift ;;
+    --luks-passphrase) LUKS_PASS="${2:-}"; LUKS=1; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
   esac
@@ -199,7 +217,32 @@ else
   LOCALE="${LOCALE:-en_US.UTF-8}"
   read -r -p "Timezone [UTC]: " TZ
   TZ="${TZ:-UTC}"
+  read -r -p "Keyboard layout [us]: " KEYMAP
+  KEYMAP="${KEYMAP:-us}"
+
+  echo
+  echo "Disk encryption (LUKS2) is optional. You must remember the passphrase."
+  read -r -p "Encrypt root partition with LUKS? [y/N]: " luks_in || true
+  case "${luks_in:-n}" in
+    y|Y|yes|YES) LUKS=1 ;;
+    *) LUKS=0 ;;
+  esac
+  if [[ "$LUKS" == "1" ]]; then
+    read -r -s -p "LUKS passphrase (empty = use login password): " LUKS_PASS; echo
+    read -r -s -p "LUKS passphrase (again): " LUKS_PASS2; echo
+    if [[ -z "$LUKS_PASS" ]]; then
+      LUKS_PASS="$PASS1"
+    else
+      [[ "$LUKS_PASS" == "$LUKS_PASS2" ]] || die "LUKS passphrases do not match"
+    fi
+  fi
 fi
+
+# Auto / env LUKS passphrase default
+if [[ "$LUKS" == "1" && -z "$LUKS_PASS" ]]; then
+  LUKS_PASS="$PASS1"
+fi
+[[ "$LUKS" == "1" && -n "$LUKS_PASS" ]] || [[ "$LUKS" != "1" ]] || die "LUKS enabled but passphrase empty"
 
 info "Selected target disk: $TARGET"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS "$TARGET" || true
@@ -208,10 +251,12 @@ echo
 info "Installation summary"
 echo "  Disk:      $TARGET"
 echo "  Filesystem:$FS"
+echo "  LUKS:      $([[ "$LUKS" == "1" ]] && echo yes || echo no)"
 echo "  Hostname:  $HOSTNAME"
 echo "  User:      $USERNAME"
 echo "  Locale:    $LOCALE"
 echo "  Timezone:  $TZ"
+echo "  Keymap:    $KEYMAP"
 echo "  Boot:      UEFI systemd-boot"
 echo "  Desktop:   Etheris (Sway)"
 echo "  Mode:      $([[ $AUTO -eq 1 ]] && echo auto || echo interactive)"
@@ -236,9 +281,20 @@ fi
 
 info "Formatting"
 mkfs.fat -F32 -n EFI "$P1"
+ROOT_DEV="$P2"
+LUKS_UUID=""
+if [[ "$LUKS" == "1" ]]; then
+  command -v cryptsetup >/dev/null || die "cryptsetup missing on live ISO"
+  info "Creating LUKS2 container on $P2 (passphrase not logged)"
+  printf '%s' "$LUKS_PASS" | cryptsetup luksFormat --type luks2 --batch-mode --key-file=- "$P2"
+  printf '%s' "$LUKS_PASS" | cryptsetup open --key-file=- "$P2" "$CRYPTNAME"
+  ROOT_DEV="/dev/mapper/${CRYPTNAME}"
+  LUKS_UUID="$(cryptsetup luksUUID "$P2")"
+  [[ -n "$LUKS_UUID" ]] || die "Could not read LUKS UUID"
+fi
 case "$FS" in
-  ext4) mkfs.ext4 -F -L Etheris "$P2" ;;
-  btrfs) mkfs.btrfs -f -L Etheris "$P2" ;;
+  ext4) mkfs.ext4 -F -L Etheris "$ROOT_DEV" ;;
+  btrfs) mkfs.btrfs -f -L Etheris "$ROOT_DEV" ;;
 esac
 
 info "Mounting"
@@ -246,32 +302,34 @@ BTRFS_OPTS="defaults,noatime,compress=zstd:3"
 if [[ "$FS" == btrfs ]]; then
   # Future-friendly layout: separate home/log from OS root (still mutable today).
   # Later A/B can replace @ with @a/@b without moving @home.
-  mount "$P2" "$MNT"
+  mount "$ROOT_DEV" "$MNT"
   btrfs subvolume create "$MNT/@"
   btrfs subvolume create "$MNT/@home"
   btrfs subvolume create "$MNT/@var_log"
   umount "$MNT"
-  mount -o "${BTRFS_OPTS},subvol=@" "$P2" "$MNT"
+  mount -o "${BTRFS_OPTS},subvol=@" "$ROOT_DEV" "$MNT"
   mkdir -p "$MNT/home" "$MNT/var/log" "$MNT/boot"
-  mount -o "${BTRFS_OPTS},subvol=@home" "$P2" "$MNT/home"
-  mount -o "${BTRFS_OPTS},subvol=@var_log" "$P2" "$MNT/var/log"
+  mount -o "${BTRFS_OPTS},subvol=@home" "$ROOT_DEV" "$MNT/home"
+  mount -o "${BTRFS_OPTS},subvol=@var_log" "$ROOT_DEV" "$MNT/var/log"
 else
-  mount "$P2" "$MNT"
+  mount "$ROOT_DEV" "$MNT"
   mkdir -p "$MNT/boot"
 fi
 mount "$P1" "$MNT/boot"
 
-info "Installing base system (desktop + gaming stack)"
-# Ensure multilib for Steam / lib32 graphics during pacstrap
-if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
-  if grep -q '^#\[multilib\]' /etc/pacman.conf; then
-    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
-  else
-    printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+info "Installing base system (lean desktop; gaming opt-in)"
+# Ensure multilib when gaming is requested (Steam / lib32)
+enable_multilib() {
+  if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+    if grep -q '^#\[multilib\]' /etc/pacman.conf; then
+      sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
+    else
+      printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+    fi
   fi
-fi
-# Core desktop install set. Steam/gaming is default on disk installs too
-# (live ISO already ships the stack). Opt out: ETHERIS_INSTALL_GAMING=0
+}
+# Core desktop install set. Gaming is opt-in: ETHERIS_INSTALL_GAMING=1
+# (live ISO may still ship the stack for try-before-install).
 PKGS=(base linux linux-firmware networkmanager pipewire pipewire-pulse wireplumber
   sway swaybg swayidle swaylock waybar foot wofi rofi mako pcmanfm
   gvfs gvfs-mtp gvfs-smb gvfs-nfs
@@ -284,10 +342,11 @@ PKGS=(base linux linux-firmware networkmanager pipewire pipewire-pulse wireplumb
   intel-media-driver libva-utils
   bluez bluez-utils
   lm_sensors cpupower)
-# Gaming stack: ON by default for interactive and --auto. Lean: ETHERIS_INSTALL_GAMING=0
-GAMING="${ETHERIS_INSTALL_GAMING:-1}"
+# Gaming stack: OFF by default (lean installs). Opt in: ETHERIS_INSTALL_GAMING=1
+GAMING="${ETHERIS_INSTALL_GAMING:-0}"
 if [[ "$GAMING" == "1" ]]; then
-  info "Including Steam/gaming packages"
+  enable_multilib
+  info "Including Steam/gaming packages (ETHERIS_INSTALL_GAMING=1)"
   if [[ -f /usr/local/share/etheris/gaming-packages.list ]]; then
     mapfile -t _gpkgs < <(grep -vE '^\s*(#|$)' /usr/local/share/etheris/gaming-packages.list)
     PKGS+=("${_gpkgs[@]}")
@@ -303,23 +362,40 @@ if [[ "$GAMING" == "1" ]]; then
       vulkan-tools libva-intel-driver)
   fi
 else
-  info "Lean install (no Steam). Default is gaming ON; you set ETHERIS_INSTALL_GAMING=0."
+  info "Lean install (no Steam/gaming). Opt in later or reinstall with ETHERIS_INSTALL_GAMING=1."
 fi
 [[ "$FS" == btrfs ]] && PKGS+=(btrfs-progs)
+[[ "$LUKS" == "1" ]] && PKGS+=(cryptsetup)
 pacstrap -K "$MNT" "${PKGS[@]}"
 
 info "fstab"
 genfstab -U "$MNT" >> "$MNT/etc/fstab"
+if [[ "$LUKS" == "1" ]]; then
+  # crypttab for initramfs encrypt hook / late unlock helpers
+  printf '%s UUID=%s none luks,discard\n' "$CRYPTNAME" "$LUKS_UUID" >"$MNT/etc/crypttab"
+fi
 
 info "Configuring system"
-arch-chroot "$MNT" bash -s -- "$TZ" "$LOCALE" "$HOSTNAME" "$USERNAME" <<'CHROOT'
+arch-chroot "$MNT" bash -s -- "$TZ" "$LOCALE" "$HOSTNAME" "$USERNAME" "$KEYMAP" "$FS" <<'CHROOT'
 set -euo pipefail
-TZ="$1"; LOCALE="$2"; HOSTNAME="$3"; USERNAME="$4"
+TZ="$1"; LOCALE="$2"; HOSTNAME="$3"; USERNAME="$4"; KEYMAP="$5"; FS="$6"
 ln -sf "/usr/share/zoneinfo/${TZ}" /etc/localtime
 hwclock --systohc
 sed -i "s/^#${LOCALE}/${LOCALE}/" /etc/locale.gen || echo "${LOCALE} UTF-8" >> /etc/locale.gen
 locale-gen
 echo "LANG=${LOCALE}" > /etc/locale.conf
+# Console keymap (persists; greeter patched after greeter files are copied)
+case "$KEYMAP" in
+  se|sv) CKEY=sv-latin1 ;;
+  uk|gb) CKEY=uk ;;
+  de) CKEY=de-latin1 ;;
+  fr) CKEY=fr-latin9 ;;
+  fi) CKEY=fi ;;
+  no) CKEY=no-latin1 ;;
+  dk) CKEY=dk-latin1 ;;
+  *) CKEY="$KEYMAP" ;;
+esac
+printf 'KEYMAP=%s\nFONT=lat9w-16\n' "$CKEY" > /etc/vconsole.conf
 echo "${HOSTNAME}" > /etc/hostname
 cat > /etc/hosts <<EOF
 127.0.0.1 localhost
@@ -332,14 +408,11 @@ usermod -aG wheel,audio,video,storage,input,render,network,power,lp,optical,rfki
 if getent group gamemode >/dev/null 2>&1; then
   usermod -aG gamemode "$USERNAME"
 fi
-# Polkit already allows wheel admin in GUI (Defaults installs via pkexec).
-# Keep password sudo for interactive terminal use.
+# Polkit: wheel GUI admin (copied from share after overlay; placeholder ok)
 install -d -m 755 /etc/polkit-1/rules.d
 if [[ -f /usr/local/share/etheris/polkit/49-etheris-wheel.rules ]]; then
   install -m 644 /usr/local/share/etheris/polkit/49-etheris-wheel.rules \
     /etc/polkit-1/rules.d/49-etheris-wheel.rules
-elif [[ -f /etc/polkit-1/rules.d/49-etheris-wheel.rules ]]; then
-  :
 fi
 # Standard Places folders for the file manager (Downloads, Pictures, …)
 install -d -o "$USERNAME" -g "$USERNAME" \
@@ -372,10 +445,20 @@ file:///home/${USERNAME}/Videos Videos
 file:///home/${USERNAME}/Public Public
 file:///home/${USERNAME}/Downloads/Etheris%20Transfers Etheris Transfers
 EOF
+# Desktop keyboard persists in user Sway config.d
+install -d -o "$USERNAME" -g "$USERNAME" "/home/${USERNAME}/.config/sway/config.d"
+cat >"/home/${USERNAME}/.config/sway/config.d/10-keyboard.conf" <<EOF
+# Written by etheris-installer — keyboard persists after reboot
+input type:keyboard {
+    xkb_layout ${KEYMAP}
+}
+EOF
 chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/.config"
-# Password sudo on installed systems (not NOPASSWD)
+# Password sudo on installed systems (not live NOPASSWD)
 echo '%wheel ALL=(ALL:ALL) ALL' > /etc/sudoers.d/wheel
 chmod 440 /etc/sudoers.d/wheel
+# Never leave live-ISO passwordless sudo on the installed root
+rm -f /etc/sudoers.d/etheris
 # Enable multilib on installed system
 if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
   if grep -q '^#\[multilib\]' /etc/pacman.conf; then
@@ -384,8 +467,14 @@ if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
   fi
 fi
-systemctl enable NetworkManager greetd nftables bluetooth avahi-daemon
+# Network + time sync (reconnect + correct clock after reboot)
+systemctl enable NetworkManager iwd greetd nftables bluetooth avahi-daemon systemd-timesyncd
 systemctl mask sshd.service 2>/dev/null || true
+# Never enable live password-resetter on installed systems
+systemctl disable etheris-auth-setup.service 2>/dev/null || true
+systemctl mask etheris-auth-setup.service 2>/dev/null || true
+rm -f /etc/systemd/system/multi-user.target.wants/etheris-auth-setup.service \
+  /etc/systemd/system/graphical.target.wants/etheris-auth-setup.service 2>/dev/null || true
 bootctl install
 mkdir -p /boot/loader/entries
 cat > /boot/loader/loader.conf <<EOF
@@ -394,14 +483,20 @@ timeout 3
 console-mode keep
 EOF
 ROOT_UUID=$(findmnt -no UUID /)
+ROOT_OPTS="root=UUID=${ROOT_UUID} rw quiet"
+# Btrfs root is subvolume @ — required for reboot/boot after updates
+if [[ "$FS" == btrfs ]] || findmnt -no FSTYPE / 2>/dev/null | grep -qx btrfs; then
+  ROOT_OPTS="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet"
+fi
 # Microcode early initrd (both packages installed; unused image is harmless if absent)
+# LUKS cryptdevice= is patched in by the installer after chroot when --luks is set.
 {
   echo "title   Etheris OS"
   echo "linux   /vmlinuz-linux"
   [[ -f /boot/amd-ucode.img ]] && echo "initrd  /amd-ucode.img"
   [[ -f /boot/intel-ucode.img ]] && echo "initrd  /intel-ucode.img"
   echo "initrd  /initramfs-linux.img"
-  echo "options root=UUID=${ROOT_UUID} rw quiet"
+  echo "options ${ROOT_OPTS}"
 } > /boot/loader/entries/etheris.conf
 mkdir -p /etc/greetd
 cat > /etc/greetd/config.toml <<EOF
@@ -414,27 +509,110 @@ EOF
 CHROOT
 # Passwords via chpasswd stdin only (not written into heredoc / logs)
 printf 'root:%s\n%s:%s\n' "$PASS1" "$USERNAME" "$PASS1" | arch-chroot "$MNT" chpasswd
+
+# LUKS: encrypt hook + cryptdevice= on kernel cmdline + rebuild initramfs
+if [[ "$LUKS" == "1" ]]; then
+  info "Configuring LUKS initramfs (encrypt hook)"
+  arch-chroot "$MNT" bash -s -- "$LUKS_UUID" "$CRYPTNAME" "$FS" <<'LUKSCHROOT'
+set -euo pipefail
+LUKS_UUID="$1"; CRYPTNAME="$2"; FS="$3"
+# Ensure encrypt hook runs before filesystems (drop-in is most reliable)
+mkdir -p /etc/mkinitcpio.conf.d
+if ! grep -qE '^HOOKS=.*\bencrypt\b' /etc/mkinitcpio.conf 2>/dev/null; then
+  cat >/etc/mkinitcpio.conf.d/etheris-luks.conf <<'HOOK'
+# Etheris LUKS — encrypt before filesystems
+HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block encrypt filesystems fsck)
+HOOK
+fi
+ROOT_UUID=$(findmnt -no UUID /)
+ROOT_OPTS="cryptdevice=UUID=${LUKS_UUID}:${CRYPTNAME} root=UUID=${ROOT_UUID} rw quiet"
+if [[ "$FS" == btrfs ]] || findmnt -no FSTYPE / 2>/dev/null | grep -qx btrfs; then
+  ROOT_OPTS="cryptdevice=UUID=${LUKS_UUID}:${CRYPTNAME} root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet"
+fi
+{
+  echo "title   Etheris OS"
+  echo "linux   /vmlinuz-linux"
+  [[ -f /boot/amd-ucode.img ]] && echo "initrd  /amd-ucode.img"
+  [[ -f /boot/intel-ucode.img ]] && echo "initrd  /intel-ucode.img"
+  echo "initrd  /initramfs-linux.img"
+  echo "options ${ROOT_OPTS}"
+} > /boot/loader/entries/etheris.conf
+mkinitcpio -P
+LUKSCHROOT
+fi
 # Apply Etheris firewall/privacy defaults when present on live medium
 [[ -f /etc/nftables.conf ]] && cp -a /etc/nftables.conf "$MNT/etc/nftables.conf"
-# Neo-Aero greeter (ReGreet) assets from live ISO
+# Graphical greeter (ReGreet) assets from live ISO
 if [[ -d /etc/greetd ]]; then
   mkdir -p "$MNT/etc/greetd"
   for f in sway-config regreet.toml regreet.css config.toml; do
     [[ -f "/etc/greetd/$f" ]] && cp -a "/etc/greetd/$f" "$MNT/etc/greetd/"
   done
 fi
+# Persist install keymap on greeter seat
+if [[ -x /usr/local/bin/etheris-keymap-apply ]]; then
+  cp -a /usr/local/bin/etheris-keymap-apply "$MNT/usr/local/bin/"
+  arch-chroot "$MNT" etheris-keymap-apply "$KEYMAP" || true
+elif [[ -f "$MNT/etc/greetd/sway-config" ]]; then
+  sed -i -E "s/^(\s*xkb_layout\s+).*/\1${KEYMAP}/" "$MNT/etc/greetd/sway-config" || true
+fi
+# NetworkManager Wi-Fi backend (iwd) so reconnect works like live
+mkdir -p "$MNT/etc/NetworkManager/conf.d"
+if [[ -f /etc/NetworkManager/conf.d/wifi_backend.conf ]]; then
+  cp -a /etc/NetworkManager/conf.d/wifi_backend.conf "$MNT/etc/NetworkManager/conf.d/"
+else
+  printf '[device]\nwifi.backend=iwd\n' >"$MNT/etc/NetworkManager/conf.d/wifi_backend.conf"
+fi
+# Polkit wheel rule (path the chroot expects)
+mkdir -p "$MNT/usr/local/share/etheris/polkit" "$MNT/etc/polkit-1/rules.d"
+if [[ -f /usr/local/share/etheris/polkit/49-etheris-wheel.rules ]]; then
+  cp -a /usr/local/share/etheris/polkit/49-etheris-wheel.rules "$MNT/usr/local/share/etheris/polkit/"
+elif [[ -f /etc/polkit-1/rules.d/49-etheris-wheel.rules ]]; then
+  cp -a /etc/polkit-1/rules.d/49-etheris-wheel.rules "$MNT/usr/local/share/etheris/polkit/49-etheris-wheel.rules"
+fi
+[[ -f "$MNT/usr/local/share/etheris/polkit/49-etheris-wheel.rules" ]] && \
+  install -m 644 "$MNT/usr/local/share/etheris/polkit/49-etheris-wheel.rules" \
+    "$MNT/etc/polkit-1/rules.d/49-etheris-wheel.rules"
+# systemd-boot refresh after kernel/systemd updates
+mkdir -p "$MNT/etc/pacman.d/hooks"
+[[ -f /etc/pacman.d/hooks/etheris-bootctl.hook ]] && \
+  cp -a /etc/pacman.d/hooks/etheris-bootctl.hook "$MNT/etc/pacman.d/hooks/"
+[[ -x /usr/local/bin/etheris-greeter ]] && cp -a /usr/local/bin/etheris-greeter "$MNT/usr/local/bin/"
 [[ -x /usr/local/bin/etheris-greeter-tui ]] && cp -a /usr/local/bin/etheris-greeter-tui "$MNT/usr/local/bin/"
+[[ -x /usr/local/bin/etheris-display ]] && cp -a /usr/local/bin/etheris-display "$MNT/usr/local/bin/"
 [[ -f /etc/etheris/privacy.conf ]] && mkdir -p "$MNT/etc/etheris" && cp -a /etc/etheris/privacy.conf "$MNT/etc/etheris/"
-[[ -f /etc/etheris/system-mode.conf ]] && cp -a /etc/etheris/system-mode.conf "$MNT/etc/etheris/"
 [[ -f /etc/etheris/cpu.conf ]] && cp -a /etc/etheris/cpu.conf "$MNT/etc/etheris/"
-mkdir -p "$MNT/usr/local/share/etheris/docs"
-for d in IMMUTABLE.md HARDWARE.md GAMING.md DRIVER-RECOVERY.md; do
+mkdir -p "$MNT/etc/etheris" "$MNT/usr/local/share/etheris/docs"
+# Deployment mode: Btrfs installs get immutable-prep; ext4 stays mutable-classic.
+if [[ "$FS" == btrfs ]]; then
+  cat >"$MNT/etc/etheris/system-mode.conf" <<'MODE'
+# Etheris OS deployment mode (written by installer)
+# immutable-prep = /usr can be remounted read-only; A/B updates NOT active
+# mutable-classic = normal writable Arch root
+
+MODE=immutable-prep
+IMMUTABLE_PLANNED=yes
+DOCUMENTATION=/usr/local/share/etheris/docs/IMMUTABLE.md
+MODE
+else
+  cat >"$MNT/etc/etheris/system-mode.conf" <<'MODE'
+# Etheris OS deployment mode (written by installer)
+
+MODE=mutable-classic
+IMMUTABLE_PLANNED=yes
+DOCUMENTATION=/usr/local/share/etheris/docs/IMMUTABLE.md
+MODE
+fi
+for d in IMMUTABLE.md HARDWARE.md GAMING.md DRIVER-RECOVERY.md PERFORMANCE-MANAGER.md INSTALL-PERSISTENCE.md POLKIT.md SECURITY.md OOBE.md; do
   [[ -f "/usr/local/share/etheris/docs/$d" ]] && cp -a "/usr/local/share/etheris/docs/$d" "$MNT/usr/local/share/etheris/docs/"
 done
 
 [[ -f /etc/sysctl.d/99-etheris-security.conf ]] && cp -a /etc/sysctl.d/99-etheris-security.conf "$MNT/etc/sysctl.d/"
-[[ -d /etc/pacman.d/hooks ]] && mkdir -p "$MNT/etc/pacman.d/hooks" && \
+[[ -d /etc/pacman.d/hooks ]] && mkdir -p "$MNT/etc/pacman.d/hooks"
+[[ -f /etc/pacman.d/hooks/etheris-nvidia-pascal-guard.hook ]] && \
   cp -a /etc/pacman.d/hooks/etheris-nvidia-pascal-guard.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
+[[ -f /etc/pacman.d/hooks/etheris-bootctl.hook ]] && \
+  cp -a /etc/pacman.d/hooks/etheris-bootctl.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
 [[ -f /etc/systemd/system/etheris-cpu-setup.service ]] && \
   cp -a /etc/systemd/system/etheris-cpu-setup.service "$MNT/etc/systemd/system/" 2>/dev/null || true
 PASS1=''
@@ -449,6 +627,48 @@ cp -a /usr/local/bin/etheris-update "$MNT/usr/local/bin/" 2>/dev/null || true
 mkdir -p "$MNT/usr/local" "$MNT/etc/pacman.d"
 cp -a /usr/local/bin/etheris* "$MNT/usr/local/bin/" 2>/dev/null || true
 cp -a /usr/local/share/etheris "$MNT/usr/local/share/" 2>/dev/null || true
+# Wayland session: Etheris (Sway) must ship; hide stock sway.desktop from greeters
+mkdir -p "$MNT/usr/share/wayland-sessions"
+if [[ -f /usr/share/wayland-sessions/etheris.desktop ]]; then
+  cp -a /usr/share/wayland-sessions/etheris.desktop "$MNT/usr/share/wayland-sessions/"
+fi
+if [[ -x "$MNT/usr/local/bin/etheris-hide-stock-sway" ]]; then
+  arch-chroot "$MNT" /usr/local/bin/etheris-hide-stock-sway || true
+elif [[ -f "$MNT/usr/share/wayland-sessions/sway.desktop" ]]; then
+  # Fallback if hide helper missing from overlay
+  grep -v -E '^(Hidden|NoDisplay)=' "$MNT/usr/share/wayland-sessions/sway.desktop" \
+    >"$MNT/usr/share/wayland-sessions/sway.desktop.tmp" || true
+  printf 'NoDisplay=true\nHidden=true\n' >>"$MNT/usr/share/wayland-sessions/sway.desktop.tmp"
+  mv -f "$MNT/usr/share/wayland-sessions/sway.desktop.tmp" "$MNT/usr/share/wayland-sessions/sway.desktop"
+fi
+mkdir -p "$MNT/etc/pacman.d/hooks"
+[[ -f /etc/pacman.d/hooks/etheris-hide-stock-sway.hook ]] && \
+  cp -a /etc/pacman.d/hooks/etheris-hide-stock-sway.hook "$MNT/etc/pacman.d/hooks/"
+# Seed ReGreet last-user/session so skip_selection lands on password.
+# ReGreet CACHE_PATH is state.toml (Name= session), not legacy cache.toml/json.
+mkdir -p "$MNT/var/lib/regreet"
+cat >"$MNT/var/lib/regreet/state.toml" <<EOF
+# Installed by etheris-installer — ReGreet CACHE_PATH is state.toml.
+last_user = "${USERNAME}"
+
+[user_to_last_sess]
+${USERNAME} = "Etheris (Sway)"
+EOF
+# greeter owns the cache so ReGreet can rewrite after login
+if arch-chroot "$MNT" id greeter >/dev/null 2>&1; then
+  arch-chroot "$MNT" chown -R greeter:greeter /var/lib/regreet || true
+fi
+chmod 755 "$MNT/var/lib/regreet"
+chmod 644 "$MNT/var/lib/regreet/state.toml"
+# Drop deprecated cache files if an older ISO left them behind
+rm -f "$MNT/var/lib/regreet/cache.toml" "$MNT/var/lib/regreet/cache.json"
+# Ensure hide-stock-sway + regreet-cache oneshots are enabled on the installed system
+for unit in etheris-hide-stock-sway.service etheris-regreet-cache.service; do
+  if [[ -f "/etc/systemd/system/${unit}" ]]; then
+    cp -a "/etc/systemd/system/${unit}" "$MNT/etc/systemd/system/"
+    arch-chroot "$MNT" systemctl enable "$unit" 2>/dev/null || true
+  fi
+done
 cp -a /etc/pacman.d/mirrorlist "$MNT/etc/pacman.d/mirrorlist"
 # Keep multilib enabled in installed pacman.conf
 if [[ -f /etc/pacman.conf ]]; then
@@ -464,10 +684,18 @@ cp /usr/local/share/etheris/VERSION "$MNT/usr/local/share/etheris/VERSION" 2>/de
 
 # Enable CPU oneshot after overlay (unit + binary now present)
 arch-chroot "$MNT" systemctl enable etheris-cpu-setup.service 2>/dev/null || true
+# immutable-prep: protect /usr on boot (Btrfs installs only; live ISO skipped via ConditionKernelCommandLine)
+if [[ "$FS" == btrfs ]]; then
+  if [[ -f /etc/systemd/system/etheris-immutable-protect.service ]]; then
+    cp -a /etc/systemd/system/etheris-immutable-protect.service "$MNT/etc/systemd/system/"
+  fi
+  arch-chroot "$MNT" systemctl enable etheris-immutable-protect.service 2>/dev/null || true
+  arch-chroot "$MNT" systemctl enable etheris-perf.service 2>/dev/null || true
+fi
 
 # Milestone 6 — mark first-boot OOBE needed on installed systems (never on live)
 info "First-boot setup flag"
-mkdir -p "$MNT/var/lib/etheris/oobe" "$MNT/etc/etheris"
+mkdir -p "$MNT/etc/etheris"
 [[ -f /etc/etheris/oobe.conf ]] && cp -a /etc/etheris/oobe.conf "$MNT/etc/etheris/oobe.conf"
 if [[ ! -f "$MNT/etc/etheris/oobe.conf" ]] || ! grep -qE '^enabled=1' "$MNT/etc/etheris/oobe.conf"; then
   cat >"$MNT/etc/etheris/oobe.conf" <<'OOBE'
@@ -478,10 +706,28 @@ page_appearance=1
 page_privacy=1
 OOBE
 fi
-printf 'needed\n' >"$MNT/var/lib/etheris/oobe/state"
-# World-writable state dir so first-login OOBE never prompts for sudo
-chmod 777 "$MNT/var/lib/etheris/oobe"
-chmod 666 "$MNT/var/lib/etheris/oobe/state"
+# root:wheel 2770/660 — wheel can complete OOBE without world-writable state
+# Ownership resolved inside the target so GIDs match the installed system.
+arch-chroot "$MNT" bash -c '
+  set -euo pipefail
+  getent group wheel >/dev/null || groupadd -r wheel
+  install -d -m 2770 -o root -g wheel /var/lib/etheris/oobe
+  printf "needed\n" >/var/lib/etheris/oobe/state
+  chown root:wheel /var/lib/etheris/oobe/state
+  chmod 660 /var/lib/etheris/oobe/state
+  # Reject world-writable bits if something else remade the dir
+  chmod o-rwx /var/lib/etheris/oobe /var/lib/etheris/oobe/state
+'
+# Live-only auth must never remain enabled/unmasked on disk installs
+rm -f "$MNT/etc/systemd/system/multi-user.target.wants/etheris-auth-setup.service" \
+  "$MNT/etc/systemd/system/graphical.target.wants/etheris-auth-setup.service"
+rm -f "$MNT/etc/sudoers.d/etheris"
+# Mask even if unit file was copied from live overlay
+arch-chroot "$MNT" systemctl mask etheris-auth-setup.service 2>/dev/null \
+  || ln -sf /dev/null "$MNT/etc/systemd/system/etheris-auth-setup.service"
+# Ensure oobe-helper is present for non-wheel fallback
+[[ -x /usr/local/bin/etheris-oobe-helper ]] && \
+  cp -a /usr/local/bin/etheris-oobe-helper "$MNT/usr/local/bin/"
 
 # Post-install hardware/driver recommendation (non-destructive)
 info "Hardware / driver recommendation"

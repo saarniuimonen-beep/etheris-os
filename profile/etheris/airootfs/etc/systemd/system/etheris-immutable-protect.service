@@ -1,0 +1,17 @@
+[Unit]
+Description=Etheris immutable-prep: remount /usr read-only
+Documentation=file:///usr/local/share/etheris/docs/IMMUTABLE.md
+ConditionPathExists=/usr/local/bin/etheris-immutable
+ConditionPathExists=/etc/etheris/system-mode.conf
+# Live ISO must stay fully writable.
+ConditionKernelCommandLine=!archisobasedir
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/etheris-immutable protect
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

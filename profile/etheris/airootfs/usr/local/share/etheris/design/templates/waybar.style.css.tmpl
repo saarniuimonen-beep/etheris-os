@@ -3,35 +3,51 @@
   border-radius: 0;
   /* FONT_UI from tokens (Outfit when packaged; falls back to mono already on ISO) */
   font-family: "@FONT_UI@", "JetBrainsMono Nerd Font", monospace;
-  font-size: 12px;
+  font-size: 11px;
   min-height: 0;
 }
 
+/* Edge-to-edge top bar — thin, flush, single bottom hairline */
 window#waybar {
   background: @BG_PANEL_RGBA@;
   color: @FG@;
-  border-radius: @RADIUS_PANEL@px;
-  border: 1px solid @BORDER_RGBA@;
-  padding: 0 4px;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid @BORDER_RGBA@;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 0 6px;
 }
 
 #custom-logo {
   color: @ACCENT@;
-  padding: 0 12px;
+  padding: 0 10px 0 8px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: none;
+}
+
+#custom-logo:hover {
+  color: @FG@;
+  background: transparent;
 }
 
 #workspaces {
-  padding: 0 4px;
+  padding: 0 2px;
+  margin-left: 2px;
+  border-left: 1px solid @BORDER_RGBA@;
+  padding-left: 6px;
 }
 
 #workspaces button {
-  padding: 0 7px;
+  padding: 0 6px;
   color: @FG_SUBTLE@;
-  border-radius: 999px;
-  margin: 3px 1px;
+  border-radius: 6px;
+  margin: 2px 1px;
   background: transparent;
+  min-width: 18px;
+  font-size: 10px;
 }
 
 #workspaces button:hover {
@@ -50,24 +66,41 @@ window#waybar {
   background: transparent;
 }
 
+#custom-overview {
+  color: @FG_MUTED@;
+  padding: 0 8px;
+  margin: 2px 1px;
+  border-radius: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+#custom-overview:hover {
+  color: @FG@;
+  background: @HIGHLIGHT@;
+}
+
 #sway-mode {
   color: @WARNING@;
   padding: 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
 }
 
 #window {
   color: @FG_MUTED@;
-  padding: 0 10px;
+  padding: 0 8px;
   font-weight: 500;
+  font-size: 11px;
 }
 
 #custom-winctl {
   color: @FG_MUTED@;
-  padding: 0 10px;
-  margin: 3px 2px;
-  border-radius: @RADIUS_CONTROL@px;
-  letter-spacing: 0.12em;
-  font-size: 11px;
+  padding: 0 8px;
+  margin: 2px 2px;
+  border-radius: 6px;
+  letter-spacing: 0.14em;
+  font-size: 10px;
 }
 
 #custom-winctl:hover {
@@ -77,12 +110,21 @@ window#waybar {
 
 #clock {
   color: @FG@;
-  padding: 0 14px;
+  padding: 0 12px;
   font-weight: 600;
+  font-size: 12px;
+  /* waybar GTK CSS rejects font-variant-numeric */
+  letter-spacing: 0.04em;
+}
+
+#clock:hover {
+  color: @ACCENT@;
 }
 
 #tray {
-  padding: 0 8px;
+  padding: 0 6px;
+  margin-right: 2px;
+  border-right: 1px solid @BORDER_RGBA@;
 }
 
 #tray > .passive { -gtk-icon-effect: dim; }
@@ -97,10 +139,10 @@ window#waybar {
 #custom-app-files,
 #custom-app-term,
 #custom-app-settings {
-  padding: 0 9px;
+  padding: 0 7px;
   color: @FG_MUTED@;
-  border-radius: @RADIUS_CONTROL@px;
-  margin: 3px 1px;
+  border-radius: 6px;
+  margin: 2px 0;
 }
 
 #pulseaudio:hover,
@@ -121,11 +163,22 @@ window#waybar {
 #network.disconnected { color: @DANGER@; }
 
 #custom-cc {
-  color: @FG@;
+  color: @FG_MUTED@;
   padding: 0 10px;
+  margin-left: 2px;
+  border: none;
+  background: transparent;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+#custom-cc:hover {
+  background: transparent;
+  color: @ACCENT@;
 }
 
 #custom-power {
   color: @ACCENT@;
-  padding-right: 14px;
+  padding: 0 10px 0 8px;
 }

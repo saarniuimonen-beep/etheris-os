@@ -6,7 +6,7 @@ This document critiques Phase 1 (`design/phase-1/`) and records what Phase 2 cha
 
 ## What Phase 1 got right
 
-- Neo-Aero direction (aqua / turquoise / nature Atmospheres) without Vista cosplay.
+- Ocean Glass direction (aqua / turquoise / nature Atmospheres) without copying old Windows looks.
 - Shared CSS token approach and Atmosphere remapping of colour + wallpaper only.
 - Selective glass; blur off by default; ≤500 MiB as aspirational, not a hard cut of features.
 - Correct architecture baseline: Etheris Light = Sway session brand, **not** a compositor.
@@ -18,7 +18,7 @@ This document critiques Phase 1 (`design/phase-1/`) and records what Phase 2 cha
 
 | Area | Issue | Phase 2 decision |
 |------|-------|------------------|
-| Desktop | Dock **and** desktop icons **and** floating panel competed in one viewport | **Default Light desktop:** floating top panel only + one example window. Desktop icons off by default. Optional dock = Atmosphere/layout preference, not default. |
+| Desktop | Dock **and** desktop icons **and** floating panel competed in one viewport | **Default Light desktop:** thin edge-to-edge top bar only + one example window. Desktop icons off by default. Optional dock = layout preference, not default. |
 | Widgets | Shown as always-on chrome in extras | Widgets are **opt-in**; none on default desktop. Max 2–3 lightweight widgets when enabled. |
 | Launcher | Categories + pins look polished but exceed what wofi can do | Spec remains the **target UX**. Implementation path: theme wofi first (search/pins via wrapper), then Quickshell/custom launcher if gaps remain. |
 | Control Center | No power actions; DND duplicated; felt like a tile collage | Compact sheet: 2×2 toggles, audio/brightness sliders, **notification mute**, power row (lock/logout/sleep), link to Settings. Width ≤360px. |
@@ -39,7 +39,7 @@ This document critiques Phase 1 (`design/phase-1/`) and records what Phase 2 cha
 3. **Atmospheres are not five DEs** — Identical radii, type, spacing, panel layout; only colour tokens + wallpaper (+ optional light/dark variant) change.
 4. **Glass = rgba first** — Compositor blur remains off; premium one-shot blur only on Power Menu (already in OS as concept).
 5. **Quickshell is shell-only** — Explicitly allowed for panel/CC/widgets **after** gates; never replaces Sway; crash recovery returns to Sway + minimal Waybar fallback unit.
-6. **Master roadmap wins** — Design stages map under M6+/Neo-Aero work; do not skip installer/OOBE/ISO gates for chrome.
+6. **Master roadmap wins** — Design stages map under M6+/desktop work; do not skip installer/OOBE/ISO gates for chrome.
 
 ---
 

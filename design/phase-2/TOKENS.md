@@ -11,7 +11,7 @@
 |-------|-------|
 | Space unit | 4px |
 | Radius control / panel / menu / dialog / window | 8 / 14 / 14 / 16 / 12 |
-| Panel height / top offset | 40 / 14 |
+| Panel height / top offset | 28 / 0 (edge bar) |
 | Control Center max width | 360 |
 | Launcher max width | 640 |
 | Border | 1px |

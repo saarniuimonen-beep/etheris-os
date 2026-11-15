@@ -1,7 +1,107 @@
-/* Etheris OS — wheel group may perform admin actions in the GUI
-   (matches passwordless sudo on the live system). */
+/* Etheris OS — narrowly scoped polkit rules for active wheel members.
+ *
+ * NEVER grant Result.YES for all actions. Anything not listed falls through to
+ * upstream package defaults (typically AUTH_ADMIN / AUTH_ADMIN_KEEP).
+ *
+ * Terminal admin uses password sudo on installed systems:
+ *   /etc/sudoers.d/wheel → %wheel ALL=(ALL:ALL) ALL
+ * Live ISO keeps NOPASSWD sudo separately in /etc/sudoers.d/etheris (live only).
+ *
+ * Permitted actions (documented):
+ *
+ *  A. NetworkManager — desktop connectivity without a root prompt
+ *     org.freedesktop.NetworkManager.network-control
+ *     org.freedesktop.NetworkManager.enable-disable-network
+ *     org.freedesktop.NetworkManager.enable-disable-wifi
+ *     org.freedesktop.NetworkManager.enable-disable-wwan
+ *     org.freedesktop.NetworkManager.wifi.scan
+ *     org.freedesktop.NetworkManager.settings.modify.own
+ *     org.freedesktop.NetworkManager.settings.modify.system
+ *
+ *  B. Timedate — timezone + NTP (Settings / OOBE / etheris-timezone-auto)
+ *     org.freedesktop.timedate1.set-timezone
+ *     org.freedesktop.timedate1.set-ntp
+ *     (set-time is NOT granted YES — requires authentication)
+ *
+ *  C. Locale / keymap — localectl + console (installer / OOBE / keymap-apply)
+ *     org.freedesktop.locale1.set-locale
+ *     org.freedesktop.locale1.set-keymap
+ *     org.freedesktop.locale1.set-x11-keymap
+ *
+ *  D. Hostname — optional device rename
+ *     org.freedesktop.hostname1.set-hostname
+ *     org.freedesktop.hostname1.set-static-hostname
+ *     org.freedesktop.hostname1.set-pretty-hostname
+ *
+ *  E. First-boot helpers — YES for active wheel (no interactive pkexec /
+ *     faillock trap during OOBE keyboard + state writes):
+ *       /usr/local/bin/etheris-keymap-apply
+ *       /usr/local/bin/etheris-oobe-helper
+ *
+ *  F. Other Etheris helpers / pacman — AUTH_ADMIN_KEEP (password once)
+ *       /usr/local/bin/etheris-perf
+ *       /usr/local/bin/etheris-immutable
+ *       /usr/bin/pacman
+ *
+ * Explicitly NOT granted: packagekit unrestricted, udisks format, libvirt,
+ * systemd unit management, arbitrary pkexec programs, polkit rule edits.
+ *
+ * See: /usr/local/share/etheris/docs/POLKIT.md
+ */
+
 polkit.addRule(function (action, subject) {
-    if (subject.isInGroup("wheel")) {
+    if (!subject.isInGroup("wheel") || !subject.active) {
+        return;
+    }
+
+    var id = action.id;
+
+    // --- A. NetworkManager ---
+    if (id === "org.freedesktop.NetworkManager.network-control" ||
+        id === "org.freedesktop.NetworkManager.enable-disable-network" ||
+        id === "org.freedesktop.NetworkManager.enable-disable-wifi" ||
+        id === "org.freedesktop.NetworkManager.enable-disable-wwan" ||
+        id === "org.freedesktop.NetworkManager.wifi.scan" ||
+        id === "org.freedesktop.NetworkManager.settings.modify.own" ||
+        id === "org.freedesktop.NetworkManager.settings.modify.system") {
         return polkit.Result.YES;
+    }
+
+    // --- B. Timedate (not set-time) ---
+    if (id === "org.freedesktop.timedate1.set-timezone" ||
+        id === "org.freedesktop.timedate1.set-ntp") {
+        return polkit.Result.YES;
+    }
+
+    // --- C. Locale / keymap ---
+    if (id === "org.freedesktop.locale1.set-locale" ||
+        id === "org.freedesktop.locale1.set-keymap" ||
+        id === "org.freedesktop.locale1.set-x11-keymap") {
+        return polkit.Result.YES;
+    }
+
+    // --- D. Hostname ---
+    if (id === "org.freedesktop.hostname1.set-hostname" ||
+        id === "org.freedesktop.hostname1.set-static-hostname" ||
+        id === "org.freedesktop.hostname1.set-pretty-hostname") {
+        return polkit.Result.YES;
+    }
+
+    // --- E/F. pkexec allow-list ---
+    if (id === "org.freedesktop.policykit.exec") {
+        var prog = action.lookup("program");
+        // First-boot / keyboard persistence: no password (matches locale1 YES).
+        if (prog === "/usr/local/bin/etheris-keymap-apply" ||
+            prog === "/usr/local/bin/etheris-oobe-helper") {
+            return polkit.Result.YES;
+        }
+        // Perf / immutable / pacman: authenticate once, keep briefly.
+        if (prog === "/usr/local/bin/etheris-perf" ||
+            prog === "/usr/local/bin/etheris-immutable" ||
+            prog === "/usr/bin/pacman") {
+            return polkit.Result.AUTH_ADMIN_KEEP;
+        }
+        // Any other pkexec target: fall through to defaults (deny / AUTH_ADMIN).
+        return;
     }
 });

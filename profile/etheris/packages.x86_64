@@ -82,10 +82,11 @@ ttf-liberation
 adwaita-cursors
 gnome-themes-extra
 librsvg
-# Power menu (Neo-Aero glass UI + one-shot blurred backdrop)
+# Power menu + Control Center (GTK4 glass UI; layer-shell for Quick overlay)
 python
 python-gobject
 gtk4
+gtk4-layer-shell
 webkitgtk-6.0
 imagemagick
 gdk-pixbuf2
@@ -119,6 +120,7 @@ dosfstools
 e2fsprogs
 btrfs-progs
 parted
+cryptsetup
 gptfdisk
 mtools
 reflector
@@ -182,9 +184,11 @@ bluez
 bluez-utils
 # GameMode is on-demand (no always-on max performance)
 
-# --- CPU helpers ---
+# --- CPU / lighting helpers ---
 lm_sensors
 cpupower
+# Motherboard / case ARGB via OpenRGB (Etheris RGB Manager)
+openrgb
 # Compressed RAM swap — prevents Steam/browser OOM kills without a disk swapfile
 zram-generator
 

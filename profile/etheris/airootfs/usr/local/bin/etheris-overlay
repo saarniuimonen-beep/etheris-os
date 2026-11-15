@@ -5,7 +5,7 @@ set -euo pipefail
 
 TARGET="${1:-}"
 if [[ -z "$TARGET" ]]; then
-  echo "Usage: etheris-overlay <launcher|control-center|menu|power> [args…]" >&2
+  echo "Usage: etheris-overlay <launcher|control-center|notifications|menu|power|winctl> [args…]" >&2
   exit 2
 fi
 shift || true
@@ -16,6 +16,10 @@ pkill -x rofi >/dev/null 2>&1 || true
 # Transient GTK power menu — only kill when switching away from power
 if [[ "$TARGET" != power ]]; then
   pkill -f '/usr/local/bin/etheris-power-menu' >/dev/null 2>&1 || true
+fi
+# Control Center sheet — kill when switching away (toggle handled in-app for Super+A)
+if [[ "$TARGET" != control-center && "$TARGET" != cc ]]; then
+  pkill -f '/usr/local/bin/etheris-control-center' >/dev/null 2>&1 || true
 fi
 # Kickoff launcher (Rofi) — also stop when switching to another overlay
 if [[ "$TARGET" != launcher ]]; then
@@ -32,12 +36,17 @@ case "$TARGET" in
   notifications|notif)
     exec etheris-notifications "$@"
     ;;
+  winctl|window)
+    export ETHERIS_OVERLAY_NESTED=1
+    exec etheris-winctl menu "$@"
+    ;;
   menu)
     # Generic: remaining args are a command line
     if [[ "$#" -eq 0 ]]; then
       echo "etheris-overlay menu: missing command" >&2
       exit 2
     fi
+    export ETHERIS_OVERLAY_NESTED=1
     exec "$@"
     ;;
   power)

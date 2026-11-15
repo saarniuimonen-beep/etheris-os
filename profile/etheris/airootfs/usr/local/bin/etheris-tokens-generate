@@ -66,7 +66,7 @@ def conf_block(variant: str, atm: dict, status: dict, meta: dict, geometry: dict
         f"HIGHLIGHT={atm.get('highlight', 'rgba(255,255,255,0.12)')}",
         f"GTK_THEME={atm.get('gtkTheme', 'Adwaita-dark' if variant == 'dark' else 'Adwaita')}",
         f"ICON_THEME={atm.get('iconTheme', 'Papirus-Dark' if variant == 'dark' else 'Papirus')}",
-        f"FONT_UI={meta.get('fontUi', 'Outfit')}",
+        f"FONT_UI={meta.get('fontUi', 'Noto Sans')}",
         f"FONT_MONO={meta.get('fontMono', 'JetBrains Mono')}",
         f"SWAY_FOCUSED_BORDER={accent}",
         f"SWAY_FOCUSED_BG={sway_focused_bg}",

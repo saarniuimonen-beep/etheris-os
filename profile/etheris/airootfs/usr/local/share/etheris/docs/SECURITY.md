@@ -18,6 +18,9 @@ It is **not** claimed to be anonymous, hardened against all attacks, or “compl
 | Desktop user | Unprivileged user; root not the desktop session |
 | Live ISO sudo | `%wheel NOPASSWD` for convenience (**live only**) |
 | Installed sudo | Password required (`%wheel ALL=(ALL:ALL) ALL`) |
+| Polkit | Narrow wheel rules only — see [`POLKIT.md`](POLKIT.md) |
+| OOBE state | `/var/lib/etheris/oobe` is `root:wheel` 2770/660 — **not** world-writable |
+| Live auth setup | `etheris-auth-setup.service` gated by live cmdline + `/run/archiso`; masked on install |
 
 ## Commands
 
@@ -25,16 +28,29 @@ It is **not** claimed to be anonymous, hardened against all attacks, or “compl
 etheris-security status
 sudo etheris-security firewall
 etheris-security audit
+etheris privacy              # dashboard wrapper
+etheris doctor
+etheris report create        # redacted local support bundle
 sudo nft list ruleset
 ```
 
 Firewall config: `/etc/nftables.conf`  
 Restart: `sudo systemctl restart nftables`
 
+## Related (0.3 planning)
+
+| Doc | Topic |
+|-----|-------|
+| [`UPDATE-RECOVERY.md`](UPDATE-RECOVERY.md) | Interrupted upgrades |
+| [`SECURITY-UPDATES.md`](SECURITY-UPDATES.md) | Channel security policy |
+| [`LUKS-PLAN.md`](LUKS-PLAN.md) | Optional encryption (not shipped) |
+| [`SECURE-BOOT-PLAN.md`](SECURE-BOOT-PLAN.md) | SB research |
+| [`SELINUX-STUDY.md`](SELINUX-STUDY.md) | MAC deferred |
+
 ## Privacy
 
-See `/etc/etheris/privacy.conf`.  
-No diagnostic reporting is enabled. If diagnostics are added later, they must be **opt-in** with clear disclosure.
+See `/etc/etheris/privacy.conf` and [`PRIVACY-DASHBOARD.md`](PRIVACY-DASHBOARD.md).  
+No cloud diagnostic reporting. Local `etheris report create` is user-initiated and redacted.
 
 ## Not in the first experimental release
 

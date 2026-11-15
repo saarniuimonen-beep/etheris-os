@@ -77,25 +77,29 @@ a:hover { color: var(--eth-focus); }
 }
 
 .panel {
-  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
-  display: flex; align-items: center; gap: 12px; padding: 8px 14px; min-height: 40px;
-  max-width: calc(100% - 32px); border-radius: var(--eth-radius-pill);
-  background: var(--eth-panel); border: 1px solid var(--eth-border);
-  box-shadow: var(--eth-shadow-soft), var(--eth-shadow-inset);
+  position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; gap: 10px; padding: 0 10px; min-height: 28px; height: 28px;
+  border-radius: 0; max-width: none; transform: none;
+  background: color-mix(in srgb, var(--eth-panel) 92%, transparent);
+  border: none; border-bottom: 1px solid var(--eth-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
-.panel .mark { width: 18px; height: 18px; }
-.panel .brand-word { font-weight: 600; font-size: 12px; }
-.panel .sep { width: 1px; height: 16px; background: var(--eth-border); }
-.panel .ws { display: flex; gap: 6px; }
-.panel .ws span { width: 8px; height: 8px; border-radius: 50%; background: var(--eth-fg-subtle); opacity: 0.5; }
-.panel .ws span.on { background: var(--eth-accent); opacity: 1; box-shadow: 0 0 8px var(--eth-accent-soft); }
-.panel .clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--eth-fg-muted); }
+.panel .mark { width: 14px; height: 14px; }
+.panel .brand-word { font-weight: 600; font-size: 12px; letter-spacing: 0.08em; color: var(--eth-accent); }
+.panel .sep { width: 1px; height: 12px; background: var(--eth-border); }
+.panel .ws { display: flex; gap: 5px; border-left: 1px solid var(--eth-border); margin-left: 2px; padding-left: 8px; }
+.panel .ws span { width: 6px; height: 6px; border-radius: 50%; background: var(--eth-fg-subtle); opacity: 0.5; }
+.panel .ws span.on { background: var(--eth-accent); opacity: 1; box-shadow: 0 0 6px var(--eth-accent-soft); }
+.panel .clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--eth-fg); }
 .panel .pill {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
-  background: var(--eth-highlight); font-size: 11px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 6px;
+  background: transparent; font-size: 11px; color: var(--eth-fg-muted);
 }
-.panel .pill.cc { border: 1px solid var(--eth-border); cursor: default; }
-.panel .pill.cc:hover { border-color: var(--eth-accent); }
+.panel .pill.cc {
+  border: 1px solid var(--eth-border); cursor: default; background: var(--eth-highlight);
+  font-size: 10px; letter-spacing: 0.06em; color: var(--eth-fg); font-weight: 500;
+}
+.panel .pill.cc:hover { border-color: var(--eth-accent); color: var(--eth-accent); }
 
 .window {
   position: absolute; z-index: 10; border-radius: var(--eth-radius-window);

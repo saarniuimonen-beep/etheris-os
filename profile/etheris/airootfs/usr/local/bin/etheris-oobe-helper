@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Etheris OS — privileged OOBE state helper (narrow).
+# Writes only /var/lib/etheris/oobe/state with allowed values.
+# Never stores passwords. Draft answers stay in the user's XDG config.
+#
+# Usage (as root or via pkexec):
+#   etheris-oobe-helper set-state needed|in_progress|done|disabled
+#   etheris-oobe-helper ensure-dir
+set -euo pipefail
+
+STATE_DIR="/var/lib/etheris/oobe"
+STATE_FILE="$STATE_DIR/state"
+
+die() { echo "etheris-oobe-helper: $*" >&2; exit 1; }
+
+ensure_dir() {
+  install -d -m 2770 -o root -g wheel "$STATE_DIR"
+}
+
+set_state() {
+  local s="${1:-}"
+  case "$s" in
+    needed|in_progress|done|disabled) ;;
+    *) die "invalid state '$s' (needed|in_progress|done|disabled)" ;;
+  esac
+  ensure_dir
+  # No secrets — single token only
+  printf '%s\n' "$s" >"$STATE_FILE"
+  chown root:wheel "$STATE_FILE"
+  chmod 660 "$STATE_FILE"
+  echo "state=$s"
+}
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  # Non-interactive only — polkit YES for active wheel (see POLKIT.md).
+  if command -v pkexec >/dev/null 2>&1; then
+    exec pkexec --disable-internal-agent /usr/local/bin/etheris-oobe-helper "$@"
+  fi
+  die "root required (use pkexec or sudo)"
+fi
+
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+  set-state) set_state "${1:-}" ;;
+  ensure-dir) ensure_dir; echo "dir=$STATE_DIR" ;;
+  -h|--help|help)
+    cat <<'EOF'
+etheris-oobe-helper set-state needed|in_progress|done|disabled
+etheris-oobe-helper ensure-dir
+EOF
+    ;;
+  *)
+    die "usage: etheris-oobe-helper set-state <state>|ensure-dir"
+    ;;
+esac

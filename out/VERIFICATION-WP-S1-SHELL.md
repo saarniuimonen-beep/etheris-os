@@ -1,4 +1,4 @@
-# WP-S1 checkpoint — Neo-Aero shell foundation (Path A)
+# WP-S1 checkpoint — Etheris shell foundation (Path A)
 
 **Date:** 2026-11-08  
 **Status:** **PASS** (baked ISO + disposable live VM)  

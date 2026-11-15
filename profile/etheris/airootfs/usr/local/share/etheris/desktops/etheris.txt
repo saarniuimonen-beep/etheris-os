@@ -1,12 +1,14 @@
-# Etheris Light — labwc stack (≤500MB idle target)
-labwc
+# Etheris — Sway desktop stack (≤500MB idle session_pss target)
+sway
 waybar
 foot
-fuzzel
+wofi
+rofi
 mako
 swaybg
 swayidle
 swaylock
-thunar
+pcmanfm
 xdg-desktop-portal-wlr
-nwg-look
+greetd
+regreet

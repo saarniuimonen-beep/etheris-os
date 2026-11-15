@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+os.environ.setdefault("GSK_RENDERER", "cairo")
+
 try:
     import gi
 
@@ -132,15 +134,18 @@ class TransferApp(Gtk.Application):
         pane.set_vexpand(True)
 
         # LAN — Warpinator
-        lan = self._card(
-            "Local network",
-            "Warpinator finds nearby devices on the same Wi‑Fi/LAN. Same group code on both sides.",
+        has_warp = which("warpinator") is not None
+        lan_cap = (
+            "Warpinator finds nearby devices on the same Wi‑Fi/LAN. Same group code on both sides."
+            if has_warp
+            else "Warpinator is not installed — LAN send/receive is unavailable on this image."
         )
+        lan = self._card("Local network", lan_cap)
         lan_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        open_lan = Gtk.Button(label="Open Warpinator")
+        open_lan = Gtk.Button(label="Open Warpinator" if has_warp else "Warpinator not available")
         open_lan.add_css_class("accent")
-        open_lan.set_sensitive(which("warpinator") is not None)
-        open_lan.connect("clicked", lambda *_: run_bg(["warpinator"]))
+        open_lan.set_sensitive(True)
+        open_lan.connect("clicked", self._on_warpinator)
         lan_row.append(open_lan)
         open_recv = Gtk.Button(label="Open receive folder")
         open_recv.add_css_class("action")
@@ -150,20 +155,24 @@ class TransferApp(Gtk.Application):
         pane.append(lan)
 
         # Bluetooth
-        bt = self._card(
-            "Bluetooth",
-            "Pair a phone or laptop, then send/receive with Blueman. OBEX must be running to receive.",
+        has_bt = which("blueman-manager") is not None
+        has_send = which("blueman-sendto") is not None
+        bt_cap = (
+            "Pair a phone or laptop, then send/receive with Blueman. OBEX must be running to receive."
+            if has_bt
+            else "Blueman is not installed — Bluetooth transfers are unavailable on this image."
         )
+        bt = self._card("Bluetooth", bt_cap)
         bt_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        open_bt = Gtk.Button(label="Bluetooth manager")
+        open_bt = Gtk.Button(label="Bluetooth manager" if has_bt else "Bluetooth not available")
         open_bt.add_css_class("accent")
-        open_bt.set_sensitive(which("blueman-manager") is not None)
+        open_bt.set_sensitive(True)
         open_bt.connect("clicked", self._on_bluetooth)
         bt_row.append(open_bt)
         send_bt = Gtk.Button(label="Send files…")
         send_bt.add_css_class("action")
-        send_bt.set_sensitive(which("blueman-sendto") is not None)
-        send_bt.connect("clicked", lambda *_: run_bg(["blueman-sendto"]))
+        send_bt.set_sensitive(True)
+        send_bt.connect("clicked", self._on_bt_send)
         bt_row.append(send_bt)
         open_bt_dir = Gtk.Button(label="Bluetooth folder")
         open_bt_dir.add_css_class("action")
@@ -229,12 +238,30 @@ class TransferApp(Gtk.Application):
             except OSError:
                 continue
 
+    def _notify_missing(self, what: str) -> None:
+        run_bg(["notify-send", "-a", "Etheris", "Transfers", f"{what} is not available on this system."])
+
+    def _on_warpinator(self, *_a) -> None:
+        if which("warpinator"):
+            run_bg(["warpinator"])
+        else:
+            self._notify_missing("Warpinator")
+
     def _on_bluetooth(self, *_a) -> None:
+        if not which("blueman-manager"):
+            self._notify_missing("Blueman")
+            return
         ensure_obex()
         # Applet helps with incoming transfer prompts; manager for pairing
         if which("blueman-applet"):
             run_bg(["blueman-applet"])
         run_bg(["blueman-manager"])
+
+    def _on_bt_send(self, *_a) -> None:
+        if which("blueman-sendto"):
+            run_bg(["blueman-sendto"])
+        else:
+            self._notify_missing("Bluetooth send (blueman-sendto)")
 
     def _configure_warpinator(self) -> bool:
         ensure_dirs()

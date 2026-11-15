@@ -31,7 +31,7 @@
 ### Efficiency
 
 - [ ] `blur=off` default retained
-- [ ] Idle RSS measured and compared to Neo-Aero P0 baseline (~421 MiB)
+- [ ] Idle RSS measured and compared to theme P0 baseline (~421 MiB)
 - [ ] Reduced motion / transparency modes work
 - [ ] No dual always-on panels
 

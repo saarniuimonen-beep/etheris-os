@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Etheris OS — Neo-Aero power menu (glass buttons + one-shot blurred backdrop)."""
+"""Etheris OS — Session / power menu.
+
+Frosted-glass sheet over a one-shot blurred backdrop (macOS-like).
+Lock · Sleep · Log out · Restart · Shut down — calm list, not rainbow tiles.
+"""
 from __future__ import annotations
 
 import os
@@ -7,8 +11,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
-# Prefer GTK4; fall back message if missing
+# Prefer GL for smoother CSS motion when available; cairo remains OK.
+if "GSK_RENDERER" not in os.environ:
+    os.environ.setdefault("GSK_RENDERER", "cairo")
+
+_LIB = Path(__file__).resolve().parent.parent / "share" / "etheris" / "lib"
+if _LIB.is_dir():
+    sys.path.insert(0, str(_LIB))
+
 try:
     import gi
 
@@ -20,87 +32,22 @@ except (ImportError, ValueError) as exc:
     print("Falling back is handled by `etheris logout-menu`.", file=sys.stderr)
     sys.exit(2)
 
+from etheris_glass import (  # noqa: E402
+    GLASS_MOTION_CSS,
+    animations_on,
+    close_ms,
+    prepare_frosted_backdrop,
+)
 
-ACTIONS = [
-    ("LOCK", "lock", "#38bdf8"),
-    ("SLEEP", "sleep", "#2dd4bf"),
-    ("LOG OUT", "logout", "#7dd3fc"),
-    ("REBOOT", "reboot", "#fbbf24"),
-    ("SHUTDOWN", "shutdown", "#fb7185"),
+APP_ID = "os.etheris.PowerMenu"
+
+ACTIONS: list[tuple[str, str, bool, tuple[int, ...]]] = [
+    ("Lock", "lock", False, (Gdk.KEY_l, Gdk.KEY_L, Gdk.KEY_1)),
+    ("Sleep", "sleep", False, (Gdk.KEY_s, Gdk.KEY_S, Gdk.KEY_2)),
+    ("Log out", "logout", False, (Gdk.KEY_o, Gdk.KEY_O, Gdk.KEY_3)),
+    ("Restart", "reboot", False, (Gdk.KEY_r, Gdk.KEY_R, Gdk.KEY_4)),
+    ("Shut down", "shutdown", True, (Gdk.KEY_d, Gdk.KEY_D, Gdk.KEY_5)),
 ]
-
-
-def setting(key: str, default: str = "") -> str:
-    conf = os.path.expanduser("~/.config/etheris/settings.conf")
-    if not os.path.isfile(conf):
-        return default
-    try:
-        with open(conf, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line.startswith(f"{key}="):
-                    return line.split("=", 1)[1].strip()
-    except OSError:
-        pass
-    return default
-
-
-def want_blur() -> bool:
-    # Power-menu blur is one-shot (grim + ImageMagick), not a permanent compositor blur.
-    # Honor blur=off and reduced-motion / animations=off as a solid-glass fallback.
-    if setting("blur", "off") == "off":
-        # Still allow blur for this premium surface unless user opted out of effects
-        if setting("animations", "on") == "off":
-            return False
-        # Default settings keep blur=off for panels; power menu may still blur once.
-        # Use ETHERIS_POWER_BLUR=0 to force solid, =1 to force blur.
-    env = os.environ.get("ETHERIS_POWER_BLUR", "").strip()
-    if env == "0":
-        return False
-    if env == "1":
-        return True
-    if setting("animations", "on") == "off":
-        return False
-    return shutil.which("grim") and (shutil.which("magick") or shutil.which("convert"))
-
-
-def prepare_backdrop(path: str) -> bool:
-    """Capture screen and soft-blur into path. Returns True on success."""
-    if not want_blur():
-        return False
-    grim = shutil.which("grim")
-    magick = shutil.which("magick") or shutil.which("convert")
-    if not grim or not magick:
-        return False
-    raw = path + ".raw.png"
-    try:
-        subprocess.run([grim, raw], check=True, timeout=5)
-        # Downscale → blur → upscale: cheap frosted-glass look
-        subprocess.run(
-            [
-                magick,
-                raw,
-                "-scale",
-                "12%",
-                "-gaussian-blur",
-                "0x2.5",
-                "-resize",
-                "834%",
-                "-brightness-contrast",
-                "-8x-5",
-                path,
-            ],
-            check=True,
-            timeout=12,
-        )
-        return os.path.isfile(path)
-    except (subprocess.SubprocessError, OSError):
-        return False
-    finally:
-        try:
-            os.unlink(raw)
-        except OSError:
-            pass
 
 
 def run_action(action: str) -> None:
@@ -124,7 +71,9 @@ def run_action(action: str) -> None:
             try:
                 subprocess.Popen(["swaymsg", "exit"])
             except OSError:
-                subprocess.Popen(["loginctl", "terminate-user", os.environ.get("USER", "")])
+                subprocess.Popen(
+                    ["loginctl", "terminate-user", os.environ.get("USER", "")],
+                )
     elif action == "reboot":
         subprocess.Popen(["systemctl", "reboot"])
     elif action == "shutdown":
@@ -133,13 +82,23 @@ def run_action(action: str) -> None:
 
 class PowerMenu(Gtk.Application):
     def __init__(self, backdrop: str | None):
-        super().__init__(application_id="os.etheris.PowerMenu")
+        super().__init__(application_id=APP_ID)
         self.backdrop = backdrop
         self._pending: str | None = None
+        self._action_buttons: dict[str, Gtk.Button] = {}
+        self._sheet: Gtk.Widget | None = None
+        self._scrim: Gtk.Widget | None = None
+        self._closing = False
 
-    def do_activate(self):  # noqa: N802
-        win = Gtk.ApplicationWindow(application=self)
-        win.set_title("Etheris Power")
+    def do_activate(self) -> None:  # noqa: N802
+        wins = self.get_windows()
+        if wins:
+            self._dismiss()
+            return
+        self._build()
+
+    def _build(self) -> None:
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Session")
         win.set_decorated(False)
         win.set_resizable(False)
         win.maximize()
@@ -147,7 +106,6 @@ class PowerMenu(Gtk.Application):
         overlay = Gtk.Overlay()
         win.set_child(overlay)
 
-        # Backdrop: blurred screenshot or Neo-Aero solid gradient stand-in
         if self.backdrop and os.path.isfile(self.backdrop):
             picture = Gtk.Picture.new_for_filename(self.backdrop)
             picture.set_content_fit(Gtk.ContentFit.COVER)
@@ -157,117 +115,194 @@ class PowerMenu(Gtk.Application):
         else:
             overlay.set_child(self._solid_bg())
 
-        # Dim scrim for readability
         scrim = Gtk.Box()
         scrim.add_css_class("scrim")
+        if animations_on():
+            scrim.add_css_class("eth-scrim-enter")
+        else:
+            scrim.add_css_class("eth-scrim-open")
         scrim.set_hexpand(True)
         scrim.set_vexpand(True)
+        self._scrim = scrim
         overlay.add_overlay(scrim)
 
-        # Center glass card
-        center = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22)
-        center.set_halign(Gtk.Align.CENTER)
-        center.set_valign(Gtk.Align.CENTER)
-        center.add_css_class("glass-card")
+        sheet = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        sheet.set_halign(Gtk.Align.CENTER)
+        sheet.set_valign(Gtk.Align.CENTER)
+        sheet.add_css_class("pm-sheet")
+        sheet.add_css_class("eth-glass-enter" if animations_on() else "eth-glass-open")
+        sheet.set_size_request(340, -1)
+        self._sheet = sheet
 
-        title = Gtk.Label(label="Etheris OS")
-        title.add_css_class("pm-title")
-        subtitle = Gtk.Label(label="Power")
-        subtitle.add_css_class("pm-sub")
-        center.append(title)
-        center.append(subtitle)
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        head.add_css_class("pm-head")
+        mark = Gtk.Box()
+        mark.add_css_class("pm-mark")
+        mark.set_size_request(18, 18)
+        mark.set_valign(Gtk.Align.CENTER)
+        brand = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        word = Gtk.Label(label="Etheris", xalign=0)
+        word.add_css_class("pm-brand")
+        sub = Gtk.Label(label="Session", xalign=0)
+        sub.add_css_class("pm-sub")
+        brand.append(word)
+        brand.append(sub)
+        head.append(mark)
+        head.append(brand)
+        sheet.append(head)
 
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        row.set_halign(Gtk.Align.CENTER)
-        for label, action, accent in ACTIONS:
-            btn = Gtk.Button()
-            btn.add_css_class("power-btn")
-            btn.set_size_request(148, 148)
-            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-            inner.set_halign(Gtk.Align.CENTER)
-            inner.set_valign(Gtk.Align.CENTER)
-            lab = Gtk.Label(label=label)
-            lab.add_css_class("power-label")
-            lab.set_wrap(True)
-            lab.set_justify(Gtk.Justification.CENTER)
-            inner.append(lab)
-            btn.set_child(inner)
-            # Per-button accent via inline style provider
-            css = Gtk.CssProvider()
-            css.load_from_data(
-                f"""
-                button.power-btn-{action} {{
-                  border: 1.5px solid {accent};
-                }}
-                button.power-btn-{action}:hover {{
-                  background: alpha({accent}, 0.28);
-                  border-color: {accent};
-                  box-shadow: 0 0 28px alpha({accent}, 0.35);
-                }}
-                """.encode()
-            )
-            btn.add_css_class(f"power-btn-{action}")
-            btn.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-            btn.connect("clicked", self._on_click, action, win)
-            row.append(btn)
-
-        center.append(row)
+        list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        list_box.add_css_class("pm-list")
+        for label, action, danger, _keys in ACTIONS:
+            if action == "reboot":
+                sep = Gtk.Box()
+                sep.add_css_class("pm-sep")
+                sep.set_margin_top(6)
+                sep.set_margin_bottom(6)
+                list_box.append(sep)
+            btn = self._row(label, action, danger, win)
+            self._action_buttons[action] = btn
+            list_box.append(btn)
+        sheet.append(list_box)
 
         hint = Gtk.Label(label="Esc to cancel  ·  Super+Shift+E")
         hint.add_css_class("pm-hint")
-        center.append(hint)
+        sheet.append(hint)
 
-        overlay.add_overlay(center)
+        stop = Gtk.GestureClick()
+        stop.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        stop.connect("pressed", lambda *_: True)
+        sheet.add_controller(stop)
+        overlay.add_overlay(sheet)
 
-        # Global CSS
+        self._apply_css()
+
+        key = Gtk.EventControllerKey()
+        key.connect("key-pressed", self._on_key, win)
+        win.add_controller(key)
+
+        click = Gtk.GestureClick()
+        click.connect("pressed", lambda *_: self._dismiss())
+        scrim.add_controller(click)
+
+        win.connect("close-request", lambda *_: self._dismiss() or True)
+
+        win.present()
+        GLib.idle_add(self._sway_fullscreen)
+        GLib.idle_add(self._play_open)
+        GLib.idle_add(lambda: self._action_buttons["lock"].grab_focus() or False)
+
+    def _play_open(self) -> bool:
+        if self._sheet and animations_on():
+            self._sheet.remove_css_class("eth-glass-enter")
+            self._sheet.add_css_class("eth-glass-open")
+        if self._scrim and animations_on():
+            self._scrim.remove_css_class("eth-scrim-enter")
+            self._scrim.add_css_class("eth-scrim-open")
+        return False
+
+    def _dismiss(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        if animations_on() and self._sheet:
+            self._sheet.remove_css_class("eth-glass-open")
+            self._sheet.add_css_class("eth-glass-leave")
+            if self._scrim:
+                self._scrim.remove_css_class("eth-scrim-open")
+                self._scrim.add_css_class("eth-scrim-leave")
+            GLib.timeout_add(close_ms() or 1, lambda: self.quit() or False)
+        else:
+            self.quit()
+
+    def _row(self, label: str, action: str, danger: bool, win: Gtk.Window) -> Gtk.Button:
+        btn = Gtk.Button()
+        btn.add_css_class("pm-row")
+        if danger:
+            btn.add_css_class("pm-row-danger")
+        btn.set_hexpand(True)
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        inner.set_hexpand(True)
+        name = Gtk.Label(label=label, xalign=0)
+        name.add_css_class("pm-row-label")
+        name.set_hexpand(True)
+        inner.append(name)
+        chev = Gtk.Label(label="›")
+        chev.add_css_class("pm-row-chev")
+        inner.append(chev)
+        btn.set_child(inner)
+        btn.connect("clicked", self._on_click, action, win)
+        return btn
+
+    def _solid_bg(self) -> Gtk.Box:
+        box = Gtk.Box()
+        box.add_css_class("solid-bg")
+        box.set_hexpand(True)
+        box.set_vexpand(True)
+        return box
+
+    def _apply_css(self) -> None:
         provider = Gtk.CssProvider()
         provider.load_from_data(
-            b"""
-            .scrim {
-              background: alpha(#020617, 0.42);
+            GLASS_MOTION_CSS
+            + b"""
+            window { background: #0a1628; }
+            .scrim { background: alpha(#020617, 0.32); }
+            .solid-bg {
+              background-image: linear-gradient(
+                160deg, #061018 0%, #0a1628 42%, #0c2744 78%, #0a3a48 100%
+              );
             }
-            .glass-card {
-              padding: 36px 40px 28px 40px;
-              border-radius: 28px;
-              background: alpha(#0a1628, 0.55);
-              border: 1px solid alpha(#38bdf8, 0.35);
-              box-shadow: 0 18px 60px alpha(#000000, 0.45);
+            .pm-sheet {
+              padding: 22px 20px 18px 20px;
+              border-radius: 18px;
+              background: alpha(#0c1c30, 0.62);
+              border: 1px solid alpha(#ffffff, 0.14);
+              box-shadow: 0 24px 64px alpha(#000000, 0.45),
+                          inset 0 1px 0 alpha(#ffffff, 0.12);
             }
-            .pm-title {
-              font-size: 22px;
-              font-weight: 700;
-              letter-spacing: 0.12em;
-              color: #e8f4fc;
+            .pm-head { margin-bottom: 18px; }
+            .pm-mark {
+              border-radius: 999px;
+              background: #38bdf8;
+              border: 2px solid alpha(#7dd3fc, 0.55);
+              box-shadow: 0 0 0 3px alpha(#38bdf8, 0.18);
+              min-width: 18px; min-height: 18px;
+            }
+            .pm-brand {
+              font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #e8f4fc;
             }
             .pm-sub {
-              font-size: 13px;
-              letter-spacing: 0.28em;
+              font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
               color: alpha(#a8c4d8, 0.9);
-              margin-bottom: 8px;
             }
-            button.power-btn {
-              border-radius: 22px;
-              background: alpha(#122338, 0.72);
+            .pm-list { margin-bottom: 14px; }
+            .pm-sep { min-height: 1px; background: alpha(#ffffff, 0.10); }
+            button.pm-row {
+              padding: 13px 14px; border-radius: 12px;
+              background: alpha(#ffffff, 0.06);
+              border: 1px solid alpha(#ffffff, 0.08);
               color: #e8f4fc;
-              transition: 120ms ease;
+              transition: 100ms ease;
             }
-            button.power-btn:hover {
-              background: alpha(#1e3a5f, 0.85);
+            button.pm-row:hover, button.pm-row:focus {
+              background: alpha(#38bdf8, 0.16);
+              border-color: alpha(#38bdf8, 0.40);
             }
-            .power-label {
-              font-size: 15px;
-              font-weight: 700;
-              letter-spacing: 0.08em;
-              color: #e8f4fc;
+            button.pm-row:focus {
+              outline: 2px solid alpha(#38bdf8, 0.50);
+              outline-offset: 1px;
             }
-            .pm-hint {
-              margin-top: 6px;
-              font-size: 11px;
-              color: alpha(#a8c4d8, 0.75);
+            button.pm-row-danger { border-color: alpha(#fb7185, 0.30); }
+            button.pm-row-danger:hover, button.pm-row-danger:focus {
+              background: alpha(#fb7185, 0.18);
+              border-color: alpha(#fb7185, 0.50);
             }
-            window {
-              background: #0a1628;
-            }
+            .pm-row-label { font-size: 14px; font-weight: 600; color: #e8f4fc; }
+            button.pm-row-danger .pm-row-label { color: #fecdd3; }
+            .pm-row-chev { font-size: 16px; color: alpha(#a8c4d8, 0.65); }
+            button.pm-row-danger .pm-row-chev { color: alpha(#fb7185, 0.8); }
+            .pm-hint { font-size: 11px; color: alpha(#a8c4d8, 0.65); }
             """
         )
         Gtk.StyleContext.add_provider_for_display(
@@ -276,43 +311,10 @@ class PowerMenu(Gtk.Application):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
 
-        key = Gtk.EventControllerKey()
-        key.connect("key-pressed", self._on_key, win)
-        win.add_controller(key)
-
-        # Click scrim to cancel
-        click = Gtk.GestureClick()
-        click.connect("pressed", lambda *_: win.close())
-        scrim.add_controller(click)
-
-        win.present()
-
-        # Ask Sway to fullscreen this window if present
-        GLib.idle_add(self._sway_fullscreen)
-
-    def _solid_bg(self) -> Gtk.Box:
-        box = Gtk.Box()
-        box.add_css_class("solid-aero")
-        box.set_hexpand(True)
-        box.set_vexpand(True)
-        css = Gtk.CssProvider()
-        css.load_from_data(
-            b"""
-            .solid-aero {
-              background-image: linear-gradient(145deg, #0a1628 0%, #0e3a5c 48%, #0d9488 100%);
-            }
-            """
-        )
-        box.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        return box
-
     def _sway_fullscreen(self) -> bool:
         try:
             subprocess.Popen(
-                [
-                    "swaymsg",
-                    '[app_id="os.etheris.PowerMenu"] fullscreen enable',
-                ],
+                ["swaymsg", f'[app_id="{APP_ID}"] fullscreen enable'],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -322,28 +324,45 @@ class PowerMenu(Gtk.Application):
 
     def _on_key(self, _ctrl, keyval, _code, _state, win) -> bool:
         if keyval == Gdk.KEY_Escape:
-            win.close()
+            self._dismiss()
             return True
+        for _label, action, _danger, keys in ACTIONS:
+            if keyval in keys:
+                self._on_click(None, action, win)
+                return True
         return False
 
     def _on_click(self, _btn, action: str, win: Gtk.Window) -> None:
         self._pending = action
-        win.close()
-        # Defer action until after window teardown
-        GLib.timeout_add(80, self._fire)
+        self.hold()
+        self._closing = True
+        if animations_on() and self._sheet:
+            self._sheet.remove_css_class("eth-glass-open")
+            self._sheet.add_css_class("eth-glass-leave")
+            if self._scrim:
+                self._scrim.remove_css_class("eth-scrim-open")
+                self._scrim.add_css_class("eth-scrim-leave")
+            GLib.timeout_add(max(close_ms(), 80), self._fire)
+        else:
+            win.hide()
+            GLib.timeout_add(80, self._fire)
 
     def _fire(self) -> bool:
         if self._pending:
             run_action(self._pending)
             self._pending = None
+        try:
+            self.release()
+        except Exception:
+            pass
+        self.quit()
         return False
 
 
 def main() -> int:
-    # Single instance: if already open, ignore
     tmp = tempfile.mkdtemp(prefix="etheris-power-")
     backdrop = os.path.join(tmp, "blur.png")
-    ok = prepare_backdrop(backdrop)
+    ok = prepare_frosted_backdrop(backdrop, strength="strong")
     app = PowerMenu(backdrop if ok else None)
 
     def cleanup(_app=None):
