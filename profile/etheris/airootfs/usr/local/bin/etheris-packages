@@ -10,8 +10,9 @@ Etheris package groups
 Usage:
   etheris packages list
   etheris packages show <group>
-  etheris packages install <group>     # root
-  etheris packages remove <group>      # root; best-effort
+  etheris packages status <group>    Installed coverage
+  etheris packages install <group>   # root
+  etheris packages remove <group>    # root; best-effort
   etheris packages help
 
 Groups live in /usr/local/share/etheris/groups/*.list
@@ -21,16 +22,24 @@ EOF
 
 list_groups() {
   echo "Etheris package groups (${GROUPS_DIR})"
-  local f name
+  local f name n have
   shopt -s nullglob
   for f in "$GROUPS_DIR"/*.list; do
     name="$(basename "$f" .list)"
-    local n
     n="$(grep -cvE '^\s*(#|$)' "$f" || true)"
-    printf '  %-14s %s packages\n' "$name" "$n"
+    have=0
+    if command -v pacman >/dev/null 2>&1; then
+      mapfile -t pkgs < <(grep -vE '^\s*(#|$)' "$f" || true)
+      if ((${#pkgs[@]} > 0)); then
+        # pacman -Q exits non-zero when any pkg is missing — ignore that.
+        have="$( { pacman -Q "${pkgs[@]}" 2>/dev/null || true; } | wc -l | tr -d ' ')"
+      fi
+    fi
+    printf '  %-14s %s packages  (%s installed)\n' "$name" "$n" "$have"
   done
   echo
   echo "Docs: /usr/local/share/etheris/docs/PACKAGE-GROUPS.md"
+  echo "UI:   etheris software-center"
 }
 
 show_group() {
@@ -44,6 +53,22 @@ show_group() {
   grep -vE '^\s*(#|$)' "$f" || true
 }
 
+status_group() {
+  local g="${1:-}" f pkg
+  [[ -n "$g" ]] || { usage; exit 2; }
+  f="$GROUPS_DIR/${g}.list"
+  [[ -f "$f" ]] || { echo "Unknown group: $g"; exit 1; }
+  echo "Group status: $g"
+  while IFS= read -r pkg; do
+    [[ -z "$pkg" ]] && continue
+    if pacman -Q "$pkg" >/dev/null 2>&1; then
+      printf '  OK   %s\n' "$pkg"
+    else
+      printf '  --   %s\n' "$pkg"
+    fi
+  done < <(grep -vE '^\s*(#|$)' "$f")
+}
+
 need_root() {
   [[ "$(id -u)" -eq 0 ]] || { echo "Run as root: sudo etheris packages $*"; exit 1; }
 }
@@ -53,6 +78,38 @@ pkgs_from() {
   grep -vE '^\s*(#|$)' "$f"
 }
 
+enable_multilib() {
+  if grep -q '^\[multilib\]' /etc/pacman.conf; then
+    return 0
+  fi
+  if grep -q '^#\[multilib\]' /etc/pacman.conf; then
+    sed -i '/^#\[multilib\]/,/^#Include = \/etc\/pacman.d\/mirrorlist/{s/^#//}' /etc/pacman.conf
+    echo "Enabled [multilib] in /etc/pacman.conf"
+  else
+    cat >>/etc/pacman.conf <<'EOF'
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+EOF
+    echo "Appended [multilib] to /etc/pacman.conf"
+  fi
+}
+
+join_gamemode_users() {
+  getent group gamemode >/dev/null 2>&1 || groupadd -f gamemode 2>/dev/null || true
+  getent group gamemode >/dev/null 2>&1 || return 0
+  local name uid
+  # Join interactive users (and SUDO_USER if invoked via sudo)
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != root ]]; then
+    usermod -aG gamemode "$SUDO_USER" 2>/dev/null || true
+  fi
+  while IFS=: read -r name _ uid _rest; do
+    [[ "$uid" =~ ^[0-9]+$ ]] || continue
+    ((uid >= 1000 && uid < 65534)) || continue
+    usermod -aG gamemode "$name" 2>/dev/null || true
+  done < <(getent passwd)
+}
+
 cmd_install() {
   local g="${1:-}" f
   need_root "install $g"
@@ -60,9 +117,26 @@ cmd_install() {
   [[ -f "$f" ]] || { echo "Unknown group: $g"; exit 1; }
   mapfile -t pkgs < <(pkgs_from "$f")
   ((${#pkgs[@]} > 0)) || { echo "Empty group"; exit 1; }
+  if [[ "$g" == gaming ]]; then
+    enable_multilib
+  fi
   echo "Installing group '$g' (${#pkgs[@]} packages)…"
-  pacman -S --needed --noconfirm "${pkgs[@]}"
-  echo "Done. Group: $g"
+  pacman -Sy --needed --noconfirm "${pkgs[@]}"
+  if [[ "$g" == gaming ]]; then
+    join_gamemode_users
+    # Keep Steam launcher on the Etheris wrapper (package may refresh desktop file)
+    src=/usr/local/share/etheris/desktop/steam.desktop
+    [[ -f "$src" ]] || src=/usr/local/share/applications/steam.desktop
+    if [[ -f "$src" ]] && grep -q '^Exec=etheris-steam' "$src"; then
+      install -Dm644 "$src" /usr/share/applications/steam.desktop
+      install -Dm644 "$src" /usr/local/share/etheris/desktop/steam.desktop
+    fi
+    echo "Done. Group: gaming"
+    echo "Next: log out/in (GameMode group), then: etheris-gaming-setup && etheris-steam"
+    echo "Doctor: etheris-gaming-setup doctor"
+  else
+    echo "Done. Group: $g"
+  fi
 }
 
 cmd_remove() {
@@ -80,6 +154,7 @@ main() {
   case "${1:-list}" in
     list|ls) list_groups ;;
     show|cat) shift; show_group "${1:-}" ;;
+    status|check) shift; status_group "${1:-}" ;;
     install|add) shift; cmd_install "${1:-}" ;;
     remove|rm) shift; cmd_remove "${1:-}" ;;
     help|-h|--help) usage ;;

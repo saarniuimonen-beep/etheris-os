@@ -23,12 +23,18 @@ echo "  out:      $OUT"
 echo "  iso:      ${ISO:-none}"
 echo
 
+# Accidental host py_compile must never poison B0.1/B0.5 (same as prepare-profile).
+find "$A" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+find "$A" -name '*.pyc' -delete 2>/dev/null || true
+
 # ---------- B0 gate stack ----------
 if "$ROOT/scripts/check-profile.sh" >"$OUT/b0-profile.txt" 2>&1; then
   pass "B0.1 check-profile"
 else
   bad "B0.1 check-profile"
-  tail -15 "$OUT/b0-profile.txt" | sed 's/^/  | /' || true
+  # Show the actual FAIL lines first (tail alone hides them when many OKs follow).
+  grep -E 'FAIL |FAILED' "$OUT/b0-profile.txt" | sed 's/^/  | /' || true
+  tail -8 "$OUT/b0-profile.txt" | sed 's/^/  | /' || true
 fi
 
 if "$ROOT/scripts/test-p0-security.sh" >"$OUT/b0-p0.txt" 2>&1; then
@@ -262,6 +268,77 @@ if grep -q 'get_outputs' "$CC" \
 else
   bad "B1.21 Menu still hardcodes float X=890 (clips on small outputs)"
 fi
+
+# --- 2026-11-19 seals (settings/lock/preload/ram/installer) ---
+GLASS="$A/usr/local/share/etheris/lib/etheris_glass.py"
+PM="$A/usr/local/bin/etheris-power-menu"
+HUB="$A/usr/local/bin/etheris"
+BR="$A/usr/local/bin/etheris-browser"
+TA="$A/usr/local/bin/etheris-theme-apply"
+INST="$A/usr/local/bin/etheris-installer"
+
+if grep -q 'blur=off' "$CC" \
+  && grep -q 'blur=off' "$TA" \
+  && grep -q 'blur=off' "$HUB" \
+  && grep -qE 'setting\("blur", "off"\)' "$GLASS"; then
+  pass "B1.22 settings/glass seeds default blur=off"
+else
+  bad "B1.22 blur seed still defaults on (CC/theme-apply/hub/glass)"
+fi
+
+if grep -q '\["etheris-lock"\]' "$CC" \
+  && grep -q '\["etheris-lock"\]' "$PM" \
+  && grep -qE 'etheris-lock' "$HUB"; then
+  pass "B1.23 Lock routes through etheris-lock (CC/power/hub)"
+else
+  bad "B1.23 Lock still calls raw swaylock from Menu/Session paths"
+fi
+
+if awk '/ram\|memory\|idle\)/{p=1} p&&/cmd_ram/{print; exit}' "$HUB" | grep -q 'cmd_ram "${1:-}"'; then
+  pass "B1.24 etheris ram idle-check uses \${1:-} after shift"
+else
+  bad "B1.24 etheris ram idle-check argv still broken (\${2:-})"
+fi
+
+if grep -A6 'preload_enabled()' "$BR" | grep -qE '\$\{v:-off\}'; then
+  pass "B1.25 browser_preload missing-key defaults off"
+else
+  bad "B1.25 browser_preload still defaults on when key missing"
+fi
+
+if grep -q 'browser_preload=off' "$HUB" \
+  && grep -q 'browser_preload=off' "$CC" \
+  && grep -q 'browser_preload=off' "$TA"; then
+  pass "B1.26 hub/CC/theme-apply bootstrap browser_preload=off"
+else
+  bad "B1.26 bootstrap settings omit browser_preload=off"
+fi
+
+if grep -q 'etheris-update channel stable' "$INST"; then
+  pass "B1.27 installer rewrites channel/mirrors (stable) after overlay"
+else
+  bad "B1.27 installer may leave rolling mirrors with stable state"
+fi
+
+dup_names="$(
+  {
+    grep -h '^Name=' "$A"/usr/share/applications/*.desktop "$A"/usr/local/share/applications/*.desktop 2>/dev/null \
+      | sed 's/^Name=//'
+  } | sort | uniq -d
+)"
+if [[ -z "$dup_names" ]]; then
+  pass "B1.28 no duplicate .desktop Name= entries"
+else
+  bad "B1.28 duplicate desktop Names: $dup_names"
+fi
+
+if grep -q 'Name=Etheris Browsers' "$A/usr/share/applications/etheris-browsers.desktop" \
+  && grep -q 'Exec=etheris-browser --private-window' "$A/usr/local/share/applications/firefox.desktop"; then
+  pass "B1.29 Browsers≠Defaults Name; Firefox private uses etheris-browser"
+else
+  bad "B1.29 Defaults duplicate or Firefox private bypasses lean profile"
+fi
+
 if [[ -f "$ROOT/docs/BUG-CRITERIA.md" ]] && grep -q 'ROCK-SOLID' "$ROOT/docs/BUG-CRITERIA.md"; then
   pass "docs/BUG-CRITERIA.md present"
 else
@@ -297,13 +374,14 @@ if [[ "${ETHERIS_BUGS_HOST_ONLY:-0}" == "1" ]]; then
 else
   EVIDENCE="${ETHERIS_BUG_EVIDENCE:-}"
   if [[ -z "$EVIDENCE" ]]; then
-    EVIDENCE="$(ls -1t "$ROOT"/out/VERIFICATION-BUGS-ROCKSOLID-*.md 2>/dev/null | head -1 || true)"
+    # /bin/ls: hosts may ship eza/lsd as `ls` where -t means --time <field>.
+    EVIDENCE="$(/bin/ls -1t "$ROOT"/out/VERIFICATION-BUGS-ROCKSOLID-*.md 2>/dev/null | head -1 || true)"
   fi
   if [[ -n "$EVIDENCE" && -f "$EVIDENCE" ]]; then
     need=('Password-first|password-first' 'etheris-auth-check' '12 OK' 'doctor' 'etheris-perf' 'menu-hover' 'soak|Super\+A' 'ROCK-SOLID PASS|rock-solid PASS')
     missing=0
     for pat in "${need[@]}"; do
-      if ! grep -qiE "$pat" "$EVIDENCE"; then
+      if ! grep -aqiE "$pat" "$EVIDENCE"; then
         bad "B3 evidence missing /$pat/ in $(basename "$EVIDENCE")"
         missing=1
       fi

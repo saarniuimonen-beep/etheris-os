@@ -6,20 +6,243 @@
   <title>Launcher — Etheris Phase 2</title>
   <link rel="stylesheet" href="preview.css" />
   <style>
-    .launcher { width: min(640px, 92vw); padding: 20px; }
-    .cats { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0; }
-    .cats span { padding:6px 12px; border-radius:999px; border:1px solid var(--eth-border); font-size:11px; color:var(--eth-fg-muted); }
-    .cats span.on { background:var(--eth-accent-soft); color:var(--eth-fg); border-color:var(--eth-accent); }
-    .pins { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin-bottom:16px; }
-    .pins figure { margin:0; text-align:center; font-size:11px; color:var(--eth-fg-muted); }
-    .pins .app-icon { margin:0 auto 6px; }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-    .row { display:flex; gap:12px; align-items:center; padding:10px 12px; border-radius:10px; border:1px solid transparent; }
-    .row:hover, .row:focus-within { background:var(--eth-accent-soft); border-color:var(--eth-border); }
-    .row .app-icon { width:36px; height:36px; border-radius:10px; }
-    .row strong { display:block; font-size:13px; color:var(--eth-fg); font-weight:500; }
-    .row small { color:var(--eth-fg-muted); font-size:11px; }
-    @media (max-width:560px) { .pins { grid-template-columns:repeat(3,1fr); } .grid { grid-template-columns:1fr; } }
+    .overlay-scrim {
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 12, 24, 0.22);
+    }
+    /* Beat .glass border/background from preview.css */
+    .launcher.glass {
+      position: relative;
+      width: min(560px, 94vw);
+      padding: 18px 20px 16px;
+      border-radius: 22px;
+      border: none;
+      background:
+        linear-gradient(180deg, rgba(18, 36, 58, 0.97), rgba(8, 18, 34, 0.94));
+      box-shadow:
+        0 18px 48px rgba(4, 16, 36, 0.48),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      isolation: isolate;
+      overflow: visible;
+    }
+    .launcher.glass.wide { width: min(680px, 96vw); padding: 20px 22px 18px; border-radius: 24px; }
+
+    /* Unique orbit-frame border: gradient stroke + corner ticks */
+    .launcher::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(
+        135deg,
+        rgba(186, 230, 253, 0.85) 0%,
+        rgba(56, 189, 248, 0.35) 28%,
+        rgba(255, 255, 255, 0.06) 52%,
+        rgba(45, 212, 191, 0.4) 78%,
+        rgba(125, 211, 252, 0.7) 100%
+      );
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .frame-ticks {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .frame-ticks span {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: rgba(186, 230, 253, 0.9);
+      border-style: solid;
+      border-width: 0;
+      opacity: 0.9;
+    }
+    .frame-ticks .tl { top: 7px; left: 7px; border-top-width: 1.5px; border-left-width: 1.5px; border-top-left-radius: 6px; }
+    .frame-ticks .tr { top: 7px; right: 7px; border-top-width: 1.5px; border-right-width: 1.5px; border-top-right-radius: 6px; }
+    .frame-ticks .bl { bottom: 7px; left: 7px; border-bottom-width: 1.5px; border-left-width: 1.5px; border-bottom-left-radius: 6px; }
+    .frame-ticks .br { bottom: 7px; right: 7px; border-bottom-width: 1.5px; border-right-width: 1.5px; border-bottom-right-radius: 6px; }
+
+    .search {
+      display: block;
+      box-sizing: border-box;
+      background: transparent;
+      border: none;
+      border-bottom: none;
+      border-radius: 0;
+      padding: 0 2px 12px;
+      margin: 0 4px 14px;
+      width: calc(100% - 8px);
+      font: 400 15px/1.3 var(--eth-font-ui, "Noto Sans", sans-serif);
+      color: var(--eth-fg);
+      outline: none;
+      letter-spacing: 0.015em;
+      position: relative;
+      background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(125, 211, 252, 0.55) 18%,
+        rgba(45, 212, 191, 0.35) 50%,
+        rgba(125, 211, 252, 0.55) 82%,
+        transparent 100%
+      );
+      background-size: 100% 1px;
+      background-repeat: no-repeat;
+      background-position: left bottom;
+    }
+    .launcher.wide .search { font-size: 16px; padding-bottom: 14px; margin: 0 6px 16px; width: calc(100% - 12px); }
+    .search::placeholder { color: var(--eth-fg-subtle, #6b8aa3); }
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+    }
+    .launcher.wide .icon-grid { grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .tile {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 4px 8px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--eth-fg-subtle, #6b8aa3);
+      cursor: pointer;
+      font: 500 9px/1.15 var(--eth-font-ui, "Noto Sans", sans-serif);
+      text-align: center;
+      transition: color 120ms ease, transform 120ms ease;
+    }
+    .launcher.wide .tile { padding: 10px 4px 8px; font-size: 9px; }
+    .tile .well {
+      position: relative;
+      z-index: 1;
+      width: 40px;
+      height: 40px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(120% 100% at 28% 18%, rgba(255,255,255,0.22), transparent 50%),
+        linear-gradient(155deg, var(--glyph-a), var(--glyph-b));
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.22),
+        0 5px 12px rgba(4, 16, 36, 0.26);
+      transition: transform 140ms ease, box-shadow 140ms ease;
+    }
+    /* Orbital halo around icon well — not a square tile outline */
+    .tile .well::before {
+      content: "";
+      position: absolute;
+      inset: -5px;
+      border-radius: 16px;
+      border: 1.5px solid transparent;
+      background:
+        linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0)) padding-box,
+        linear-gradient(140deg, rgba(186,230,253,0.95), rgba(45,212,191,0.55), rgba(56,189,248,0.2), rgba(186,230,253,0.85)) border-box;
+      opacity: 0;
+      transform: scale(0.92);
+      transition: opacity 140ms ease, transform 140ms ease, filter 140ms ease;
+      filter: drop-shadow(0 0 0 rgba(56,189,248,0));
+      pointer-events: none;
+      z-index: 0;
+    }
+    .launcher.wide .tile .well { width: 42px; height: 42px; border-radius: 12px; }
+    .tile .well svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: #f8fbff;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 1px 1px rgba(4,16,36,0.35));
+    }
+    .launcher.wide .tile .well svg { width: 23px; height: 23px; }
+    .tile .well svg[data-fill="1"] { fill: rgba(248,251,255,0.92); stroke: none; }
+
+    .tile[data-app="bluetooth"] { --glyph-a:#60a5fa; --glyph-b:#1d4ed8; }
+    .tile[data-app="files"]     { --glyph-a:#38bdf8; --glyph-b:#0369a1; }
+    .tile[data-app="perf"]      { --glyph-a:#2dd4bf; --glyph-b:#0f766e; }
+    .tile[data-app="software"]  { --glyph-a:#a78bfa; --glyph-b:#5b21b6; }
+    .tile[data-app="defaults"]  { --glyph-a:#94a3b8; --glyph-b:#475569; }
+    .tile[data-app="gpu"]       { --glyph-a:#34d399; --glyph-b:#047857; }
+    .tile[data-app="rgb"]       { --glyph-a:#fb7185; --glyph-b:#be123c; }
+    .tile[data-app="transfer"]  { --glyph-a:#38bdf8; --glyph-b:#075985; }
+    .tile[data-app="monitor"]   { --glyph-a:#fbbf24; --glyph-b:#b45309; }
+    .tile[data-app="settings"]  { --glyph-a:#67e8f9; --glyph-b:#0e7490; }
+    .tile[data-app="wallpaper"] { --glyph-a:#c4b5fd; --glyph-b:#6d28d9; }
+    .tile[data-app="foot"]      { --glyph-a:#e2e8f0; --glyph-b:#475569; }
+    .tile[data-app="browser"]   { --glyph-a:#7dd3fc; --glyph-b:#0369a1; }
+    .tile[data-app="editor"]    { --glyph-a:#fde68a; --glyph-b:#a16207; }
+
+    .tile:hover, .tile:focus-visible {
+      color: var(--eth-fg);
+      outline: none;
+    }
+    .tile:hover .well, .tile:focus-visible .well {
+      transform: translateY(-1px);
+    }
+    .tile:hover .well::before, .tile:focus-visible .well::before {
+      opacity: 0.45;
+      transform: scale(1);
+    }
+
+    /* Glow selector — orbital ring on the icon well only */
+    .tile.is-active {
+      color: var(--eth-fg);
+      background: transparent;
+      box-shadow: none;
+    }
+    .tile.is-active .well {
+      transform: translateY(-1px) scale(1.05);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.3),
+        0 0 18px rgba(56, 189, 248, 0.45),
+        0 8px 16px rgba(4, 16, 36, 0.3);
+    }
+    .tile.is-active .well::before {
+      opacity: 1;
+      transform: scale(1);
+      filter: drop-shadow(0 0 8px rgba(56,189,248,0.65));
+    }
+
+    .tile .label {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* Slim 6×2 = 12 tiles; wide 7×2 = 14 tiles */
+    .launcher:not(.wide) .tile:nth-child(n+13) { display: none; }
+    .hint { display: none; }
+    .mode {
+      position: absolute;
+      top: 56px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      z-index: 5;
+    }
+    .mode button {
+      border: 1px solid var(--eth-border);
+      background: rgba(10,22,40,0.72);
+      color: var(--eth-fg-muted);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .mode button.on { color: var(--eth-fg); border-color: var(--eth-accent); background: var(--eth-accent-soft); }
   </style>
 </head>
 <body class="stage-wrap">
@@ -35,6 +258,10 @@
       <button type="button" data-atm="midnight-ocean">Midnight</button>
     </div>
   </div>
+  <div class="mode" role="group" aria-label="Launcher width">
+    <button type="button" id="slim" class="on">Slim</button>
+    <button type="button" id="wide">Wide</button>
+  </div>
   <div class="stage">
     <header class="panel">
       <img class="mark" src="assets/mark.svg" alt="" />
@@ -44,28 +271,130 @@
       <span class="clock">Thu 20:18</span>
     </header>
     <div class="overlay-scrim">
-      <div class="glass launcher pop" role="dialog" aria-label="Application launcher">
-        <h2 style="margin:0 0 4px;font-size:18px">Applications</h2>
-        <p style="margin:0 0 14px;color:var(--eth-fg-muted);font-size:12px">Search focuses on open · Super+D · Esc closes (closes other overlays)</p>
-        <input class="input" type="search" placeholder="Search apps…" autofocus />
-        <div class="cats"><span class="on">Pinned</span><span>Recent</span><span>System</span><span>Internet</span><span>Media</span></div>
-        <div class="pins">
-          <figure><div class="app-icon">Term</div>Terminal</figure>
-          <figure><div class="app-icon">Files</div>Files</figure>
-          <figure><div class="app-icon">Web</div>Browser</figure>
-          <figure><div class="app-icon">Edit</div>Editor</figure>
-          <figure><div class="app-icon">Soft</div>Software</figure>
-          <figure><div class="app-icon">Set</div>Settings</figure>
+      <div class="glass launcher pop" id="launcher" role="dialog" aria-label="Application launcher">
+        <div class="frame-ticks" aria-hidden="true"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+        <input class="search" type="search" placeholder="Search" autofocus aria-label="Search apps" />
+        <div class="icon-grid" id="grid" role="listbox" aria-label="Applications">
+
+          <button class="tile is-active" data-app="bluetooth" role="option" aria-selected="true">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7.2L16.5 12 7 16.8"/><path d="M12 3.5v17"/><path d="M7 7.2l9.5 4.8L7 16.8"/><path d="M7.5 8.2l8.5 8.6M7.5 15.8l8.5-8.6"/></svg></span>
+            <span class="label">Bluetooth</span>
+          </button>
+          <button class="tile" data-app="files" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9z"/></svg></span>
+            <span class="label">Etheris Files</span>
+          </button>
+          <button class="tile" data-app="perf" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16"/><path d="M8 15l3-5 3 3 4-7"/></svg></span>
+            <span class="label">Performance</span>
+          </button>
+          <button class="tile" data-app="software" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></span>
+            <span class="label">Software</span>
+          </button>
+          <button class="tile" data-app="defaults" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></span>
+            <span class="label">Defaults</span>
+          </button>
+          <button class="tile" data-app="gpu" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7V5m4 2V4m4 3V5m2 12v2m-4-2v3m-4-3v2"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/></svg></span>
+            <span class="label">GPU Tools</span>
+          </button>
+          <button class="tile" data-app="rgb" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2"/><path d="M12 5v2.2M12 16.8V19M5 12h2.2M16.8 12H19"/></svg></span>
+            <span class="label">RGB</span>
+          </button>
+          <button class="tile" data-app="transfer" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 8h11l-3-3M17 16H6l3 3"/><path d="M18 8v5M6 16V11"/></svg></span>
+            <span class="label">Transfer</span>
+          </button>
+          <button class="tile" data-app="monitor" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+            <span class="label">Monitor</span>
+          </button>
+          <button class="tile" data-app="settings" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 8.2a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6z"/><path d="M19.4 13a7.6 7.6 0 0 0 .1-2l2-1.2-2-3.4-2.3.7a7.7 7.7 0 0 0-1.7-1L15 3.5h-6l-.5 2.6a7.7 7.7 0 0 0-1.7 1L4.5 6.4l-2 3.4 2 1.2a7.6 7.6 0 0 0 .1 2l-2 1.2 2 3.4 2.3-.7a7.7 7.7 0 0 0 1.7 1L9 20.5h6l.5-2.6a7.7 7.7 0 0 0 1.7-1l2.3.7 2-3.4-2-1.2z"/></svg></span>
+            <span class="label">Settings</span>
+          </button>
+          <button class="tile" data-app="wallpaper" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M3 16l5-4 4 3 3-2 6 4"/></svg></span>
+            <span class="label">Wallpaper</span>
+          </button>
+          <button class="tile" data-app="foot" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 14h5"/></svg></span>
+            <span class="label">Foot</span>
+          </button>
+          <button class="tile" data-app="browser" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M3.5 12h17M12 4a14 14 0 0 1 0 16M12 4a14 14 0 0 0 0 16"/></svg></span>
+            <span class="label">Browser</span>
+          </button>
+          <button class="tile" data-app="editor" role="option">
+            <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19l1.2-4.5L15.8 5a2 2 0 0 1 2.8 2.8L9.5 16.8 5 19z"/><path d="M13.5 7.5l3 3"/></svg></span>
+            <span class="label">Editor</span>
+          </button>
+
         </div>
-        <div class="grid">
-          <div class="row" tabindex="0"><div class="app-icon">Foot</div><div><strong>Foot</strong><small>Recently used</small></div></div>
-          <div class="row" tabindex="0"><div class="app-icon">PCM</div><div><strong>PCManFM</strong><small>File manager</small></div></div>
-          <div class="row" tabindex="0"><div class="app-icon">Pav</div><div><strong>Volume Control</strong><small>PipeWire</small></div></div>
-          <div class="row" tabindex="0"><div class="app-icon">Steam</div><div><strong>Steam</strong><small>Gaming</small></div></div>
-        </div>
+        <p class="hint">Arrow keys · Enter · Esc</p>
       </div>
     </div>
   </div>
   <script src="stage.js"></script>
+  <script>
+    const launcher = document.getElementById('launcher');
+    const tiles = [...document.querySelectorAll('.tile')];
+    let cols = 6;
+    let idx = 0;
+
+    function visibleTiles() {
+      return tiles.filter(t => getComputedStyle(t).display !== 'none');
+    }
+
+    function select(i) {
+      const vis = visibleTiles();
+      if (!vis.length) return;
+      idx = ((i % vis.length) + vis.length) % vis.length;
+      tiles.forEach(t => {
+        const on = t === vis[idx];
+        t.classList.toggle('is-active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      vis[idx].focus({ preventScroll: true });
+    }
+
+    tiles.forEach((tile) => {
+      tile.addEventListener('click', () => {
+        const vis = visibleTiles();
+        const at = vis.indexOf(tile);
+        if (at >= 0) select(at);
+      });
+    });
+
+    document.getElementById('slim').onclick = () => {
+      launcher.classList.remove('wide'); cols = 6;
+      document.getElementById('slim').classList.add('on');
+      document.getElementById('wide').classList.remove('on');
+      select(Math.min(idx, visibleTiles().length - 1));
+    };
+    document.getElementById('wide').onclick = () => {
+      launcher.classList.add('wide'); cols = 7;
+      document.getElementById('wide').classList.add('on');
+      document.getElementById('slim').classList.remove('on');
+      select(Math.min(idx, visibleTiles().length - 1));
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) &&
+          !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape'].includes(e.key)) {
+        return;
+      }
+      const vis = visibleTiles();
+      const cur = vis.findIndex(t => t.classList.contains('is-active'));
+      const at = cur < 0 ? 0 : cur;
+      if (e.key === 'ArrowRight') { e.preventDefault(); select(at + 1); }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); select(at - 1); }
+      if (e.key === 'ArrowDown')  { e.preventDefault(); select(at + cols); }
+      if (e.key === 'ArrowUp')    { e.preventDefault(); select(at - cols); }
+    });
+  </script>
 </body>
 </html>

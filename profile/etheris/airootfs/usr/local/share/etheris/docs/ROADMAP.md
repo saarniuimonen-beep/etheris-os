@@ -12,7 +12,7 @@ This document folds the project recommendations into an honest roadmap mapped to
 1. **Reliability** — installer, first boot, greeter, session, updates that do not brick
 2. **Security & privacy** — strong defaults, no live credentials on disk installs, scoped polkit
 3. **Maintainability** — reproducible builds, tests, small core, optional package groups
-4. **Identity** — Etheris desktop (Flow / Neo-Aero direction) as a coherent OS, not a package collage
+4. **Identity** — Etheris desktop (Flow / Ocean Glass) as a coherent OS, not a package collage
 
 ---
 
@@ -29,7 +29,9 @@ This document folds the project recommendations into an honest roadmap mapped to
 | Control Center / Settings / OOBE / themes | Partial — present; polish ongoing |
 | Hardware / GPU / gaming tooling on ISO | Present · physical matrix open |
 | Source CI (`bash -n`, P0, `check-profile`) | Done |
-| LUKS · Secure Boot · Software Center · SELinux | **Not started** (deferred by design until reliability) |
+| Optional LUKS in installer | **Done** (QEMU E2E 2026-11-15; default off) |
+| Software Center | **Done** (GTK + package groups in tree/ISO) |
+| Secure Boot · SELinux | Secure Boot unsupported (plan/spike only) · SELinux stays off |
 
 ---
 
@@ -37,7 +39,7 @@ This document folds the project recommendations into an honest roadmap mapped to
 
 | Recommendation | Plan | When |
 |----------------|------|------|
-| Optional LUKS in installer | Opt-in UI + documented recovery | Alpha **0.3** |
+| Optional LUKS in installer | **Done** in CLI (`--luks`); polish recovery docs / UI | Alpha **0.2–0.3** |
 | Secure Boot (signed bootloader + keys) | After installer LUKS path is solid | Alpha **0.3** |
 | Review sudo / services / live creds | Keep auditing; live sudoers already stripped on install | Ongoing · Alpha **0.2** |
 | Firewall defaults | Today: **nftables**; evaluate firewalld only if it clearly improves UX without regressing live | Alpha **0.3** review |

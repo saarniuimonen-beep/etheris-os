@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Etheris workspace profiles — save/restore settings.conf + panel layout (off by default)
+# Etheris workspace profiles — save/restore settings + optional layout notes
 set -euo pipefail
 
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
@@ -14,6 +14,7 @@ Usage:
   etheris profiles list
   etheris profiles save <name>     Snapshot settings.conf
   etheris profiles load <name>     Restore + apply session
+  etheris profiles show <name>     Print snapshot
   etheris profiles delete <name>
   etheris profiles help
 
@@ -26,18 +27,36 @@ list_prof() {
   echo "Profiles in $PROF_DIR"
   local f
   shopt -s nullglob
+  local any=0
   for f in "$PROF_DIR"/*.conf; do
-    echo "  $(basename "$f" .conf)"
+    any=1
+    printf '  %-20s  %s\n' "$(basename "$f" .conf)" "$(date -r "$f" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '')"
   done
+  ((any)) || echo "  (none yet — try: etheris profiles save focus)"
 }
 
 save_prof() {
   local name="${1:-}"
   [[ -n "$name" ]] || { usage; exit 2; }
-  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "Invalid name"; exit 1; }
+  [[ "$name" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo "Invalid name (use letters, numbers, _-)"; exit 1; }
   mkdir -p "$PROF_DIR"
-  [[ -f "$SETTINGS" ]] || { echo "No settings.conf yet"; exit 1; }
-  cp -a "$SETTINGS" "$PROF_DIR/${name}.conf"
+  if [[ ! -f "$SETTINGS" ]]; then
+    mkdir -p "$CONF_DIR"
+    cat >"$SETTINGS" <<'EOF'
+theme=ocean-glass
+wallpaper=/usr/local/share/etheris/wallpapers/ocean-glass.png
+accent=#38bdf8
+blur=off
+animations=on
+performance_profile=balanced
+EOF
+  fi
+  {
+    echo "# Etheris profile: $name"
+    echo "# saved_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# host: $(hostname 2>/dev/null || echo unknown)"
+    grep -vE '^\s*(#|$)' "$SETTINGS" || true
+  } >"$PROF_DIR/${name}.conf"
   echo "Saved profile: $name"
 }
 
@@ -47,11 +66,26 @@ load_prof() {
   f="$PROF_DIR/${name}.conf"
   [[ -f "$f" ]] || { echo "Unknown profile: $name"; list_prof; exit 1; }
   mkdir -p "$CONF_DIR"
-  cp -a "$f" "$SETTINGS"
+  # Drop metadata comments when restoring settings.conf
+  grep -vE '^\s*#|^$' "$f" >"$SETTINGS" || cp -a "$f" "$SETTINGS"
   echo "Loaded profile: $name"
   if command -v etheris >/dev/null; then
     etheris apply-session >/dev/null 2>&1 || true
   fi
+  # Best-effort performance profile from snapshot
+  local perf
+  perf="$(awk -F= '/^performance_profile=/{print $2; exit}' "$SETTINGS" 2>/dev/null || true)"
+  if [[ -n "$perf" ]] && command -v etheris-perf >/dev/null; then
+    etheris-perf set "$perf" >/dev/null 2>&1 || true
+  fi
+}
+
+show_prof() {
+  local name="${1:-}" f
+  [[ -n "$name" ]] || { usage; exit 2; }
+  f="$PROF_DIR/${name}.conf"
+  [[ -f "$f" ]] || { echo "Unknown profile: $name"; exit 1; }
+  cat "$f"
 }
 
 del_prof() {
@@ -67,6 +101,7 @@ case "${1:-list}" in
   list|ls) list_prof ;;
   save|create) shift; save_prof "${1:-}" ;;
   load|apply) shift; load_prof "${1:-}" ;;
+  show|cat) shift; show_prof "${1:-}" ;;
   delete|rm) shift; del_prof "${1:-}" ;;
   help|-h|--help) usage ;;
   *) usage; exit 1 ;;

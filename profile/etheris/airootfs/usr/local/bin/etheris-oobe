@@ -117,6 +117,7 @@ draft_get() {
 }
 
 oobe_should_run() {
+  [[ "${ETHERIS_SKIP_OOBE:-0}" == "1" ]] && return 1
   is_live && return 1
   [[ "$(conf_get enabled 1)" == "1" ]] || return 1
   local st
@@ -183,7 +184,7 @@ apply_appearance() {
 apply_all() {
   local kb theme
   kb="$(draft_get keyboard us)"
-  theme="$(draft_get theme mist)"
+  theme="$(draft_get theme ocean-glass)"
   apply_keyboard "$kb" "$(draft_get keyboard_variant "")"
   apply_appearance "$theme"
 }
@@ -324,7 +325,7 @@ page_appearance() {
     done < <(find "$SHARE/themes" -maxdepth 1 -name '*.theme' | sort)
   fi
   if [[ ${#themes[@]} -eq 0 ]]; then
-    themes=(mist)
+    themes=(ocean-glass)
   fi
   local i=1
   for t in "${themes[@]}"; do
@@ -370,7 +371,7 @@ page_review() {
   echo "  Review"
   echo
   echo "  Keyboard:  $(draft_get keyboard us)"
-  echo "  Theme:     $(draft_get theme mist)"
+  echo "  Theme:     $(draft_get theme ocean-glass)"
   echo "  Privacy:   defaults kept"
   echo
   echo "    1) Apply & finish"
@@ -427,6 +428,10 @@ cmd_maybe_run() {
     exit 0
   fi
   foot -T "Etheris OS setup" -a etheris-oobe etheris-oobe run
+  # Full-desktop path: reload Sway so keyboard/theme from OOBE apply immediately.
+  if [[ -n "${SWAYSOCK:-}" && "${ETHERIS_OOBE_SESSION:-0}" != "1" ]]; then
+    swaymsg reload >/dev/null 2>&1 || true
+  fi
 }
 
 cmd_mark() {

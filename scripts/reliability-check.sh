@@ -25,12 +25,17 @@ echo
 section() { echo; echo "==> $*"; }
 AI=profile/etheris/airootfs
 
+# Accidental host bytecode must not fail R0.1 (prepare-profile also cleans).
+find "$AI" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+find "$AI" -name '*.pyc' -delete 2>/dev/null || true
+
 section "R0.1 check-profile"
 if ./scripts/check-profile.sh >/tmp/etheris-reliability-profile.log 2>&1; then
   pass "check-profile PASSED"
 else
   bad "check-profile FAILED"
-  tail -20 /tmp/etheris-reliability-profile.log | sed 's/^/  | /'
+  grep -E 'FAIL |FAILED' /tmp/etheris-reliability-profile.log | sed 's/^/  | /' || true
+  tail -12 /tmp/etheris-reliability-profile.log | sed 's/^/  | /'
 fi
 
 section "R0.2 P0 security"

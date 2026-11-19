@@ -1,6 +1,6 @@
 # Etheris OS — Session log (continue here)
 
-**Last updated:** 2026-11-15T22:45+0200  
+**Last updated:** 2026-11-19T21:00+0200  
 **Version:** 0.1.0-alpha  
 **Host:** Omarchy (Arch-like; builds via Podman `--network=host`; tests via `qemu:///session`)
 
@@ -8,7 +8,102 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 
 ---
 
-## Status snapshot — CONTINUE HERE (2026-11-15 · Idle RAM ≤500 MiB ROCK-SOLID PASS)
+## Status snapshot — CONTINUE HERE (2026-11-19 · Game-ready ROCK-SOLID PASS)
+
+| Item | Status |
+|------|--------|
+| ISO | `out/etheris-2026.11.19-x86_64.iso` |
+| SHA256 | `10ea77d5b2c183341b85635a9f10693bd102f02b620cf809170e08c394482265` |
+| Criteria | [`docs/GAME-READY-CRITERIA.md`](docs/GAME-READY-CRITERIA.md) · `scripts/test-game-ready.sh` / `test-game-ready-live.sh` |
+| Host G0–G2 + G3 evidence | **32 OK, 0 FAIL** |
+| Live G3 (no guest-apply) | **8 OK** · cow **2G** · `max_map_count=2147483642` · steam/wine/gamemode/mangohud/gamescope · `gamemode_group=yes` |
+| Drivers (QEMU) | Virtio honest · llvmpipe · Vulkan no ICD (expected) |
+| Evidence | [`out/VERIFICATION-GAME-READY-ROCKSOLID-20261119.md`](out/VERIFICATION-GAME-READY-ROCKSOLID-20261119.md) · `out/qemu-game-ready-20261119T182226Z/` |
+| **Not claimed** | Physical GPU / real Steam titles / anti-cheat online — needs DUT matrix |
+
+### Game-ready fixes this pass
+
+| Fix | Why |
+|-----|-----|
+| Dropped `lib32-openal` | Arch removed package → ISO bake `target not found` |
+| Hub Steam present/missing | Stopped always claiming “pre-installed” on lean installs |
+| Template + hook (no airootfs `/usr/share` dupe) | `etheris/desktop/steam.desktop` + pacman hook / live-ready rewrite stock desktop |
+| Modeset + GameMode group + no global SDL X11 | Wayland Steam/games path; doctor gate |
+
+---
+
+## Status snapshot — CONTINUE HERE (2026-11-19 · Extreme polish bake)
+
+### ISO + gates
+
+| Item | Status |
+|------|--------|
+| ISO | `out/etheris-2026.11.19-x86_64.iso` |
+| SHA256 | `173b316bf047373a100b23b93fde678fa98002314a6930ac2b899d2350c63cf0` |
+| `validate-iso` | **30 OK** (packages/privacy/report/software/monitor/profiles/groups) |
+| Host reliability / maturity | **21 OK** · **15 OK** |
+| Rock-solid live | **11 OK, 0 FAIL** · greeter **53s** · auth **12 OK** · doctor **16 OK** |
+| Evidence | [`out/VERIFICATION-POLISH-20261119.md`](out/VERIFICATION-POLISH-20261119.md) · `out/qemu-rocksolid-20261119T170252Z/` · `out/qemu-polish-20261119/` |
+
+### Extreme polish shipped
+
+| Area | Change |
+|------|--------|
+| Software Center | GTK filter · install/remove · installed counts · office group |
+| Monitor | CLI + GTK live UI · session_pss gate |
+| Privacy / report / packages | Richer CLI · doctor tooling section · report extras |
+| Lock | Wallpaper fill + Neo-Aero indicator |
+| Desktop consistency | Waybar `etheris` wordmark · glass blur default **off** (tokens) |
+| validate-iso | Local extract now includes Alpha 0.4 binaries (fixed false FAIL) |
+
+## Status snapshot — CONTINUE HERE (2026-11-19 · Bug criteria ROCK-SOLID PASS)
+
+| Item | Status |
+|------|--------|
+| `docs/BUG-CRITERIA.md` · `scripts/test-bugs.sh` | **ROCK-SOLID PASS — 38 OK** (B0–B2 + B1.22–B1.29 seals) |
+| Live B3 (no guest-apply) | **7 OK** · auth **12 OK** · doctor **0 FAIL** · perf/hover active · soak ×10 |
+| ISO | `etheris-2026.11.19` · SHA256 `173b316bf047373a100b23b93fde678fa98002314a6930ac2b899d2350c63cf0` |
+| Evidence | [`out/VERIFICATION-BUGS-ROCKSOLID-20261119.md`](out/VERIFICATION-BUGS-ROCKSOLID-20261119.md) · `out/qemu-bugs-20261119T174218Z/` |
+
+Gate hygiene: host `__pycache__` no longer false-fails B0.1 (cleaned before profile/reliability).
+
+---
+
+### Follow-up (tree — post-bake, from explore P0/P1)
+
+Fixed in tree after ISO bake (guest-apply: `out/p0-followup-apply.tgz`):
+
+| Fix | Detail |
+|-----|--------|
+| Lock routing | CC / power-menu / hub → `etheris-lock` (+ variant tokens) |
+| Settings seeds | blur=`off`, `browser_preload=off` (CC / theme-apply / hub) |
+| `etheris ram idle-check` | argv was `${2:-}` after shift → `${1:-}` |
+| browser preload default | missing key → **off** |
+| Desktop dupes | Browsers vs Defaults names; Firefox private → `etheris-browser` |
+| Overview click | Waybar → `etheris-overlay menu …` |
+| OOBE | `ETHERIS_SKIP_OOBE=1` honored; default theme `ocean-glass` |
+| Installer | rewrite channel/mirrors via `etheris-update channel stable` |
+| Foot palettes | distinct dark/light from both token files |
+| Update locks | channel/refresh acquire lock |
+
+**Still needs rebake** to ship without inject. Live ISO `2026.11.19` is otherwise rock-solid.
+
+### Next
+
+1. Guest-apply `out/p0-followup-apply.tgz` (+ optional `out/cc-monitor-apply.tgz`) or rebake.  
+2. Owner soak Software Center Install on disk install.  
+3. Keep website local · defer Secure Boot signed / public publish.
+
+```bash
+cd ~/etheris-os
+tail -3 out/SHA256SUMS
+virsh -c qemu:///session start etheris-os
+# live: etheris / etheris · Super+A Menu · etheris software-center · etheris monitor ui
+```
+
+---
+
+## Prior — CONTINUE HERE (2026-11-15 · Idle RAM ≤500 MiB ROCK-SOLID PASS)
 
 ### Idle RAM criteria (extremely strict)
 

@@ -354,6 +354,7 @@ if [[ "$GAMING" == "1" ]]; then
     PKGS+=(lib32-mesa lib32-vulkan-icd-loader lib32-vulkan-intel lib32-vulkan-radeon
       lib32-pipewire lib32-libpipewire lib32-alsa-plugins lib32-libpulse
       lib32-gnutls lib32-sqlite lib32-libcups lib32-vkd3d
+      lib32-freetype2 lib32-curl lib32-dbus lib32-fontconfig
       openal vkd3d
       steam steam-devices gamemode lib32-gamemode mangohud lib32-mangohud
       gamescope wine wine-mono wine-gecko winetricks zenity cabextract
@@ -404,8 +405,11 @@ cat > /etc/hosts <<EOF
 EOF
 id "$USERNAME" >/dev/null 2>&1 || useradd -m -G wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users -s /bin/bash "$USERNAME"
 usermod -aG wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users "$USERNAME"
-# GameMode renice privileges (group created by gamemode package when installed)
-if getent group gamemode >/dev/null 2>&1; then
+# GameMode renice privileges (group from gamemode package; create if gaming stack present)
+if command -v gamemoderun >/dev/null 2>&1 || pacman -Qq gamemode &>/dev/null; then
+  groupadd -f gamemode 2>/dev/null || true
+  usermod -aG gamemode "$USERNAME"
+elif getent group gamemode >/dev/null 2>&1; then
   usermod -aG gamemode "$USERNAME"
 fi
 # Polkit: wheel GUI admin (copied from share after overlay; placeholder ok)
@@ -608,9 +612,15 @@ for d in IMMUTABLE.md HARDWARE.md GAMING.md DRIVER-RECOVERY.md PERFORMANCE-MANAG
 done
 
 [[ -f /etc/sysctl.d/99-etheris-security.conf ]] && cp -a /etc/sysctl.d/99-etheris-security.conf "$MNT/etc/sysctl.d/"
+# Proton map count + NVIDIA Wayland modeset (safe even when gaming stack is lean)
+[[ -f /etc/sysctl.d/99-etheris-gaming.conf ]] && cp -a /etc/sysctl.d/99-etheris-gaming.conf "$MNT/etc/sysctl.d/"
+mkdir -p "$MNT/etc/modprobe.d"
+[[ -f /etc/modprobe.d/etheris-nvidia.conf ]] && cp -a /etc/modprobe.d/etheris-nvidia.conf "$MNT/etc/modprobe.d/"
 [[ -d /etc/pacman.d/hooks ]] && mkdir -p "$MNT/etc/pacman.d/hooks"
 [[ -f /etc/pacman.d/hooks/etheris-nvidia-pascal-guard.hook ]] && \
   cp -a /etc/pacman.d/hooks/etheris-nvidia-pascal-guard.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
+[[ -f /etc/pacman.d/hooks/etheris-steam-desktop.hook ]] && \
+  cp -a /etc/pacman.d/hooks/etheris-steam-desktop.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
 [[ -f /etc/pacman.d/hooks/etheris-bootctl.hook ]] && \
   cp -a /etc/pacman.d/hooks/etheris-bootctl.hook "$MNT/etc/pacman.d/hooks/" 2>/dev/null || true
 [[ -f /etc/systemd/system/etheris-cpu-setup.service ]] && \
@@ -627,6 +637,23 @@ cp -a /usr/local/bin/etheris-update "$MNT/usr/local/bin/" 2>/dev/null || true
 mkdir -p "$MNT/usr/local" "$MNT/etc/pacman.d"
 cp -a /usr/local/bin/etheris* "$MNT/usr/local/bin/" 2>/dev/null || true
 cp -a /usr/local/share/etheris "$MNT/usr/local/share/" 2>/dev/null || true
+# Steam must launch via etheris-steam (space/DNS/XWayland guards). Pacstrap
+# installs stock steam.desktop — ship XDG entry under /usr/local + template,
+# and rewrite /usr/share so non-XDG tools also hit the wrapper.
+mkdir -p "$MNT/usr/local/share/applications" "$MNT/usr/local/share/etheris/desktop" \
+  "$MNT/usr/share/applications"
+_steam_src=""
+if [[ -f /usr/local/share/etheris/desktop/steam.desktop ]]; then
+  _steam_src=/usr/local/share/etheris/desktop/steam.desktop
+elif [[ -f /usr/local/share/applications/steam.desktop ]]; then
+  _steam_src=/usr/local/share/applications/steam.desktop
+fi
+if [[ -n "$_steam_src" ]] && grep -q '^Exec=etheris-steam' "$_steam_src"; then
+  cp -a "$_steam_src" "$MNT/usr/local/share/applications/steam.desktop"
+  cp -a "$_steam_src" "$MNT/usr/local/share/etheris/desktop/steam.desktop"
+  cp -a "$_steam_src" "$MNT/usr/share/applications/steam.desktop"
+fi
+unset _steam_src
 # Wayland session: Etheris (Sway) must ship; hide stock sway.desktop from greeters
 mkdir -p "$MNT/usr/share/wayland-sessions"
 if [[ -f /usr/share/wayland-sessions/etheris.desktop ]]; then
@@ -673,6 +700,17 @@ cp -a /etc/pacman.d/mirrorlist "$MNT/etc/pacman.d/mirrorlist"
 # Keep multilib enabled in installed pacman.conf
 if [[ -f /etc/pacman.conf ]]; then
   cp -a /etc/pacman.conf "$MNT/etc/pacman.conf"
+fi
+# Coherent update channel: do not leave live rolling mirrors with "stable" state.
+# Prefer etheris-update rewrite; fall back to clearing stale previous-* snapshots.
+if [[ -x "$MNT/usr/local/bin/etheris-update" ]]; then
+  arch-chroot "$MNT" etheris-update channel stable 2>/dev/null \
+    || arch-chroot "$MNT" bash -lc 'etheris-update channel stable' 2>/dev/null \
+    || true
+else
+  printf 'stable\n' >"$MNT/var/lib/etheris/channel" 2>/dev/null || true
+  rm -f "$MNT/var/lib/etheris/previous-mirrorlist" \
+        "$MNT/var/lib/etheris/previous-channel" 2>/dev/null || true
 fi
 cp -a /etc/skel/.config "$MNT/home/${USERNAME}/" 2>/dev/null || true
 arch-chroot "$MNT" chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}"

@@ -16,15 +16,17 @@ Package list source of truth: `/usr/local/share/etheris/gaming-packages.list`
 - **Wine** + **wine-mono** + **wine-gecko** + **winetricks** + **zenity** / **cabextract**
 - **vkd3d** / **lib32-vkd3d** (D3D12 translation helpers)
 - **protontricks**, **umu-launcher** (Proton prefixes + non-Steam Proton)
-- Vulkan + Mesa ICDs (Intel/AMD) + **lib32** graphics/audio/net/font libs
-- **GameMode**, **MangoHud**, **Gamescope**
+- Vulkan + Mesa ICDs (Intel/AMD) + **lib32** graphics/audio/net/font libs (`openal`; Arch no longer ships `lib32-openal`)
+- **GameMode** (user must be in `gamemode` group — installer / `etheris-auth-setup` / `etheris-gaming-setup`), **MangoHud**, **Gamescope**
 - GStreamer base/good/bad + **gst-libav** (launcher / in-game video)
 - PipeWire audio, Bluetooth (`bluez`)
 - `vm.max_map_count` raised for Proton/Wine (`99-etheris-gaming.conf`)
 
-Launchers: Steam desktop entry + `etheris` menu → Steam (`etheris-steam`).
+Launchers: `/usr/local/share/applications/steam.desktop` → `etheris-steam` (XDG; wins over stock). Template `/usr/local/share/etheris/desktop/steam.desktop` + pacman hook / live-ready rewrite `/usr/share` after Steam package installs. No second airootfs XDG basename (check-profile).
 
-Helpers: `etheris-gaming-setup` (`status` / `force` / `runtimes` / `steamplay`).
+Post-install path (lean → gaming): `sudo etheris packages install gaming` (enables multilib, joins `gamemode`, restores desktop override) → log out/in → `etheris-gaming-setup` → `etheris-steam`.
+
+Helpers: `etheris-gaming-setup` (`status` / `force` / `doctor` / `runtimes` / `steamplay`). Skel seeds `environment.d/99-etheris-gaming.conf` + calm `MangoHud.conf` (no global `SDL_VIDEODRIVER=x11`).
 
 ## Anti-cheat (honest)
 
@@ -40,6 +42,8 @@ Optional **third-party** user install (AUR / upstream). Not an official Arch or 
 - Pascal → **580xx** proprietary stack (`etheris-drivers pascal-guide`).
 - Turing+ → `nvidia-open` matching userspace (`etheris-drivers apply`).
 - Nouveau is not the gaming path.
+- Wayland requires DRM modeset: `/etc/modprobe.d/etheris-nvidia.conf` (`nvidia_drm modeset=1`). Rebuild initramfs after installing proprietary drivers, then reboot.
+- `etheris-steam` sets `SDL_VIDEODRIVER=x11` **only for Steam**. Global `environment.d` must not force X11 (breaks native Wayland games / Gamescope).
 
 ## Other limitations
 
@@ -53,6 +57,7 @@ Optional **third-party** user install (AUR / upstream). Not an official Arch or 
 ```bash
 etheris gaming
 etheris-gaming-setup status
+etheris-gaming-setup doctor   # strict OS stack gate
 wine --version
 winetricks list-installed   # after a prefix exists
 etheris-hw gpu
@@ -64,6 +69,8 @@ etheris-steam
 # re-queue Proton + anti-cheat tools:
 #   etheris-gaming-setup runtimes
 ```
+
+**Strict honesty:** OS stack PASS ≠ physical GPU certification. Fill a row in [HARDWARE-TEST-MATRIX.md](HARDWARE-TEST-MATRIX.md) before claiming game-ready on silicon.
 
 ## Related
 

@@ -19,4 +19,4 @@ Exec=etheris-browser --new-window %u
 
 [Desktop Action new-private-window]
 Name=New Private Window
-Exec=firefox --private-window %u
+Exec=etheris-browser --private-window %u

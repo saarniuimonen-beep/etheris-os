@@ -1,0 +1,12 @@
+# Etheris package group: office — documents / productivity
+libreoffice-fresh
+evince
+thunderbird
+hunspell
+hunspell-en_us
+hyphen
+hyphen-en
+poppler
+zip
+unzip
+xdg-desktop-portal-gtk

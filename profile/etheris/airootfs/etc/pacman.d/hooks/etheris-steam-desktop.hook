@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = steam
+
+[Action]
+Description = Etheris: keep steam.desktop on etheris-steam wrapper
+When = PostTransaction
+Exec = /usr/bin/bash -c 'src=/usr/local/share/etheris/desktop/steam.desktop; if [[ -f $src ]] && grep -q "^Exec=etheris-steam" "$src"; then install -Dm644 "$src" /usr/share/applications/steam.desktop; install -Dm644 "$src" /usr/local/share/applications/steam.desktop; fi'
+Depends = bash

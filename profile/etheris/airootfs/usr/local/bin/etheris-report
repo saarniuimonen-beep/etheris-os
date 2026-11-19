@@ -53,6 +53,18 @@ cmd_create() {
   if command -v etheris-hw >/dev/null 2>&1; then
     etheris-hw 2>&1 | redact >"$outdir/hardware.txt" || true
   fi
+  if command -v etheris-privacy >/dev/null 2>&1; then
+    etheris-privacy status 2>&1 | redact >"$outdir/privacy.txt" || true
+  fi
+  if command -v etheris-packages >/dev/null 2>&1; then
+    etheris-packages list 2>&1 | redact >"$outdir/packages.txt" || true
+  fi
+  if command -v etheris-perf >/dev/null 2>&1; then
+    etheris-perf status 2>&1 | redact >"$outdir/perf.txt" || true
+  fi
+  if command -v etheris-doctor >/dev/null 2>&1; then
+    etheris-doctor --json 2>/dev/null | redact >"$outdir/doctor.json" || true
+  fi
 
   uname -a >"$outdir/uname.txt" 2>/dev/null || true
   {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Etheris OS — Kickoff-style application launcher (Rofi).
+# Etheris OS — Spotlight-style application launcher (Rofi).
 # Styles: slim (default) · wide — set launcher_style in settings.conf
 # Icons: launcher_icons=on|off — off is faster on virtio/TCG (no Papirus scan).
 set -euo pipefail
@@ -73,12 +73,28 @@ configuration {
   show-icons: true;
   icon-theme: "Papirus-Dark";
   font: "Noto Sans 12";
+  terminal: "foot";
   sidebar-mode: false;
   display-drun: "Apps";
   display-pinned: "Pinned";
   display-run: "Run";
   display-window: "Windows";
   drun-display-format: "{name}";
+  hover-select: true;
+  me-select-entry: "";
+  me-accept-entry: [ MousePrimary ];
+  cycle: true;
+  matching: "fuzzy";
+  sort: true;
+  normalize-match: true;
+  kb-move-char-back: "Control+b";
+  kb-move-char-forward: "Control+f";
+  kb-row-left: "Left";
+  kb-row-right: "Right";
+  kb-row-up: "Up";
+  kb-row-down: "Down";
+  kb-accept-entry: "Return,KP_Enter";
+  kb-cancel: "Escape";
 }
 @theme "etheris-slim"
 EOF

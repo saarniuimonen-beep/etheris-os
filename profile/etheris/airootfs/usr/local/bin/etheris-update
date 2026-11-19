@@ -200,6 +200,7 @@ cmd_channel() {
     read -r -p "Type RC to confirm: " ans
     [[ "$ans" == RC ]] || { echo "Aborted"; exit 1; }
   fi
+  acquire_lock channel
   save_previous
   apply_channel_mirrors "$target"
   echo "Channel set to ${target}; snapshot $(current_snapshot)"
@@ -211,6 +212,7 @@ cmd_refresh() {
   need_root refresh
   local ch
   ch="$(current_channel)"
+  acquire_lock refresh
   save_previous
   apply_channel_mirrors "$ch"
   echo "Refreshed ${ch} → snapshot $(current_snapshot)"

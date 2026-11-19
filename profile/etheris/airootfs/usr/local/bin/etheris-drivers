@@ -170,12 +170,25 @@ EOF
   echo "Installing: ${PKGS[*]}"
   pacman -Sy --needed --noconfirm "${PKGS[@]}"
 
+  # Wayland/Sway/Gamescope need DRM modeset when proprietary NVIDIA is used.
+  if [[ ! -f /etc/modprobe.d/etheris-nvidia.conf ]]; then
+    install -d -m 755 /etc/modprobe.d
+    cat >/etc/modprobe.d/etheris-nvidia.conf <<'EOF'
+# Etheris OS — NVIDIA DRM / Wayland gaming defaults.
+options nvidia_drm modeset=1
+options nvidia_drm fbdev=1
+options nvidia NVreg_PreserveVideoMemoryAllocations=1
+options nvidia NVreg_TemporaryFilePath=/var/tmp
+EOF
+    echo "Wrote /etc/modprobe.d/etheris-nvidia.conf (modeset=1)"
+  fi
+
   if [[ "$plan" == pascal-legacy-aur ]]; then
     cmd_pascal_guide
     echo
     echo "Official packages applied (Mesa/Vulkan stack). Complete Pascal support with AUR 580xx — see above."
   elif [[ "$plan" == nvidia-open ]]; then
-    echo "Configured Turing+ path: nvidia-open. Rebuild initramfs if prompted, then reboot."
+    echo "Configured Turing+ path: nvidia-open. Rebuild initramfs (mkinitcpio -P), then reboot."
   else
     echo "Applied open graphics stack for detected devices."
   fi
@@ -206,11 +219,17 @@ Arch news: NVIDIA 590+ / nvidia-open dropped Pascal. Use AUR 580xx.
 5) Pin against silent replacement:
      sudo etheris-drivers pin-pascal
 
-6) Verify after reboot:
+6) Confirm Wayland modeset (Etheris ships /etc/modprobe.d/etheris-nvidia.conf):
+     grep modeset /etc/modprobe.d/etheris-nvidia.conf
+     sudo mkinitcpio -P
+
+7) Verify after reboot:
      lsmod | grep nvidia
+     cat /sys/module/nvidia_drm/parameters/modeset   # expect Y
      etheris-hw gpu
      glxinfo -B
      vulkaninfo --summary
+     etheris-gaming-setup doctor
 
 If 580xx becomes unavailable or fails to build for a new kernel, report the
 failure — do not install nvidia-open on Pascal hardware.

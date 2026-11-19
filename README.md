@@ -25,6 +25,7 @@ Version: see `VERSION` (currently **0.1.0-alpha**).
 - [MASTER-CHECKLIST.md](MASTER-CHECKLIST.md) — phase status
 - [docs/HARDWARE.md](docs/HARDWARE.md) — CPU/GPU detection and drivers
 - [docs/GAMING.md](docs/GAMING.md) — Steam / Proton / gaming
+- [docs/GAME-READY-CRITERIA.md](docs/GAME-READY-CRITERIA.md) — strict gaming / driver readiness seals
 - [docs/LOGIN.md](docs/LOGIN.md) — graphical login (ReGreet)
 - [docs/FLOW.md](docs/FLOW.md) — design tokens and themes
 - Live login: `etheris` / `etheris`
@@ -84,24 +85,29 @@ Shortcuts: **Super+Return** terminal · **Super+D** / **Super+Space** launcher �
 
 ## Current status
 
-**Latest local ISO:** `etheris-2026.11.15-x86_64.iso`  
-SHA256: `eb677f92d3d6a336b1eca3f6b8f64de4e649badabf22c17366468c3a4b05dfd6`  
+**Latest local ISO:** `etheris-2026.11.19-x86_64.iso`  
+SHA256: `10ea77d5b2c183341b85635a9f10693bd102f02b620cf809170e08c394482265`  
 (see `SESSION-LOG.md` / `out/SHA256SUMS`).
 
-**Verified in QEMU (2026-11-15):** stability · reliability · maturity STRICT · security (22 OK) · bug criteria (menu clip fixed) · idle RAM rock-solid (~169 MiB with browser preload off) · optional LUKS install + unlock E2E.
+**Verified in QEMU (2026-11-19):** validate-iso **30 OK** · reliability/maturity host PASS · rock-solid live **11 OK** · bug criteria **38 OK** · game-ready **32 OK** (G0–G2 + live G3 stack) · Software Center / Monitor / Privacy · doctor **16 OK** · session_pss ~209 MiB. Prior 2026-11-15 gates (security / idle RAM / LUKS E2E) still apply.
 
-Performance Manager is in the tree; real GPU testing still needs physical hardware.  
+**Gaming / drivers (honest):** live ISO ships Steam/Proton helpers, GameMode group join, `nvidia_drm modeset=1`, no global `SDL_VIDEODRIVER=x11` poison, `etheris-steam` + desktop hook. Physical GPU / real title / anti-cheat online is **not** certified yet — see [docs/GAME-READY-CRITERIA.md](docs/GAME-READY-CRITERIA.md).
+
+Source: [github.com/saarniuimonen-beep/etheris-os](https://github.com/saarniuimonen-beep/etheris-os) · Site: [etheris-website](https://saarniuimonen-beep.github.io/etheris-website/)
+
 Track progress in `MASTER-CHECKLIST.md` and [docs/IMPLEMENTATION-STATUS.md](docs/IMPLEMENTATION-STATUS.md).  
 Release checklist: [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md).
 
-**Included today:** Sway desktop + themed login (ReGreet), Menu / launcher polish, installer (ext4/btrfs + optional LUKS), first-boot setup (text UI), Software Center, doctor, update channels, security defaults.  
-**Not ready yet:** extra desktops (Hyprland/KDE/XFCE), Secure Boot, read-only “immutable” installs, public ISO hosting / signed releases.
+**Included today:** Sway desktop + themed login (ReGreet), Menu / launcher polish, installer (ext4/btrfs + optional LUKS), first-boot setup (text UI), Software Center, gaming stack on live ISO, doctor, update channels, security defaults.  
+**Not ready yet:** extra desktops (Hyprland/KDE/XFCE), Secure Boot, read-only “immutable” installs, public ISO hosting / signed releases, physical GPU certification.
 
 ## Quick checks (no ISO needed)
 
 ```bash
 ./scripts/check-profile.sh
 ./scripts/test-p0-security.sh
+./scripts/test-bugs.sh
+./scripts/test-game-ready.sh   # needs ISO in out/ for G2
 ```
 
 ## Immutable installs

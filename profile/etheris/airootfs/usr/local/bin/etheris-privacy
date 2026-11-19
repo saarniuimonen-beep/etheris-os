@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Etheris privacy dashboard (CLI) — wraps policy file + security helpers
+# Etheris privacy dashboard (CLI) — policy + security helpers
 set -euo pipefail
 
 usage() {
@@ -13,30 +13,63 @@ Usage:
   etheris privacy audit        → etheris-security audit
   etheris privacy help
 
-Docs: /usr/local/share/etheris/docs/PRIVACY-AUDIT.md
+Docs: /usr/local/share/etheris/docs/PRIVACY-DASHBOARD.md
 EOF
+}
+
+yn() {
+  local v="${1:-}"
+  case "${v,,}" in
+    0|false|off|no|disabled) echo "off" ;;
+    1|true|on|yes|enabled) echo "on" ;;
+    *) echo "${v:-unknown}" ;;
+  esac
 }
 
 cmd_status() {
   echo "Etheris privacy dashboard"
+  echo "========================="
   echo
+
   if [[ -f /etc/etheris/privacy.conf ]]; then
     echo "Policy (/etc/etheris/privacy.conf):"
-    grep -E '^[A-Z]' /etc/etheris/privacy.conf 2>/dev/null | sed 's/^/  /' || cat /etc/etheris/privacy.conf | sed 's/^/  /'
+    while IFS='=' read -r key val; do
+      [[ -z "${key// }" || "$key" == \#* ]] && continue
+      printf '  %-28s %s\n' "$key" "$(yn "$val")"
+    done </etc/etheris/privacy.conf
   else
     echo "  (no /etc/etheris/privacy.conf — using security defaults)"
   fi
   echo
-  echo "Telemetry: Etheris does not ship cloud telemetry in Alpha."
-  echo "Updates:   pacman via etheris-update channels only."
-  echo "AUR:       optional via etheris-aur (user risk)."
-  echo
-  if command -v etheris-security >/dev/null; then
-    etheris-security status
+
+  echo "Browser policies:"
+  if [[ -f /etc/firefox/policies/policies.json ]]; then
+    if grep -q 'DisableTelemetry' /etc/firefox/policies/policies.json 2>/dev/null; then
+      echo "  Firefox enterprise policies: present (telemetry disabled path)"
+    else
+      echo "  Firefox policies.json: present"
+    fi
+  else
+    echo "  Firefox policies.json: missing"
   fi
   echo
-  echo "Deeper audit: etheris privacy audit"
+
+  echo "Defaults:"
+  echo "  Telemetry:   Etheris does not ship cloud telemetry in Alpha."
+  echo "  Updates:     pacman via etheris-update channels only."
+  echo "  AUR:         optional via etheris-aur (user risk)."
+  echo "  Firewall:    nftables default-drop input."
+  echo "  SSH:         masked unless you enable it."
+  echo
+
+  if command -v etheris-security >/dev/null; then
+    echo "Security status:"
+    etheris-security status 2>/dev/null | sed 's/^/  /' || true
+  fi
+  echo
+  echo "Deeper audit:   etheris privacy audit"
   echo "Support bundle: etheris report create"
+  echo "UI:             Settings → Privacy · Software Center"
 }
 
 main() {

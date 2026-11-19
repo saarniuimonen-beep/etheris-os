@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Etheris OS — Session / power menu.
 
-Frosted-glass sheet over a one-shot blurred backdrop (macOS-like).
-Lock · Sleep · Log out · Restart · Shut down — calm list, not rainbow tiles.
+Minimalist frosted sheet over a one-shot blurred backdrop.
+Lock · Sleep · Log out · Restart · Shut down — calm list with full
+keyboard navigation (↑↓←→ · Enter · Esc · letter shortcuts).
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -41,54 +43,137 @@ from etheris_glass import (  # noqa: E402
 
 APP_ID = "os.etheris.PowerMenu"
 
-ACTIONS: list[tuple[str, str, bool, tuple[int, ...]]] = [
-    ("Lock", "lock", False, (Gdk.KEY_l, Gdk.KEY_L, Gdk.KEY_1)),
-    ("Sleep", "sleep", False, (Gdk.KEY_s, Gdk.KEY_S, Gdk.KEY_2)),
-    ("Log out", "logout", False, (Gdk.KEY_o, Gdk.KEY_O, Gdk.KEY_3)),
-    ("Restart", "reboot", False, (Gdk.KEY_r, Gdk.KEY_R, Gdk.KEY_4)),
-    ("Shut down", "shutdown", True, (Gdk.KEY_d, Gdk.KEY_D, Gdk.KEY_5)),
+# label, action, danger, shortcut glyph, letter keys
+ACTIONS: list[tuple[str, str, bool, str, tuple[int, ...]]] = [
+    (
+        "Lock",
+        "lock",
+        False,
+        "L",
+        (Gdk.KEY_l, Gdk.KEY_L, Gdk.KEY_1, Gdk.KEY_KP_1),
+    ),
+    (
+        "Sleep",
+        "sleep",
+        False,
+        "S",
+        (Gdk.KEY_s, Gdk.KEY_S, Gdk.KEY_2, Gdk.KEY_KP_2),
+    ),
+    (
+        "Log out",
+        "logout",
+        False,
+        "O",
+        (Gdk.KEY_o, Gdk.KEY_O, Gdk.KEY_3, Gdk.KEY_KP_3),
+    ),
+    (
+        "Restart",
+        "reboot",
+        False,
+        "R",
+        (Gdk.KEY_r, Gdk.KEY_R, Gdk.KEY_4, Gdk.KEY_KP_4),
+    ),
+    (
+        "Shut down",
+        "shutdown",
+        True,
+        "D",
+        (Gdk.KEY_d, Gdk.KEY_D, Gdk.KEY_5, Gdk.KEY_KP_5),
+    ),
 ]
+
+NAV_UP = {
+    Gdk.KEY_Up,
+    Gdk.KEY_KP_Up,
+    Gdk.KEY_Left,
+    Gdk.KEY_KP_Left,
+    Gdk.KEY_k,
+    Gdk.KEY_K,
+}
+NAV_DOWN = {
+    Gdk.KEY_Down,
+    Gdk.KEY_KP_Down,
+    Gdk.KEY_Right,
+    Gdk.KEY_KP_Right,
+    Gdk.KEY_j,
+    Gdk.KEY_J,
+}
+ACTIVATE = {
+    Gdk.KEY_Return,
+    Gdk.KEY_KP_Enter,
+    Gdk.KEY_space,
+    Gdk.KEY_ISO_Enter,
+}
+
+# Chord masks that must not trigger nav / shortcuts / activate.
+_CHORD_MASK = (
+    Gdk.ModifierType.CONTROL_MASK
+    | Gdk.ModifierType.ALT_MASK
+    | Gdk.ModifierType.SUPER_MASK
+    | Gdk.ModifierType.META_MASK
+)
+
+
+def _spawn(cmd: list[str]) -> bool:
+    """Start a detached child. Returns True if the process was created."""
+    try:
+        subprocess.Popen(cmd, start_new_session=True)
+        return True
+    except OSError:
+        return False
 
 
 def run_action(action: str) -> None:
+    if os.environ.get("ETHERIS_POWER_DRY_RUN") == "1":
+        print(f"etheris-power-menu: dry-run action={action}", flush=True)
+        return
     if action == "lock":
         for cmd in (
+            ["etheris-lock"],
             ["swaylock", "-f", "-c", "0a1628"],
             ["loginctl", "lock-session"],
         ):
-            try:
-                subprocess.Popen(cmd)
+            if _spawn(cmd):
                 return
-            except OSError:
-                continue
     elif action == "sleep":
-        subprocess.Popen(["systemctl", "suspend"])
+        _spawn(["systemctl", "suspend"])
     elif action == "logout":
-        desktop = os.environ.get("XDG_CURRENT_DESKTOP", "")
-        if "Hyprland" in desktop:
-            subprocess.Popen(["hyprctl", "dispatch", "exit"])
-        else:
-            try:
-                subprocess.Popen(["swaymsg", "exit"])
-            except OSError:
-                subprocess.Popen(
-                    ["loginctl", "terminate-user", os.environ.get("USER", "")],
-                )
+        # Prefer compositor sockets over XDG_CURRENT_DESKTOP (often unset/wrong).
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            if _spawn(["hyprctl", "dispatch", "exit"]):
+                return
+        if os.environ.get("SWAYSOCK"):
+            if _spawn(["swaymsg", "exit"]):
+                return
+        desktop = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower()
+        if "hyprland" in desktop and _spawn(["hyprctl", "dispatch", "exit"]):
+            return
+        if _spawn(["swaymsg", "exit"]):
+            return
+        user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
+        if user:
+            _spawn(["loginctl", "terminate-user", user])
     elif action == "reboot":
-        subprocess.Popen(["systemctl", "reboot"])
+        _spawn(["systemctl", "reboot"])
     elif action == "shutdown":
-        subprocess.Popen(["systemctl", "poweroff"])
+        _spawn(["systemctl", "poweroff"])
 
 
 class PowerMenu(Gtk.Application):
+    _css_loaded = False
+
     def __init__(self, backdrop: str | None):
         super().__init__(application_id=APP_ID)
         self.backdrop = backdrop
         self._pending: str | None = None
-        self._action_buttons: dict[str, Gtk.Button] = {}
+        self._rows: list[Gtk.Button] = []
+        self._actions: list[str] = []
+        self._index = 0
         self._sheet: Gtk.Widget | None = None
         self._scrim: Gtk.Widget | None = None
         self._closing = False
+        self._syncing_focus = False
+        self._held = False
 
     def do_activate(self) -> None:  # noqa: N802
         wins = self.get_windows()
@@ -98,10 +183,14 @@ class PowerMenu(Gtk.Application):
         self._build()
 
     def _build(self) -> None:
-        win = Gtk.ApplicationWindow(application=self, title="Etheris Session")
+        # Empty title so the panel does not swap chrome for "Session".
+        win = Gtk.ApplicationWindow(application=self, title="")
         win.set_decorated(False)
         win.set_resizable(False)
-        win.maximize()
+        # Size to the monitor before present — avoids a tiny tiled stub on
+        # Hyprland/Sway when layer-shell is unavailable.
+        mw, mh = self._monitor_size()
+        win.set_default_size(mw, mh)
 
         overlay = Gtk.Overlay()
         win.set_child(overlay)
@@ -131,53 +220,81 @@ class PowerMenu(Gtk.Application):
         sheet.set_valign(Gtk.Align.CENTER)
         sheet.add_css_class("pm-sheet")
         sheet.add_css_class("eth-glass-enter" if animations_on() else "eth-glass-open")
-        sheet.set_size_request(340, -1)
+        sheet.set_size_request(372, -1)
         self._sheet = sheet
 
-        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        # Brand header
+        head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         head.add_css_class("pm-head")
+        head.set_halign(Gtk.Align.FILL)
+
+        mark_wrap = Gtk.Box()
+        mark_wrap.add_css_class("pm-mark-wrap")
+        mark_wrap.set_valign(Gtk.Align.CENTER)
+        mark_wrap.set_halign(Gtk.Align.CENTER)
         mark = Gtk.Box()
         mark.add_css_class("pm-mark")
-        mark.set_size_request(18, 18)
-        mark.set_valign(Gtk.Align.CENTER)
-        brand = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        word = Gtk.Label(label="Etheris", xalign=0)
+        mark.set_hexpand(False)
+        mark.set_vexpand(False)
+        mark.set_size_request(8, 8)
+        mark_wrap.append(mark)
+
+        brand = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        brand.set_valign(Gtk.Align.CENTER)
+        brand.set_hexpand(True)
+        word = Gtk.Label(label="Etheris")
         word.add_css_class("pm-brand")
-        sub = Gtk.Label(label="Session", xalign=0)
+        word.set_halign(Gtk.Align.START)
+        word.set_xalign(0.0)
+        sub = Gtk.Label(label="SESSION")
         sub.add_css_class("pm-sub")
+        sub.set_halign(Gtk.Align.START)
+        sub.set_xalign(0.0)
         brand.append(word)
         brand.append(sub)
-        head.append(mark)
+
+        head.append(mark_wrap)
         head.append(brand)
         sheet.append(head)
 
-        list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        list_box.add_css_class("pm-list")
-        for label, action, danger, _keys in ACTIONS:
+        # Inset list well — rows sit in a finished surface, not floating gaps
+        well = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        well.add_css_class("pm-well")
+        well.set_hexpand(True)
+
+        for i, (label, action, danger, glyph, _keys) in enumerate(ACTIONS):
             if action == "reboot":
                 sep = Gtk.Box()
                 sep.add_css_class("pm-sep")
-                sep.set_margin_top(6)
-                sep.set_margin_bottom(6)
-                list_box.append(sep)
-            btn = self._row(label, action, danger, win)
-            self._action_buttons[action] = btn
-            list_box.append(btn)
-        sheet.append(list_box)
+                sep.set_hexpand(True)
+                well.append(sep)
 
-        hint = Gtk.Label(label="Esc to cancel  ·  Super+Shift+E")
+            btn = self._row(label, action, danger, glyph, i, win)
+            self._rows.append(btn)
+            self._actions.append(action)
+            well.append(btn)
+
+        sheet.append(well)
+
+        hint = Gtk.Label(
+            label="↑↓ move   ·   Enter select   ·   Esc cancel",
+        )
         hint.add_css_class("pm-hint")
+        hint.set_halign(Gtk.Align.CENTER)
+        hint.set_wrap(False)
         sheet.append(hint)
 
+        # Clicks on the sheet must not dismiss (claim the sequence).
         stop = Gtk.GestureClick()
         stop.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        stop.connect("pressed", lambda *_: True)
+        stop.connect("pressed", self._on_sheet_press)
         sheet.add_controller(stop)
         overlay.add_overlay(sheet)
 
         self._apply_css()
 
         key = Gtk.EventControllerKey()
+        key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         key.connect("key-pressed", self._on_key, win)
         win.add_controller(key)
 
@@ -188,9 +305,27 @@ class PowerMenu(Gtk.Application):
         win.connect("close-request", lambda *_: self._dismiss() or True)
 
         win.present()
-        GLib.idle_add(self._sway_fullscreen)
+        # Request compositor fullscreen after map (GTK + Hyprland + Sway).
+        try:
+            win.fullscreen()
+        except Exception:
+            pass
+        GLib.idle_add(self._force_cover)
+        GLib.timeout_add(60, self._force_cover)
         GLib.idle_add(self._play_open)
-        GLib.idle_add(lambda: self._action_buttons["lock"].grab_focus() or False)
+        GLib.idle_add(lambda: self._select(0, focus=True) or False)
+
+        preview_ms = os.environ.get("ETHERIS_POWER_PREVIEW_MS", "").strip()
+        if preview_ms.isdigit():
+            GLib.timeout_add(int(preview_ms), lambda: self._dismiss() or False)
+
+    @staticmethod
+    def _on_sheet_press(gesture, _n, _x, _y) -> bool:
+        try:
+            gesture.set_state(Gtk.EventSequenceState.CLAIMED)
+        except Exception:
+            pass
+        return True
 
     def _play_open(self) -> bool:
         if self._sheet and animations_on():
@@ -215,24 +350,98 @@ class PowerMenu(Gtk.Application):
         else:
             self.quit()
 
-    def _row(self, label: str, action: str, danger: bool, win: Gtk.Window) -> Gtk.Button:
+    def _row(
+        self,
+        label: str,
+        action: str,
+        danger: bool,
+        glyph: str,
+        index: int,
+        win: Gtk.Window,
+    ) -> Gtk.Button:
         btn = Gtk.Button()
+        btn.add_css_class("flat")
         btn.add_css_class("pm-row")
         if danger:
             btn.add_css_class("pm-row-danger")
         btn.set_hexpand(True)
-        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        btn.set_focusable(True)
+        btn.set_can_focus(True)
+        try:
+            btn.set_cursor(Gdk.Cursor.new_from_name("pointer"))
+        except Exception:
+            pass
+        btn.set_tooltip_text(f"{label}  ·  {glyph}")
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         inner.set_hexpand(True)
-        name = Gtk.Label(label=label, xalign=0)
+        inner.add_css_class("pm-row-inner")
+
+        # Accent rail — always present so layout never jumps
+        rail = Gtk.Box()
+        rail.add_css_class("pm-rail")
+        rail.set_valign(Gtk.Align.CENTER)
+        rail.set_size_request(3, 16)
+        inner.append(rail)
+
+        name = Gtk.Label(label=label)
         name.add_css_class("pm-row-label")
         name.set_hexpand(True)
+        name.set_halign(Gtk.Align.START)
+        name.set_xalign(0.0)
+        name.set_margin_start(12)
+        name.set_margin_end(10)
         inner.append(name)
-        chev = Gtk.Label(label="›")
-        chev.add_css_class("pm-row-chev")
-        inner.append(chev)
+
+        kbd_box = Gtk.CenterBox()
+        kbd_box.add_css_class("pm-row-kbd")
+        kbd_box.set_valign(Gtk.Align.CENTER)
+        kbd_box.set_size_request(28, 24)
+        kbd = Gtk.Label(label=glyph)
+        kbd.add_css_class("pm-row-kbd-label")
+        kbd.set_halign(Gtk.Align.CENTER)
+        kbd_box.set_center_widget(kbd)
+        inner.append(kbd_box)
+
         btn.set_child(inner)
         btn.connect("clicked", self._on_click, action, win)
+        btn.connect("notify::has-focus", self._on_row_focus, index)
+
+        motion = Gtk.EventControllerMotion()
+        motion.connect("enter", lambda *_a, i=index: self._select(i, focus=False))
+        btn.add_controller(motion)
+
         return btn
+
+    def _select(self, index: int, *, focus: bool = True) -> None:
+        if self._closing or not self._rows:
+            return
+        n = len(self._rows)
+        index = max(0, min(n - 1, index))
+        self._index = index
+        for i, btn in enumerate(self._rows):
+            if i == index:
+                btn.add_css_class("pm-row-active")
+            else:
+                btn.remove_css_class("pm-row-active")
+        if focus:
+            self._syncing_focus = True
+            try:
+                self._rows[index].grab_focus()
+            finally:
+                self._syncing_focus = False
+
+    def _on_row_focus(self, btn: Gtk.Button, _pspec, index: int) -> None:
+        if self._syncing_focus or self._closing:
+            return
+        if btn.has_focus():
+            self._select(index, focus=False)
+
+    def _move(self, delta: int) -> None:
+        if self._closing or not self._rows:
+            return
+        n = len(self._rows)
+        self._select((self._index + delta) % n, focus=True)
 
     def _solid_bg(self) -> Gtk.Box:
         box = Gtk.Box()
@@ -242,99 +451,459 @@ class PowerMenu(Gtk.Application):
         return box
 
     def _apply_css(self) -> None:
+        if PowerMenu._css_loaded:
+            return
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
         provider = Gtk.CssProvider()
         provider.load_from_data(
             GLASS_MOTION_CSS
             + b"""
-            window { background: #0a1628; }
-            .scrim { background: alpha(#020617, 0.32); }
+            window {
+              background: #0a1628;
+            }
+
+            .scrim {
+              background: alpha(#020617, 0.48);
+            }
+
             .solid-bg {
               background-image: linear-gradient(
-                160deg, #061018 0%, #0a1628 42%, #0c2744 78%, #0a3a48 100%
+                165deg,
+                #040b14 0%,
+                #0a1628 38%,
+                #0b2238 72%,
+                #0a3340 100%
               );
             }
+
             .pm-sheet {
-              padding: 22px 20px 18px 20px;
-              border-radius: 18px;
-              background: alpha(#0c1c30, 0.62);
-              border: 1px solid alpha(#ffffff, 0.14);
-              box-shadow: 0 24px 64px alpha(#000000, 0.45),
-                          inset 0 1px 0 alpha(#ffffff, 0.12);
+              padding: 22px 20px 14px 20px;
+              border-radius: 22px;
+              background: alpha(#0b1a2c, 0.82);
+              border: 1px solid alpha(#ffffff, 0.13);
+              box-shadow:
+                0 28px 80px alpha(#000000, 0.55),
+                0 0 0 1px alpha(#38bdf8, 0.05),
+                inset 0 1px 0 alpha(#ffffff, 0.14);
             }
-            .pm-head { margin-bottom: 18px; }
+
+            .pm-head {
+              margin-bottom: 14px;
+              padding: 0 2px 2px 2px;
+            }
+
+            .pm-mark-wrap {
+              padding: 8px;
+              border-radius: 999px;
+              background: alpha(#38bdf8, 0.10);
+              border: 1px solid alpha(#38bdf8, 0.24);
+              box-shadow: inset 0 1px 0 alpha(#ffffff, 0.10);
+            }
+
             .pm-mark {
               border-radius: 999px;
               background: #38bdf8;
-              border: 2px solid alpha(#7dd3fc, 0.55);
-              box-shadow: 0 0 0 3px alpha(#38bdf8, 0.18);
-              min-width: 18px; min-height: 18px;
+              min-width: 8px;
+              min-height: 8px;
+              box-shadow: 0 0 10px alpha(#38bdf8, 0.50);
             }
+
             .pm-brand {
-              font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: #e8f4fc;
-            }
-            .pm-sub {
-              font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
-              color: alpha(#a8c4d8, 0.9);
-            }
-            .pm-list { margin-bottom: 14px; }
-            .pm-sep { min-height: 1px; background: alpha(#ffffff, 0.10); }
-            button.pm-row {
-              padding: 13px 14px; border-radius: 12px;
-              background: alpha(#ffffff, 0.06);
-              border: 1px solid alpha(#ffffff, 0.08);
+              font-size: 15px;
+              font-weight: 600;
+              letter-spacing: 0.01em;
               color: #e8f4fc;
-              transition: 100ms ease;
             }
-            button.pm-row:hover, button.pm-row:focus {
+
+            .pm-sub {
+              font-size: 11px;
+              font-weight: 500;
+              letter-spacing: 0.16em;
+              color: alpha(#7dd3fc, 0.70);
+            }
+
+            .pm-well {
+              padding: 7px;
+              margin-bottom: 12px;
+              border-radius: 16px;
+              background: alpha(#000000, 0.26);
+              border: 1px solid alpha(#ffffff, 0.07);
+              box-shadow: inset 0 1px 0 alpha(#ffffff, 0.05);
+            }
+
+            .pm-sep {
+              min-height: 1px;
+              margin: 4px 10px;
+              background: alpha(#ffffff, 0.12);
+            }
+
+            button.pm-row,
+            button.pm-row:hover,
+            button.pm-row:focus,
+            button.pm-row:active,
+            button.pm-row:checked,
+            button.pm-row:disabled {
+              background-image: none;
+              outline: none;
+              box-shadow: none;
+              text-shadow: none;
+            }
+
+            button.pm-row {
+              padding: 0;
+              min-height: 0;
+              border-radius: 12px;
+              background: alpha(#ffffff, 0.055);
+              border: 1px solid alpha(#ffffff, 0.07);
+              color: #e8f4fc;
+              transition: 110ms ease;
+            }
+
+            button.pm-row:hover {
+              background: alpha(#ffffff, 0.08);
+              border-color: alpha(#ffffff, 0.11);
+            }
+
+            button.pm-row:active {
+              background: alpha(#ffffff, 0.10);
+            }
+
+            button.pm-row.pm-row-active {
               background: alpha(#38bdf8, 0.16);
-              border-color: alpha(#38bdf8, 0.40);
+              border-color: alpha(#38bdf8, 0.36);
             }
-            button.pm-row:focus {
-              outline: 2px solid alpha(#38bdf8, 0.50);
-              outline-offset: 1px;
+
+            button.pm-row.pm-row-active:hover {
+              background: alpha(#38bdf8, 0.20);
+              border-color: alpha(#38bdf8, 0.44);
             }
-            button.pm-row-danger { border-color: alpha(#fb7185, 0.30); }
-            button.pm-row-danger:hover, button.pm-row-danger:focus {
+
+            button.pm-row.pm-row-active:active {
+              background: alpha(#38bdf8, 0.25);
+            }
+
+            button.pm-row-danger {
+              background: alpha(#fb7185, 0.07);
+              border-color: alpha(#fb7185, 0.18);
+            }
+
+            button.pm-row-danger:hover {
+              background: alpha(#fb7185, 0.11);
+              border-color: alpha(#fb7185, 0.26);
+            }
+
+            button.pm-row-danger.pm-row-active {
+              background: alpha(#fb7185, 0.17);
+              border-color: alpha(#fb7185, 0.40);
+            }
+
+            button.pm-row-danger.pm-row-active:hover {
+              background: alpha(#fb7185, 0.22);
+              border-color: alpha(#fb7185, 0.48);
+            }
+
+            button.pm-row-danger.pm-row-active:active {
+              background: alpha(#fb7185, 0.28);
+            }
+
+            .pm-row-inner {
+              padding: 12px 11px 12px 11px;
+            }
+
+            .pm-rail {
+              border-radius: 99px;
+              background: alpha(#ffffff, 0.14);
+              min-width: 3px;
+              min-height: 16px;
+              transition: 110ms ease;
+            }
+
+            button.pm-row-active .pm-rail {
+              background: #38bdf8;
+              box-shadow: 0 0 8px alpha(#38bdf8, 0.45);
+            }
+
+            button.pm-row-danger .pm-rail {
+              background: alpha(#fb7185, 0.28);
+            }
+
+            button.pm-row-danger.pm-row-active .pm-rail {
+              background: #fb7185;
+              box-shadow: 0 0 8px alpha(#fb7185, 0.40);
+            }
+
+            .pm-row-label {
+              font-size: 14px;
+              font-weight: 500;
+              color: alpha(#e8f4fc, 0.90);
+            }
+
+            button.pm-row-active .pm-row-label {
+              color: #f0f9ff;
+              font-weight: 600;
+            }
+
+            button.pm-row-danger .pm-row-label {
+              color: alpha(#fecdd3, 0.92);
+            }
+
+            button.pm-row-danger.pm-row-active .pm-row-label {
+              color: #ffe4e6;
+            }
+
+            .pm-row-kbd {
+              background: alpha(#ffffff, 0.05);
+              border: 1px solid alpha(#ffffff, 0.09);
+              border-radius: 7px;
+              min-width: 28px;
+              min-height: 24px;
+            }
+
+            .pm-row-kbd-label {
+              font-size: 11px;
+              font-weight: 600;
+              letter-spacing: 0.02em;
+              color: alpha(#a8c4d8, 0.62);
+            }
+
+            button.pm-row-active .pm-row-kbd {
+              background: alpha(#38bdf8, 0.16);
+              border-color: alpha(#38bdf8, 0.30);
+            }
+
+            button.pm-row-active .pm-row-kbd-label {
+              color: alpha(#e0f2fe, 0.95);
+            }
+
+            button.pm-row-danger .pm-row-kbd {
+              background: alpha(#fb7185, 0.08);
+              border-color: alpha(#fb7185, 0.16);
+            }
+
+            button.pm-row-danger .pm-row-kbd-label {
+              color: alpha(#fecdd3, 0.70);
+            }
+
+            button.pm-row-danger.pm-row-active .pm-row-kbd {
               background: alpha(#fb7185, 0.18);
-              border-color: alpha(#fb7185, 0.50);
+              border-color: alpha(#fb7185, 0.32);
             }
-            .pm-row-label { font-size: 14px; font-weight: 600; color: #e8f4fc; }
-            button.pm-row-danger .pm-row-label { color: #fecdd3; }
-            .pm-row-chev { font-size: 16px; color: alpha(#a8c4d8, 0.65); }
-            button.pm-row-danger .pm-row-chev { color: alpha(#fb7185, 0.8); }
-            .pm-hint { font-size: 11px; color: alpha(#a8c4d8, 0.65); }
+
+            button.pm-row-danger.pm-row-active .pm-row-kbd-label {
+              color: alpha(#ffe4e6, 0.95);
+            }
+
+            .pm-hint {
+              font-size: 11px;
+              font-weight: 500;
+              letter-spacing: 0.03em;
+              color: alpha(#a8c4d8, 0.72);
+              padding: 2px 4px 2px 4px;
+            }
             """
         )
         Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(),
+            display,
             provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+        PowerMenu._css_loaded = True
 
-    def _sway_fullscreen(self) -> bool:
+    @staticmethod
+    def _monitor_size() -> tuple[int, int]:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return 1920, 1080
+        mon = None
         try:
-            subprocess.Popen(
-                ["swaymsg", f'[app_id="{APP_ID}"] fullscreen enable'],
-                stdout=subprocess.DEVNULL,
+            seat = display.get_default_seat()
+            pointer = seat.get_pointer() if seat is not None else None
+            if pointer is not None:
+                found = pointer.get_surface_at_position()
+                # GTK 4.10+ returns (surface, x, y); older may differ.
+                surface = found[0] if isinstance(found, tuple) else found
+                if surface is not None:
+                    mon = display.get_monitor_at_surface(surface)
+        except Exception:
+            mon = None
+        if mon is None:
+            try:
+                monitors = display.get_monitors()
+                if monitors.get_n_items() > 0:
+                    mon = monitors.get_item(0)
+            except Exception:
+                mon = None
+        if mon is not None:
+            try:
+                geo = mon.get_geometry()
+                return max(int(geo.width), 800), max(int(geo.height), 600)
+            except Exception:
+                pass
+        return 1920, 1080
+
+    def _hypr_our_address(self) -> str | None:
+        """Return Hyprland window address for this menu, or None."""
+        try:
+            raw = subprocess.check_output(
+                ["hyprctl", "clients", "-j"],
+                text=True,
                 stderr=subprocess.DEVNULL,
+                timeout=2,
             )
-        except OSError:
-            pass
+            for client in json.loads(raw):
+                if client.get("class") == APP_ID:
+                    addr = client.get("address")
+                    if addr:
+                        return str(addr)
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError):
+            return None
+        return None
+
+    def _force_cover(self) -> bool:
+        """Make the host fill the output without compositor chrome."""
+        wins = self.get_windows()
+        if wins:
+            try:
+                wins[0].fullscreen()
+            except Exception:
+                pass
+
+        # Hyprland: only touch fullscreen/chrome if OUR window is identifiable.
+        # Never issue a bare fullscreenstate — that can maximize the wrong client.
+        if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            addr = self._hypr_our_address()
+            if addr:
+                try:
+                    subprocess.run(
+                        ["hyprctl", "dispatch", "focuswindow", f"address:{addr}"],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2,
+                    )
+                    # Confirm focus landed on us before mutating fullscreen.
+                    active = subprocess.check_output(
+                        ["hyprctl", "activewindow", "-j"],
+                        text=True,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2,
+                    )
+                    if json.loads(active).get("class") == APP_ID:
+                        subprocess.run(
+                            ["hyprctl", "dispatch", "fullscreenstate", "2", "2"],
+                            check=False,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=2,
+                        )
+                        for prop, val in (("bordersize", "0"), ("rounding", "0")):
+                            subprocess.run(
+                                [
+                                    "hyprctl",
+                                    "dispatch",
+                                    "setprop",
+                                    f"address:{addr}",
+                                    prop,
+                                    val,
+                                ],
+                                check=False,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                timeout=2,
+                            )
+                except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+                    pass
+
+        # Sway: fullscreen + zero border (matches skel window rules)
+        if os.environ.get("SWAYSOCK"):
+            try:
+                subprocess.run(
+                    [
+                        "swaymsg",
+                        f'[app_id="{APP_ID}"] fullscreen enable, border pixel 0',
+                    ],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=2,
+                )
+            except (OSError, subprocess.SubprocessError):
+                pass
         return False
 
-    def _on_key(self, _ctrl, keyval, _code, _state, win) -> bool:
+    def _on_key(self, _ctrl, keyval, _code, state, win) -> bool:
+        if self._closing:
+            return True
+
+        if keyval in (
+            Gdk.KEY_Shift_L,
+            Gdk.KEY_Shift_R,
+            Gdk.KEY_Control_L,
+            Gdk.KEY_Control_R,
+            Gdk.KEY_Alt_L,
+            Gdk.KEY_Alt_R,
+            Gdk.KEY_Meta_L,
+            Gdk.KEY_Meta_R,
+            Gdk.KEY_Super_L,
+            Gdk.KEY_Super_R,
+            Gdk.KEY_Caps_Lock,
+            Gdk.KEY_Num_Lock,
+        ):
+            return False
+
+        # Esc always cancels, even with modifiers.
         if keyval == Gdk.KEY_Escape:
             self._dismiss()
             return True
-        for _label, action, _danger, keys in ACTIONS:
+
+        chord = bool(state & _CHORD_MASK)
+        # Shift is allowed for letters / Tab; Ctrl/Alt/Super must not fire actions.
+        if chord:
+            return False
+
+        if keyval in NAV_UP:
+            self._move(-1)
+            return True
+
+        if keyval in NAV_DOWN:
+            self._move(1)
+            return True
+
+        if keyval in (Gdk.KEY_Home, Gdk.KEY_KP_Home):
+            self._select(0, focus=True)
+            return True
+
+        if keyval in (Gdk.KEY_End, Gdk.KEY_KP_End):
+            self._select(len(self._rows) - 1, focus=True)
+            return True
+
+        if keyval in ACTIVATE:
+            if 0 <= self._index < len(self._actions):
+                self._on_click(None, self._actions[self._index], win)
+            return True
+
+        for i, (_label, action, _danger, _glyph, keys) in enumerate(ACTIONS):
             if keyval in keys:
+                self._select(i, focus=True)
                 self._on_click(None, action, win)
                 return True
+
+        if keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            shift = bool(state & Gdk.ModifierType.SHIFT_MASK) or keyval == Gdk.KEY_ISO_Left_Tab
+            self._move(-1 if shift else 1)
+            return True
+
         return False
 
     def _on_click(self, _btn, action: str, win: Gtk.Window) -> None:
+        if self._closing:
+            return
         self._pending = action
-        self.hold()
+        if not self._held:
+            self.hold()
+            self._held = True
         self._closing = True
         if animations_on() and self._sheet:
             self._sheet.remove_css_class("eth-glass-open")
@@ -344,18 +913,25 @@ class PowerMenu(Gtk.Application):
                 self._scrim.add_css_class("eth-scrim-leave")
             GLib.timeout_add(max(close_ms(), 80), self._fire)
         else:
-            win.hide()
+            try:
+                win.hide()
+            except Exception:
+                pass
             GLib.timeout_add(80, self._fire)
 
     def _fire(self) -> bool:
-        if self._pending:
-            run_action(self._pending)
-            self._pending = None
         try:
-            self.release()
-        except Exception:
-            pass
-        self.quit()
+            if self._pending:
+                run_action(self._pending)
+                self._pending = None
+        finally:
+            if self._held:
+                try:
+                    self.release()
+                except Exception:
+                    pass
+                self._held = False
+            self.quit()
         return False
 
 

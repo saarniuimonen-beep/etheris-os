@@ -30,6 +30,19 @@ else fail "user 'etheris' missing"; fi
 if id etheris 2>/dev/null | grep -q wheel; then pass "etheris is in wheel"
 else fail "etheris not in wheel (sudo/polkit admin broken)"; fi
 
+# GameMode renice group — required for gamemoderun on the live ISO / gaming installs
+if getent group gamemode >/dev/null 2>&1; then
+  if id -nG etheris 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+    pass "etheris is in gamemode group"
+  else
+    fail "etheris not in gamemode group (GameMode renice broken — etheris-auth-setup / installer)"
+  fi
+elif command -v gamemoderun >/dev/null 2>&1; then
+  fail "gamemode package present but gamemode group missing"
+else
+  skip "gamemode group (package not installed — lean install OK)"
+fi
+
 # password hash present (needs root for /etc/shadow)
 if as_root awk -F: '$1=="etheris" && $2 ~ /^\$/ {found=1} END{exit !found}' /etc/shadow 2>/dev/null; then
   pass "etheris has a password hash in /etc/shadow"

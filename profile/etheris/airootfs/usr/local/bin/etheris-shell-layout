@@ -140,7 +140,7 @@ MODULE_DEFS = {
     "custom/overview": {
         "format": "overview",
         "tooltip": "Workspace overview — Super+W",
-        "on-click": "etheris-workspace-overview",
+        "on-click": "etheris-overlay menu etheris-workspace-overview",
     },
     "custom/app-files": {
         "format": "Files",

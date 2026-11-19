@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Etheris System Monitor — lightweight wrap of sensors / perf / RAM
+# Etheris System Monitor — CLI + optional GTK UI
 set -euo pipefail
 
 usage() {
@@ -8,10 +8,11 @@ Etheris system monitor
 
 Usage:
   etheris monitor           Overview (default)
-  etheris monitor watch     Refresh every 2s
+  etheris monitor watch     Refresh every 2s (TUI)
+  etheris monitor ui        GTK window (live)
   etheris monitor help
 
-Wraps: free, sensors (if present), etheris-perf, etheris-hw gpu
+Wraps: free, /proc, sensors, etheris-perf, etheris-hw
 EOF
 }
 
@@ -22,11 +23,31 @@ overview() {
   echo "== Memory =="
   free -h | sed 's/^/  /'
   echo
+  if [[ -r /proc/meminfo ]]; then
+    awk '
+      /^MemTotal:/ {t=$2}
+      /^MemAvailable:/ {a=$2}
+      END {
+        if (t>0) printf "  available: %.0f MiB (%.0f%% of %.0f MiB)\n", a/1024, (a*100)/t, t/1024
+      }' /proc/meminfo
+  fi
+  echo
   if command -v etheris >/dev/null 2>&1; then
     echo "== Session RAM =="
     etheris ram 2>/dev/null | sed 's/^/  /' || true
     echo
   fi
+  echo "== Load / CPU =="
+  if [[ -r /proc/loadavg ]]; then
+    read -r l1 l5 l15 rest </proc/loadavg
+    echo "  load: $l1 $l5 $l15"
+  fi
+  if [[ -r /proc/stat ]]; then
+    awk '/^cpu /{u=$2+$4; t=$2+$3+$4+$5; if(t>0) printf "  idle-ish snapshot: %.0f%% non-idle (coarse)\n", (u*100)/t}' /proc/stat
+  fi
+  nproc="$(nproc 2>/dev/null || echo '?')"
+  echo "  cores: $nproc"
+  echo
   echo "== Performance profile =="
   if command -v etheris-perf >/dev/null; then
     etheris-perf status 2>/dev/null | sed 's/^/  /' || echo "  (unavailable)"
@@ -46,7 +67,7 @@ overview() {
     etheris-hw gpu 2>/dev/null | head -40 | sed 's/^/  /' || true
   fi
   echo
-  echo "Tip: etheris monitor watch · etheris-perf set balanced"
+  echo "Tip: etheris monitor watch · etheris monitor ui · etheris-perf set balanced"
 }
 
 watch_loop() {
@@ -57,8 +78,81 @@ watch_loop() {
   done
 }
 
+run_ui() {
+  exec python3 - "$@" <<'PY'
+import os, subprocess, sys
+os.environ.setdefault("GSK_RENDERER", "cairo")
+try:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import GLib, Gtk
+except Exception as exc:
+    print(f"GTK4 unavailable ({exc}); falling back to watch", file=sys.stderr)
+    os.execvp("etheris-monitor", ["etheris-monitor", "watch"])
+
+def snapshot() -> str:
+    try:
+        return subprocess.check_output(["etheris-monitor"], text=True, timeout=8)
+    except Exception as exc:
+        return f"monitor failed: {exc}"
+
+class Monitor(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="os.etheris.monitor")
+        self.label = None
+
+    def do_activate(self):
+        win = Gtk.ApplicationWindow(application=self, title="Etheris Monitor")
+        win.set_default_size(720, 560)
+        css = Gtk.CssProvider()
+        css.load_from_data(b"""
+            window { background: #07111f; color: #e8f4fc; }
+            textview {
+              background: alpha(#0b1728, 0.96);
+              color: #d7e8f5;
+              font-family: JetBrains Mono, monospace;
+              font-size: 12px;
+              padding: 12px;
+            }
+            label.heading { font-size: 16px; font-weight: 650; padding: 14px 16px 4px; }
+            label.caption { color: #9db6cc; font-size: 12px; padding: 0 16px 10px; }
+        """)
+        Gtk.StyleContext.add_provider_for_display(
+            win.get_display(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        h = Gtk.Label(label="System Monitor", xalign=0)
+        h.add_css_class("heading")
+        c = Gtk.Label(label="Live refresh every 2s · Super+, for Performance Manager", xalign=0)
+        c.add_css_class("caption")
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        tv = Gtk.TextView()
+        tv.set_editable(False)
+        tv.set_cursor_visible(False)
+        tv.set_monospace(True)
+        scroll.set_child(tv)
+        root.append(h)
+        root.append(c)
+        root.append(scroll)
+        win.set_child(root)
+        buf = tv.get_buffer()
+
+        def tick():
+            buf.set_text(snapshot())
+            return True
+
+        tick()
+        GLib.timeout_add_seconds(2, tick)
+        win.present()
+
+sys.exit(Monitor().run(None))
+PY
+}
+
 case "${1:-}" in
   help|-h|--help) usage ;;
   watch|top) watch_loop ;;
+  ui|gtk|gui) run_ui ;;
   *) overview ;;
 esac

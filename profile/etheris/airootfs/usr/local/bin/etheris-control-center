@@ -35,8 +35,9 @@ def ensure_settings() -> None:
         with open(SETTINGS, "w", encoding="utf-8") as fh:
             fh.write(
                 "theme=ocean-glass\n"
-                "blur=on\n"
+                "blur=off\n"
                 "animations=on\n"
+                "browser_preload=off\n"
                 "tray=panel\n"
                 "dnd=off\n"
                 "panel_layout=floating\n"
@@ -256,6 +257,16 @@ def open_software() -> None:
         )
 
 
+def open_monitor() -> None:
+    if Path("/usr/local/bin/etheris-monitor").is_file():
+        subprocess.Popen(["etheris-monitor", "ui"], start_new_session=True)
+    else:
+        subprocess.Popen(
+            ["foot", "-e", "bash", "-lc", "etheris monitor; read -r -p 'Enter…'"],
+            start_new_session=True,
+        )
+
+
 def open_updates() -> None:
     subprocess.Popen(
         ["foot", "-e", "bash", "-lc", "etheris-update status; echo; etheris-update check; read -r -p 'Enter…'"],
@@ -268,7 +279,11 @@ def open_power() -> None:
 
 
 def do_lock() -> None:
-    for cmd in (["swaylock", "-f", "-c", "0a1628"], ["loginctl", "lock-session"]):
+    for cmd in (
+        ["etheris-lock"],
+        ["swaylock", "-f", "-c", "0a1628"],
+        ["loginctl", "lock-session"],
+    ):
         try:
             subprocess.Popen(cmd, start_new_session=True)
             return
@@ -316,6 +331,7 @@ def run_wofi_menu() -> int:
         "Wallpaper",
         "Privacy",
         "Software / Apps",
+        "System Monitor",
         "Etheris Settings",
         "Power menu",
         "Cancel",
@@ -373,6 +389,8 @@ def run_wofi_menu() -> int:
         open_privacy()
     elif pick.startswith("Software"):
         open_software()
+    elif pick.startswith("System Monitor"):
+        open_monitor()
     elif pick == "Etheris Settings":
         open_settings()
     elif pick == "Power menu":
@@ -748,6 +766,10 @@ def try_gtk_sheet() -> int:
             apps.add_css_class("cc-link")
             apps.connect("clicked", lambda *_: (open_software(), self._quit(win)))
             foot.append(apps)
+            mon = Gtk.Button(label="Monitor")
+            mon.add_css_class("cc-link")
+            mon.connect("clicked", lambda *_: (open_monitor(), self._quit(win)))
+            foot.append(mon)
             upd = Gtk.Button(label="Updates")
             upd.add_css_class("cc-link")
             upd.connect("clicked", lambda *_: (open_updates(), self._quit(win)))

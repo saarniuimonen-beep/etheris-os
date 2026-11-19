@@ -56,6 +56,14 @@ Do **not** weaken a Must to get green. Fix the product or document a new Must ID
 | B1.19 | set -u scripts launched by systemd missing HOME | All `etheris-*.service` that run shell tools set `Environment=` or tools default HOME |
 | B1.20 | Docs/scripts teach broken `pgrep -x etheris-menu-hover` | Criteria/docs use `pgrep -af` |
 | B1.21 | Menu sheet clipped off right edge (hardcoded `move position 890`) | `_sway_float_corner` uses focused output `rect` |
+| B1.22 | Settings/glass recreate `blur=on` | CC / theme-apply / hub / `etheris_glass.want_blur` default **`blur=off`** |
+| B1.23 | Session/CC/power Lock bypasses branded lock | Prefer `etheris-lock` before raw `swaylock` |
+| B1.24 | `etheris ram idle-check` never arms | After `shift`, `cmd_ram "${1:-}"` (not `${2:-}`) |
+| B1.25 | Missing `browser_preload` warms Firefox | `preload_enabled` uses `${v:-off}` |
+| B1.26 | Hub bootstrap omits idle-safe preload | Bootstrap writes `browser_preload=off` |
+| B1.27 | Install leaves rolling mirrors + stable channel | Installer runs `etheris-update channel stable` (or coherent rewrite) |
+| B1.28 | Duplicate `.desktop` **Name=** (launcher dupes) | Unique `Name=` across share + local applications |
+| B1.29 | Defaults duped / private window skips lean | `etheris-browsers` ≠ Defaults; Firefox private → `etheris-browser` |
 
 ---
 

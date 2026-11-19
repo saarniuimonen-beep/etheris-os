@@ -1,7 +1,7 @@
 [Unit]
-Description=Etheris OS live session prep (cow space note + snappy defaults)
-After=network-pre.target local-fs.target
-Before=network.target
+Description=Etheris OS live session prep (cow space + gaming groups)
+After=network-pre.target local-fs.target systemd-sysusers.service
+Before=network.target greetd.service
 
 [Service]
 Type=oneshot
@@ -9,6 +9,8 @@ Type=oneshot
 # Primary size comes from kernel cmdline cow_spacesize=2G (profiledef).
 # Remount is a safety net when an older ISO still boots at 256M.
 ExecStart=/bin/bash -c 'if [[ -d /run/archiso/cowspace ]]; then sz=$(findmnt -n -o SIZE -b /run/archiso/cowspace 2>/dev/null || echo 0); if [[ "${sz:-0}" -gt 0 && "${sz:-0}" -lt 1073741824 ]]; then mount -o remount,size=2G /run/archiso/cowspace 2>/dev/null || true; fi; fi'
+# GameMode group exists from the package, but live users were never joined.
+ExecStart=/usr/local/bin/etheris-ensure-gaming-groups
 RemainAfterExit=yes
 
 [Install]

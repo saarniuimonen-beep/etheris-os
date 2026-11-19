@@ -26,6 +26,7 @@ file_permissions=(
   ["/usr/local/bin/etheris"]="0:0:755"
   ["/usr/local/bin/etheris-steam"]="0:0:755"
   ["/usr/local/bin/etheris-gaming-setup"]="0:0:755"
+  ["/usr/local/bin/etheris-ensure-gaming-groups"]="0:0:755"
   ["/usr/local/bin/etheris-settings"]="0:0:755"
   ["/usr/local/bin/etheris-wallpaper"]="0:0:755"
   ["/usr/local/bin/etheris-transfer"]="0:0:755"

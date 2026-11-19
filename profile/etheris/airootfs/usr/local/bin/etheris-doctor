@@ -136,7 +136,11 @@ run_greeter() {
   fi
   if [[ -f /var/lib/regreet/state.toml ]] \
     && grep -qE 'last_user\s*=' /var/lib/regreet/state.toml; then
-    pass "regreet state.toml present"
+    if grep -qF 'Etheris (Sway)' /var/lib/regreet/state.toml; then
+      pass "regreet state.toml present (Etheris session)"
+    else
+      note "regreet state.toml present but Etheris (Sway) mapping missing"
+    fi
   else
     note "regreet state.toml missing (cold skip_selection may show User/Session)"
   fi
@@ -168,6 +172,23 @@ run_session_hint() {
   fi
 }
 
+run_tooling() {
+  section "Etheris tooling"
+  local bin
+  for bin in etheris-packages etheris-privacy etheris-report etheris-software-center etheris-monitor etheris-profiles; do
+    if [[ -x "/usr/local/bin/$bin" ]]; then
+      pass "$bin present"
+    else
+      bad "$bin missing"
+    fi
+  done
+  if [[ -f /usr/local/share/etheris/groups/gaming.list ]]; then
+    pass "package groups present"
+  else
+    bad "package groups missing"
+  fi
+}
+
 emit_json() {
   printf '{"ok":%d,"fail":%d,"warn":%d,"passed":%s}\n' \
     "$ok" "$fail" "$warn" "$([[ $fail -eq 0 ]] && echo true || echo false)"
@@ -192,6 +213,7 @@ main() {
   run_firewall
   run_greeter
   run_session_hint
+  run_tooling
 
   echo
   echo "Summary: $ok OK, $fail FAIL, $warn WARN"

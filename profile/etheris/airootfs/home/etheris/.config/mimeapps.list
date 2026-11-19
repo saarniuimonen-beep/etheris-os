@@ -3,8 +3,12 @@ text/html=etheris-browser.desktop
 x-scheme-handler/http=etheris-browser.desktop
 x-scheme-handler/https=etheris-browser.desktop
 application/xhtml+xml=etheris-browser.desktop
+x-scheme-handler/steam=steam.desktop
+x-scheme-handler/steamlink=steam.desktop
 
 [Added Associations]
 text/html=etheris-browser.desktop;
 x-scheme-handler/http=etheris-browser.desktop;
 x-scheme-handler/https=etheris-browser.desktop;
+x-scheme-handler/steam=steam.desktop;
+x-scheme-handler/steamlink=steam.desktop;

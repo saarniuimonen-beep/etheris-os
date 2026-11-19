@@ -132,10 +132,18 @@ extract_local() {
     usr/local/bin/etheris-greeter \
     usr/local/bin/etheris-perf \
     usr/local/bin/etheris-security \
+    usr/local/bin/etheris-packages \
+    usr/local/bin/etheris-privacy \
+    usr/local/bin/etheris-report \
+    usr/local/bin/etheris-software-center \
+    usr/local/bin/etheris-monitor \
+    usr/local/bin/etheris-profiles \
+    usr/local/bin/etheris-lock \
     usr/local/bin/etheris-installer \
     etc/systemd/system/etheris-perf.service \
     etc/skel/.config/sway/config \
     usr/local/share/etheris/design/etheris.tokens.json \
+    usr/local/share/etheris/groups \
     usr/local/share/polkit-1/rules.d \
     var/lib/regreet/state.toml \
     >/dev/null

@@ -1,12 +1,12 @@
 [Desktop Entry]
 Version=1.0
-Name=Etheris Defaults
-GenericName=Default Apps
-Comment=Choose default browser, terminal, and AI agent
-Exec=etheris-defaults
+Name=Etheris Browsers
+GenericName=Browser Manager
+Comment=Install and manage additional browsers
+Exec=etheris-browsers-ui
 Icon=preferences-desktop-default-applications
 Terminal=false
 Type=Application
-Categories=Settings;DesktopSettings;Network;
-Keywords=defaults;browser;terminal;ai;agent;
+Categories=Settings;Network;
+Keywords=browsers;chrome;chromium;install;
 StartupNotify=true

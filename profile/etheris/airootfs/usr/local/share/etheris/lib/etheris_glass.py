@@ -70,13 +70,14 @@ def animations_on() -> bool:
 
 
 def want_blur() -> bool:
-    """Frosted backdrop: on by default when tools exist; not tied to animations=."""
+    """Frosted backdrop: opt-in (tokens blurDefault=off). Not tied to animations=."""
     env = os.environ.get("ETHERIS_GLASS_BLUR", os.environ.get("ETHERIS_POWER_BLUR", "")).strip()
     if env == "0":
         return False
     if env == "1":
         return True
-    if setting("blur", "on") == "off":
+    # Match skel + etheris.tokens.json (blurDefault=off) when settings.conf is absent.
+    if setting("blur", "off") != "on":
         return False
     return bool(shutil.which("grim") and (shutil.which("magick") or shutil.which("convert")))
 

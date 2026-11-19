@@ -1,30 +1,75 @@
 #!/usr/bin/env bash
-# Etheris lock screen — Neo-Aero ocean-glass brand colors (swaylock)
+# Etheris lock screen — Neo-Aero ocean-glass branding (swaylock)
 set -euo pipefail
-# Prefer tokenized BG when available
+
 BG="#0a1628"
 RING="#38bdf8"
 TEXT="#e8f4fc"
 WRONG="#fb7185"
-if [[ -f /usr/local/share/etheris/design/tokens-dark.conf ]]; then
-  # shellcheck disable=SC1091
-  source /usr/local/share/etheris/design/tokens-dark.conf 2>/dev/null || true
-  BG="${BG:-#0a1628}"
+CLEAR="#2dd4bf"
+WALL=""
+VARIANT="dark"
+
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/etheris"
+SETTINGS="$CONF_DIR/settings.conf"
+
+if [[ -f "$SETTINGS" ]]; then
+  VARIANT="$(awk -F= '/^theme_variant=/{print $2; exit}' "$SETTINGS" 2>/dev/null || true)"
+  VARIANT="${VARIANT:-dark}"
+  WALL="$(awk -F= '/^wallpaper=/{print $2; exit}' "$SETTINGS" 2>/dev/null || true)"
+fi
+
+TOKENS="/usr/local/share/etheris/design/tokens-${VARIANT}.conf"
+[[ -f "$TOKENS" ]] || TOKENS="/usr/local/share/etheris/design/tokens-dark.conf"
+if [[ -f "$TOKENS" ]]; then
+  # shellcheck disable=SC1090
+  source "$TOKENS" 2>/dev/null || true
+  if [[ -n "${SWAYLOCK_COLOR:-}" ]]; then
+    BG="#${SWAYLOCK_COLOR#\#}"
+  else
+    BG="${BG:-#0a1628}"
+  fi
   RING="${ACCENT:-#38bdf8}"
   TEXT="${FG:-#e8f4fc}"
   WRONG="${DANGER:-#fb7185}"
+  CLEAR="${SUCCESS:-#2dd4bf}"
 fi
-exec swaylock -f \
-  --color "${BG#\#}" \
-  --inside-color "${BG#\#}" \
-  --ring-color "${RING#\#}" \
-  --key-hl-color "${TEXT#\#}" \
-  --line-color 00000000 \
-  --separator-color 00000000 \
-  --text-color "${TEXT#\#}" \
-  --inside-wrong-color "${BG#\#}" \
-  --ring-wrong-color "${WRONG#\#}" \
-  --text-wrong-color "${TEXT#\#}" \
-  --inside-ver-color "${BG#\#}" \
-  --ring-ver-color "${RING#\#}" \
-  --text-ver-color "${TEXT#\#}"
+
+if [[ -z "$WALL" || ! -r "$WALL" ]]; then
+  WALL="/usr/local/share/etheris/wallpapers/ocean-glass.png"
+fi
+
+hex() { printf '%s' "${1#\#}"; }
+
+args=(
+  -f
+  --ignore-empty-password
+  --show-failed-attempts
+  --indicator-idle-visible
+  --indicator-radius 88
+  --indicator-thickness 6
+  --font "Noto Sans"
+  --ring-color "$(hex "$RING")"
+  --key-hl-color "$(hex "$TEXT")"
+  --line-color 00000000
+  --separator-color 00000000
+  --text-color "$(hex "$TEXT")"
+  --inside-color "$(hex "$BG")aa"
+  --inside-wrong-color "$(hex "$BG")cc"
+  --ring-wrong-color "$(hex "$WRONG")"
+  --text-wrong-color "$(hex "$TEXT")"
+  --inside-ver-color "$(hex "$BG")cc"
+  --ring-ver-color "$(hex "$CLEAR")"
+  --text-ver-color "$(hex "$TEXT")"
+  --inside-clear-color "$(hex "$BG")cc"
+  --ring-clear-color "$(hex "$CLEAR")"
+  --text-clear-color "$(hex "$TEXT")"
+)
+
+if [[ -r "$WALL" ]]; then
+  args+=(--image "$WALL" --scaling fill)
+else
+  args+=(--color "$(hex "$BG")")
+fi
+
+exec swaylock "${args[@]}"

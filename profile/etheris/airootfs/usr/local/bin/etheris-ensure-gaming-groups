@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Etheris OS — live/disk gaming membership + Steam desktop override.
+# Live ISO: gamemode package creates the group via sysusers, but airootfs
+# /etc/group never memberships live users → GameMode renice is a no-op.
+# Steam package ships /usr/share/.../steam.desktop; we keep Exec=etheris-steam
+# without a second airootfs XDG entry (duplicate basename gate).
+set -euo pipefail
+
+# Apply Etheris Steam desktop over stock package file (idempotent).
+apply_steam_desktop() {
+  local src=/usr/local/share/etheris/desktop/steam.desktop
+  local alt=/usr/local/share/applications/steam.desktop
+  [[ -f "$src" ]] || src="$alt"
+  [[ -f "$src" ]] || return 0
+  grep -q '^Exec=etheris-steam' "$src" || return 0
+  install -Dm644 "$src" /usr/share/applications/steam.desktop
+}
+
+apply_steam_desktop
+
+if getent group gamemode >/dev/null 2>&1; then
+  while IFS=: read -r name _ uid _rest; do
+    [[ "$uid" =~ ^[0-9]+$ ]] || continue
+    ((uid >= 1000 && uid < 65534)) || continue
+    if id -nG "$name" 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+      continue
+    fi
+    usermod -aG gamemode "$name" 2>/dev/null || true
+  done < <(getent passwd)
+fi
+
+exit 0

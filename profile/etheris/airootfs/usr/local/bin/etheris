@@ -14,7 +14,9 @@ theme=ocean-glass
 wallpaper=/usr/local/share/etheris/wallpapers/ocean-glass.png
 accent=#38bdf8
 blur=off
-animations=off
+animations=on
+theme_variant=dark
+browser_preload=off
 launcher_style=slim
 dnd=off
 panel_layout=floating
@@ -359,7 +361,7 @@ cmd_logout() {
   choice="$(printf 'Lock\nSleep\nLogout\nReboot\nShutdown\nCancel' | wofi --dmenu -p 'session › ' 2>/dev/null || true)"
   case "$choice" in
     Lock)
-      swaylock -f -c 0a1628 2>/dev/null || loginctl lock-session
+      etheris-lock 2>/dev/null || swaylock -f -c 0a1628 2>/dev/null || loginctl lock-session
       ;;
     Sleep) systemctl suspend ;;
     Logout)
@@ -450,16 +452,22 @@ cmd_help_menu() {
 }
 
 cmd_gaming() {
-  cat <<'EOF'
+  local steam_line
+  if command -v steam >/dev/null 2>&1; then
+    steam_line="Steam:          installed — launch: etheris-steam"
+  else
+    steam_line="Steam:          not installed (lean disk install) — sudo etheris packages install gaming"
+  fi
+  cat <<EOF
 Etheris gaming (summary)
 
-  Steam:          pre-installed (Arch multilib) — launch: etheris-steam
+  ${steam_line}
   Wine:           wine + wine-mono + wine-gecko + winetricks
   Proton:         via Steam Play (Experimental/Hotfix/9.0 queued on first launch)
   Anti-cheat:     official Proton EAC + BattlEye runtimes (same queue)
-  Setup:          etheris-gaming-setup status | runtimes
+  Setup:          etheris-gaming-setup status | doctor | runtimes
   Proton-GE:      optional third-party (user-installed; not official Arch)
-  GameMode:       gamemoderun %command%  (on demand)
+  GameMode:       gamemoderun %command%  (user must be in gamemode group)
   MangoHud:       mangohud %command%
   Gamescope:      optional compositor wrapper where compatible
   protontricks:   Winetricks for Proton prefixes · umu-run for non-Steam
@@ -471,9 +479,10 @@ Anti-cheat reality:
 
 Other limits:
   • NVIDIA Pascal needs 580xx AUR drivers — etheris-drivers pascal-guide
+  • NVIDIA Wayland needs nvidia_drm modeset=1 (etheris-nvidia.conf)
   • VM tests ≠ physical GPU/gaming proof
 
-Docs: /usr/local/share/etheris/docs/GAMING.md
+Docs: /usr/local/share/etheris/docs/GAMING.md · GAME-READY-CRITERIA.md
 EOF
   if [[ -x /usr/local/bin/etheris-gaming-setup ]]; then
     echo
@@ -504,8 +513,8 @@ main() {
     help|-h|--help) cmd_help ;;
     status) cmd_status ;;
     ram|memory|idle)
-      # etheris ram [idle-check]
-      cmd_ram "${2:-}"
+      # etheris ram [idle-check] — after shift, mode is $1
+      cmd_ram "${1:-}"
       ;;
     auth|auth-check) exec etheris-auth-check ;;
     doctor|diag|diagnose) exec etheris-doctor "$@" ;;

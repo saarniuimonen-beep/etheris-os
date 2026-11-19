@@ -13,13 +13,20 @@ try:
     import gi
 
     gi.require_version("Gtk", "4.0")
-    from gi.repository import GLib, Gtk
+    from gi.repository import GLib, Gtk, Pango
 except (ImportError, ValueError) as exc:
     print(f"etheris-software-center: GTK4 required ({exc})", file=sys.stderr)
     print("Fallback: etheris packages list", file=sys.stderr)
     os.execvp("etheris-packages", ["etheris-packages", "list"])
 
 GROUPS = Path(os.environ.get("ETHERIS_GROUPS_DIR", "/usr/local/share/etheris/groups"))
+
+DESCRIPTIONS = {
+    "gaming": "Steam, Proton helpers, GameMode, MangoHud, Wine stack.",
+    "dev": "Compilers, editors, containers, and everyday CLI tooling.",
+    "multimedia": "Codecs, players, Obs, GIMP, Inkscape, Audacity.",
+    "office": "LibreOffice, PDF viewer, Thunderbird, spellcheck.",
+}
 
 
 def group_names() -> list[str]:
@@ -41,6 +48,21 @@ def group_pkgs(name: str) -> list[str]:
     return out
 
 
+def installed_count(pkgs: list[str]) -> int:
+    if not pkgs:
+        return 0
+    try:
+        r = subprocess.run(
+            ["pacman", "-Q"] + pkgs,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return 0
+    return sum(1 for line in (r.stdout or "").splitlines() if line.strip())
+
+
 def run_install(name: str) -> None:
     cmd = ["pkexec", "etheris-packages", "install", name]
     try:
@@ -49,25 +71,53 @@ def run_install(name: str) -> None:
         subprocess.Popen(["etheris-packages", "install", name])
 
 
+def run_remove(name: str) -> None:
+    cmd = ["pkexec", "etheris-packages", "remove", name]
+    try:
+        subprocess.Popen(cmd)
+    except OSError:
+        subprocess.Popen(["etheris-packages", "remove", name])
+
+
 class SoftwareCenter(Gtk.Application):
     def __init__(self) -> None:
         super().__init__(application_id="os.etheris.software")
+        self._filter = ""
+        self._box: Gtk.Box | None = None
+        self._status: Gtk.Label | None = None
 
     def do_activate(self) -> None:  # noqa: N802
         win = Gtk.ApplicationWindow(application=self, title="Etheris Software")
-        win.set_default_size(720, 480)
+        win.set_default_size(760, 560)
         css = Gtk.CssProvider()
         css.load_from_data(
             b"""
             window { background: #07111f; color: #e8f4fc; }
+            entry.search {
+              background: alpha(#0f2136, 0.95);
+              border: 1px solid alpha(#38bdf8, 0.22);
+              border-radius: 12px; padding: 8px 12px; color: #e8f4fc;
+            }
             .card {
               background: alpha(#0f2136, 0.92);
               border: 1px solid alpha(#38bdf8, 0.18);
-              border-radius: 14px; padding: 14px 16px; margin: 8px 12px;
+              border-radius: 16px; padding: 16px 18px; margin: 8px 14px;
             }
-            label.heading { font-size: 15px; font-weight: 650; }
+            .card:hover { border-color: alpha(#38bdf8, 0.42); }
+            label.heading { font-size: 16px; font-weight: 650; }
             label.caption { color: #9db6cc; font-size: 12px; }
             label.trust { color: #2dd4bf; font-size: 11px; font-weight: 600; }
+            label.status { color: #9db6cc; font-size: 12px; }
+            button.accent {
+              background: alpha(#38bdf8, 0.22);
+              border: 1px solid alpha(#38bdf8, 0.45);
+              border-radius: 10px; color: #e8f4fc; padding: 6px 14px;
+            }
+            button.ghost {
+              background: transparent;
+              border: 1px solid alpha(#9db6cc, 0.28);
+              border-radius: 10px; color: #c7d9e8; padding: 6px 12px;
+            }
             """
         )
         Gtk.StyleContext.add_provider_for_display(
@@ -75,75 +125,157 @@ class SoftwareCenter(Gtk.Application):
         )
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        head.set_margin_top(18)
-        head.set_margin_start(20)
-        head.set_margin_end(20)
-        t = Gtk.Label(label="Software", xalign=0)
-        t.add_css_class("heading")
-        c = Gtk.Label(
-            label="Curated Etheris groups → Arch official repos. AUR is not listed here.",
+
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        head.set_margin_top(20)
+        head.set_margin_start(22)
+        head.set_margin_end(22)
+        title = Gtk.Label(label="Software", xalign=0)
+        title.add_css_class("heading")
+        caption = Gtk.Label(
+            label="Curated Etheris groups → Arch official repos only. AUR stays out of this list.",
             xalign=0,
             wrap=True,
         )
-        c.add_css_class("caption")
-        head.append(t)
-        head.append(c)
+        caption.add_css_class("caption")
+        search = Gtk.Entry()
+        search.set_placeholder_text("Filter groups…")
+        search.add_css_class("search")
+        search.connect("changed", self._on_filter)
+        head.append(title)
+        head.append(caption)
+        head.append(search)
         root.append(head)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_vexpand(True)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self._box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        scroll.set_child(self._box)
+        root.append(scroll)
+
+        foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        foot.set_margin_top(6)
+        foot.set_margin_bottom(14)
+        foot.set_margin_start(22)
+        foot.set_margin_end(22)
+        self._status = Gtk.Label(label="", xalign=0)
+        self._status.add_css_class("status")
+        self._status.set_hexpand(True)
+        cli = Gtk.Button(label="CLI")
+        cli.add_css_class("ghost")
+        cli.connect(
+            "clicked",
+            lambda *_: subprocess.Popen(
+                ["foot", "-e", "bash", "-lc", "etheris packages list; echo; read -r -p 'Enter…'"]
+            ),
+        )
+        refresh = Gtk.Button(label="Refresh")
+        refresh.add_css_class("ghost")
+        refresh.connect("clicked", lambda *_: self._rebuild())
+        foot.append(self._status)
+        foot.append(refresh)
+        foot.append(cli)
+        root.append(foot)
+
+        win.set_child(root)
+        self._rebuild()
+        win.present()
+
+    def _on_filter(self, entry: Gtk.Entry) -> None:
+        self._filter = (entry.get_text() or "").strip().lower()
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        assert self._box is not None
+        while (child := self._box.get_first_child()) is not None:
+            self._box.remove(child)
+
         names = group_names()
-        if not names:
-            empty = Gtk.Label(label="No groups found under /usr/local/share/etheris/groups", xalign=0)
-            empty.add_css_class("caption")
-            empty.set_margin_start(20)
-            box.append(empty)
+        shown = 0
         for name in names:
+            if self._filter and self._filter not in name and self._filter not in DESCRIPTIONS.get(name, "").lower():
+                continue
             pkgs = group_pkgs(name)
-            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            have = installed_count(pkgs)
+            total = len(pkgs)
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
             card.add_css_class("card")
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-            left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             left.set_hexpand(True)
             title = Gtk.Label(label=name.title(), xalign=0)
             title.add_css_class("heading")
             trust = Gtk.Label(label="Trust: Etheris curated → Arch", xalign=0)
             trust.add_css_class("trust")
-            cap = Gtk.Label(label=f"{len(pkgs)} packages", xalign=0)
-            cap.add_css_class("caption")
+            desc = Gtk.Label(
+                label=DESCRIPTIONS.get(name, f"{total} packages from official repos."),
+                xalign=0,
+                wrap=True,
+            )
+            desc.add_css_class("caption")
+            state = Gtk.Label(
+                label=f"{have}/{total} installed" if total else "empty group",
+                xalign=0,
+            )
+            state.add_css_class("caption")
             left.append(title)
             left.append(trust)
-            left.append(cap)
-            btn = Gtk.Button(label="Install")
-            btn.connect("clicked", lambda _b, n=name: run_install(n))
+            left.append(desc)
+            left.append(state)
+
+            actions = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            install = Gtk.Button(label="Install")
+            install.add_css_class("accent")
+            install.connect("clicked", lambda _b, n=name: self._install(n))
+            remove = Gtk.Button(label="Remove")
+            remove.add_css_class("ghost")
+            remove.connect("clicked", lambda _b, n=name: self._remove(n))
+            actions.append(install)
+            actions.append(remove)
             row.append(left)
-            row.append(btn)
+            row.append(actions)
             card.append(row)
-            # show a few package names
-            preview = Gtk.Label(label=", ".join(pkgs[:8]) + ("…" if len(pkgs) > 8 else ""), xalign=0, wrap=True)
+
+            preview = Gtk.Label(
+                label=", ".join(pkgs[:10]) + ("…" if len(pkgs) > 10 else ""),
+                xalign=0,
+                wrap=True,
+            )
             preview.add_css_class("caption")
+            preview.set_ellipsize(Pango.EllipsizeMode.END)
             card.append(preview)
-            box.append(card)
-        scroll.set_child(box)
-        root.append(scroll)
+            self._box.append(card)
+            shown += 1
 
-        foot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        foot.set_margin_bottom(12)
-        foot.set_margin_start(20)
-        cli = Gtk.Button(label="CLI: etheris packages")
-        cli.connect(
-            "clicked",
-            lambda *_: subprocess.Popen(
-                ["foot", "-e", "bash", "-lc", "etheris packages list; read -r -p 'Enter…'"]
-            ),
-        )
-        foot.append(cli)
-        root.append(foot)
+        if shown == 0:
+            empty = Gtk.Label(
+                label="No matching groups under /usr/local/share/etheris/groups",
+                xalign=0,
+            )
+            empty.add_css_class("caption")
+            empty.set_margin_start(22)
+            empty.set_margin_top(12)
+            self._box.append(empty)
 
-        win.set_child(root)
-        win.present()
+        if self._status is not None:
+            self._status.set_text(f"{shown} group(s) · official repos only")
+
+    def _install(self, name: str) -> None:
+        if self._status is not None:
+            self._status.set_text(f"Installing {name}… (pkexec)")
+        run_install(name)
+        GLib.timeout_add_seconds(8, self._rebuild_idle)
+
+    def _remove(self, name: str) -> None:
+        if self._status is not None:
+            self._status.set_text(f"Removing {name}… (pkexec)")
+        run_remove(name)
+        GLib.timeout_add_seconds(8, self._rebuild_idle)
+
+    def _rebuild_idle(self) -> bool:
+        self._rebuild()
+        return False
 
 
 def main() -> int:

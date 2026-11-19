@@ -124,6 +124,14 @@ for f in \
   fi
 done
 
+section "M1.4 game-ready / drivers (tree)"
+if ./scripts/test-game-ready.sh >/tmp/etheris-maturity-game.log 2>&1; then
+  pass "test-game-ready PASSED"
+else
+  bad "test-game-ready FAILED"
+  tail -25 /tmp/etheris-maturity-game.log | sed 's/^/  | /'
+fi
+
 echo
 echo "Summary: $ok OK, $fail FAIL"
 echo "Live Must M2.*/M3.* still require QEMU evidence (strict — no CONDITIONAL PASS)."

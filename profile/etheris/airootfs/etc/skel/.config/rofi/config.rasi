@@ -1,4 +1,4 @@
-/* Etheris OS — sleek icon-grid application launcher */
+/* Etheris OS — Spotlight application launcher */
 configuration {
   modi: "drun,pinned:/usr/local/share/etheris/rofi/favorites.mode,run,window";
   show-icons: true;
@@ -13,9 +13,19 @@ configuration {
   cycle: true;
   matching: "fuzzy";
   sort: true;
+  normalize-match: true;
   display-drun: "Apps";
   display-pinned: "Pinned";
   display-run: "Run";
   display-window: "Windows";
+  /* Arrows move the icon grid; Ctrl+B / Ctrl+F move the search caret */
+  kb-move-char-back: "Control+b";
+  kb-move-char-forward: "Control+f";
+  kb-row-left: "Left";
+  kb-row-right: "Right";
+  kb-row-up: "Up";
+  kb-row-down: "Down";
+  kb-accept-entry: "Return,KP_Enter";
+  kb-cancel: "Escape";
 }
 @theme "etheris-slim"

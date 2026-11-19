@@ -62,7 +62,9 @@ run_ui() {
       2)
         echo "  Navigation"
         echo
-        echo "  • Super+D or Super+Space — Etheris launcher (Rofi)"
+        echo "  • Super+A — Etheris Menu (Quick Settings)"
+        echo "  • Super+D or Super+Space — launcher (Rofi)"
+        echo "  • Super+, — Settings"
         echo "  • Super+1..9 — workspaces"
         echo "  • Alt+Tab — cycle windows on this workspace"
         echo "  • Alt+F4 or Super+Q — close window"
@@ -73,26 +75,28 @@ run_ui() {
         echo
         echo "  Important defaults:"
         echo "    Super+Return   terminal"
+        echo "    Super+B        browser (lean warm profile)"
         echo "    Super+D        Etheris launcher"
+        echo "    Super+L        lock screen"
         echo "    Super+/        Shortcut Center (full list + search)"
-        echo "    Super+Shift+E  logout menu"
+        echo "    Super+Shift+E  Session / power menu"
         echo
         echo "  Open the Shortcut Center anytime with Super+/."
         ;;
       4)
         echo "  Customisation"
         echo
-        echo "  • etheris themes / Etheris Wallpapers (etheris-wallpaper)"
-        echo "  • Or: Super+D → search Etheris"
+        echo "  • Themes & wallpapers: etheris themes / etheris-wallpaper"
+        echo "  • Software groups: etheris software-center"
+        echo "  • Privacy: etheris privacy · Settings → Privacy"
         echo "  • Sway config: ~/.config/sway/config"
-        echo "  • Sound startup: etheris sound"
         ;;
       5)
         echo "  You are ready"
         echo
-        echo "  Settings & apps: Super+D Etheris launcher, or run etheris"
-        echo "  Help: etheris guide --force  ·  etheris shortcuts"
-        echo "  Docs: /usr/local/share/etheris/docs/"
+        echo "  Diagnose: etheris doctor · etheris report create"
+        echo "  Help:     etheris guide --force · etheris shortcuts"
+        echo "  Docs:     /usr/local/share/etheris/docs/"
         echo
         echo "  Enjoy Etheris OS."
         ;;

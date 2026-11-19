@@ -40,6 +40,8 @@ PCI databases: `/usr/local/share/etheris/hardware/*.tsv`
 | NVIDIA Pascal / Volta (/ Maxwell best-effort) | AUR `nvidia-580xx-*` — **never** `nvidia-open` |
 | Kepler and older | Best-effort / unsupported for gaming claims |
 
+Proprietary NVIDIA on Wayland also needs DRM modeset (`/etc/modprobe.d/etheris-nvidia.conf`), then `mkinitcpio -P` + reboot. Without `nvidia_drm.modeset=1`, Sway/Gamescope/Steam are not game-ready.
+
 Live ISO ships the **open** stack (Mesa/nouveau as kernel chooses). Proprietary NVIDIA is installed on the target system when appropriate — not forced onto every live boot (VM/QEMU friendliness).
 
 ## Risks / limitations

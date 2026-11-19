@@ -17,10 +17,11 @@ mkdir -p "$CONF_DIR" "$STATE_DIR" "$ENV_DIR" "$STEAM_ROOT/config" "$STEAM_ROOT/l
 usage() {
   cat <<'EOF'
 Usage:
-  etheris-gaming-setup          # apply once (no-op if already done)
-  etheris-gaming-setup force    # re-apply local OS tweaks
-  etheris-gaming-setup status
-  etheris-gaming-setup runtimes # queue Proton + official EAC/BattlEye runtimes in Steam
+  etheris-gaming-setup           # apply once (no-op if already done)
+  etheris-gaming-setup force     # re-apply local OS tweaks
+  etheris-gaming-setup status    # human-readable readiness dump
+  etheris-gaming-setup doctor    # strict game-ready checks (exit 1 on FAIL)
+  etheris-gaming-setup runtimes  # queue Proton + official EAC/BattlEye runtimes in Steam
   etheris-gaming-setup steamplay # enable Steam Play defaults in Steam config
 EOF
 }
@@ -160,11 +161,31 @@ write_env() {
   cat >"$ENV_FILE" <<'EOF'
 # Etheris gaming defaults (user session). Safe Proton helpers only.
 # Restart the session after first setup for environment.d to load.
+#
+# Do NOT set SDL_VIDEODRIVER=x11 here — that poisons native Wayland games
+# and Gamescope. etheris-steam sets X11 only for the Steam client process.
 PROTON_LOG=0
-# Steam Input under Wayland/Sway (XWayland clients).
+# Steam Input / controllers under Wayland (XWayland + native).
 SDL_JOYSTICK_HIDAPI=1
-# Prefer X11 for Steam/CEF stability on Sway.
-SDL_VIDEODRIVER=x11
+EOF
+}
+
+seed_mangohud() {
+  local mh="${XDG_CONFIG_HOME:-$HOME/.config}/MangoHud/MangoHud.conf"
+  [[ -f "$mh" ]] && return 0
+  mkdir -p "$(dirname "$mh")"
+  cat >"$mh" <<'EOF'
+# Etheris OS — calm default overlay (opt-in via: mangohud %command%)
+gpu_stats
+cpu_stats
+fps
+frametime
+frame_timing=0
+hud_compact
+position=top-left
+background_alpha=0.4
+font_size=18
+legacy_layout=false
 EOF
 }
 
@@ -192,6 +213,25 @@ status() {
   else
     echo "gamemode_group=no"
   fi
+  echo "xwayland=$(command -v Xwayland >/dev/null && echo yes || echo no)"
+  echo "vulkaninfo=$(command -v vulkaninfo >/dev/null && echo yes || echo no)"
+  if [[ -r /sys/module/nvidia_drm/parameters/modeset ]]; then
+    echo "nvidia_drm_modeset=$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null || echo unknown)"
+  elif lsmod 2>/dev/null | grep -qE '^nvidia\b'; then
+    echo "nvidia_drm_modeset=module-loaded-no-sysfs"
+  else
+    echo "nvidia_drm_modeset=n/a"
+  fi
+  if [[ -f /etc/modprobe.d/etheris-nvidia.conf ]]; then
+    echo "nvidia_modprobe_conf=yes"
+  else
+    echo "nvidia_modprobe_conf=no"
+  fi
+  if [[ -f "$ENV_FILE" ]] && grep -qE '^[[:space:]]*SDL_VIDEODRIVER=x11' "$ENV_FILE"; then
+    echo "sdl_videodriver_global=x11_POISON"
+  else
+    echo "sdl_videodriver_global=ok"
+  fi
   local eac be
   eac="$(find "$STEAM_ROOT/steamapps/common" -maxdepth 1 -type d -iname '*EasyAntiCheat*' 2>/dev/null | head -n1 || true)"
   be="$(find "$STEAM_ROOT/steamapps/common" -maxdepth 1 -type d -iname '*BattlEye*' 2>/dev/null | head -n1 || true)"
@@ -199,8 +239,107 @@ status() {
   echo "battleye_runtime=$([[ -n $be ]] && echo yes || echo no)"
 }
 
+doctor() {
+  local fail=0
+  local map
+  echo "=== Etheris gaming doctor (strict) ==="
+
+  if ! command -v steam >/dev/null 2>&1; then
+    echo "FAIL steam missing (live ISO ships it; disk installs need ETHERIS_INSTALL_GAMING=1)"
+    fail=1
+  else
+    echo "OK  steam present"
+  fi
+
+  if ! command -v gamemoderun >/dev/null 2>&1; then
+    echo "FAIL gamemoderun missing"
+    fail=1
+  else
+    echo "OK  gamemoderun present"
+  fi
+
+  if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+    echo "OK  user in gamemode group"
+  else
+    echo "FAIL user not in gamemode group (re-login after: sudo usermod -aG gamemode \"$USER\")"
+    fail=1
+  fi
+
+  map="$(sysctl -n vm.max_map_count 2>/dev/null || echo 0)"
+  if [[ "${map:-0}" -ge 1048576 ]]; then
+    echo "OK  vm.max_map_count=$map"
+  else
+    echo "FAIL vm.max_map_count=$map (want ≥1048576; Etheris ships 2147483642)"
+    fail=1
+  fi
+
+  if command -v Xwayland >/dev/null 2>&1; then
+    echo "OK  Xwayland present"
+  else
+    echo "FAIL Xwayland missing (Steam/Proton X11 clients)"
+    fail=1
+  fi
+
+  if command -v vulkaninfo >/dev/null 2>&1; then
+    if vulkaninfo --summary >/dev/null 2>&1; then
+      echo "OK  vulkaninfo --summary"
+    else
+      echo "FAIL vulkaninfo present but no working ICD/runtime"
+      fail=1
+    fi
+  else
+    echo "FAIL vulkan-tools / vulkaninfo missing"
+    fail=1
+  fi
+
+  if lsmod 2>/dev/null | grep -qE '^nvidia\b'; then
+    local ms
+    ms="$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null || echo "")"
+    if [[ "$ms" == "Y" || "$ms" == "1" ]]; then
+      echo "OK  nvidia_drm modeset=$ms"
+    else
+      echo "FAIL nvidia loaded but modeset=${ms:-unknown} (need modeset=1 for Wayland)"
+      fail=1
+    fi
+    if [[ -f /etc/modprobe.d/etheris-nvidia.conf ]]; then
+      echo "OK  etheris-nvidia.conf present"
+    else
+      echo "FAIL missing /etc/modprobe.d/etheris-nvidia.conf"
+      fail=1
+    fi
+  elif lsmod 2>/dev/null | grep -qE '^nouveau\b'; then
+    echo "FAIL nouveau loaded — not the gaming path (install proprietary branch)"
+    fail=1
+  elif lsmod 2>/dev/null | grep -qE '^amdgpu\b|^i915\b|^xe\b|^virtio_gpu\b'; then
+    echo "OK  open GPU module loaded"
+  else
+    echo "WARN no known GPU module loaded (VM without virtio_gpu, or driver missing)"
+  fi
+
+  if [[ -f "$ENV_FILE" ]] && grep -qE '^[[:space:]]*SDL_VIDEODRIVER=x11' "$ENV_FILE"; then
+    echo "FAIL $ENV_FILE forces SDL_VIDEODRIVER=x11 (poisons Wayland games)"
+    fail=1
+  else
+    echo "OK  no global SDL_VIDEODRIVER=x11 poison"
+  fi
+
+  if ((fail)); then
+    echo "gaming doctor: FAILED"
+    return 1
+  fi
+  echo "gaming doctor: PASSED (OS stack). Physical GPU game claims still need HARDWARE-TEST-MATRIX rows."
+  return 0
+}
+
 apply() {
   local force="${1:-}"
+
+  # Scrub legacy global SDL_VIDEODRIVER=x11 even when setup was already stamped.
+  if [[ -f "$ENV_FILE" ]] && grep -qE '^[[:space:]]*SDL_VIDEODRIVER=x11' "$ENV_FILE"; then
+    write_env
+    echo "etheris-gaming-setup: cleared SDL_VIDEODRIVER=x11 from $ENV_FILE"
+  fi
+
   if [[ -f "$STAMP" && "$force" != force ]]; then
     echo "etheris-gaming-setup: already done ($STAMP)"
     return 0
@@ -210,12 +349,25 @@ apply() {
     echo "==== $(date -Is) gaming-setup ===="
     write_env
     echo "wrote $ENV_FILE"
+    seed_mangohud
+    echo "mangohud conf seeded (if missing)"
     enable_steamplay || echo "steamplay seed skipped"
     xdg_steam_handler
   } >>"$LOG" 2>&1
 
-  if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
-    echo "note: user not in gamemode group yet (re-login after installer adds it)" >>"$LOG"
+  # Ensure GameMode renice group (lean→gaming upgrades often miss this)
+  if getent group gamemode >/dev/null 2>&1; then
+    if ! id -nG 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+      if sudo -n usermod -aG gamemode "$USER" 2>/dev/null; then
+        echo "added $USER to gamemode group (re-login required for session)" >>"$LOG"
+        notify "GameMode group updated" \
+          "Added $USER to gamemode. Log out and back in before using gamemoderun."
+      else
+        echo "note: run: sudo usermod -aG gamemode $USER && re-login" >>"$LOG"
+        notify "GameMode group missing" \
+          "Run: sudo usermod -aG gamemode $USER — then log out/in."
+      fi
+    fi
   fi
 
   # Reload controller udev rules when possible
@@ -235,6 +387,7 @@ case "$cmd" in
   ""|apply) apply ;;
   force) apply force ;;
   status) status ;;
+  doctor) doctor ;;
   runtimes) queue_runtimes ;;
   steamplay) enable_steamplay ;;
   -h|--help|help) usage ;;
