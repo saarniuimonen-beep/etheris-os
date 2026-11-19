@@ -323,6 +323,24 @@ doctor() {
     echo "OK  no global SDL_VIDEODRIVER=x11 poison"
   fi
 
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+    if pgrep -u "$UID" -x pipewire >/dev/null 2>&1; then
+      echo "OK  pipewire running (session audio)"
+    else
+      echo "FAIL pipewire not running in graphical session (etheris-session-ready / user units)"
+      fail=1
+    fi
+  else
+    echo "WARN skip pipewire session check (not graphical)"
+  fi
+
+  if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    echo "OK  NetworkManager active"
+  else
+    echo "FAIL NetworkManager not active"
+    fail=1
+  fi
+
   if ((fail)); then
     echo "gaming doctor: FAILED"
     return 1

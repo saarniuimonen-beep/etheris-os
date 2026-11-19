@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Etheris OS — live/disk gaming membership + Steam desktop override.
-# Live ISO: gamemode package creates the group via sysusers, but airootfs
-# /etc/group never memberships live users → GameMode renice is a no-op.
+# Etheris OS — live/disk desktop memberships + Steam desktop override.
+# Live ISO: package sysusers create groups, but airootfs never joins users →
+# GameMode renice / Bluetooth / PipeWire seat access can be a no-op.
 # Steam package ships /usr/share/.../steam.desktop; we keep Exec=etheris-steam
 # without a second airootfs XDG entry (duplicate basename gate).
 set -euo pipefail
@@ -18,15 +18,32 @@ apply_steam_desktop() {
 
 apply_steam_desktop
 
-if getent group gamemode >/dev/null 2>&1; then
-  while IFS=: read -r name _ uid _rest; do
-    [[ "$uid" =~ ^[0-9]+$ ]] || continue
-    ((uid >= 1000 && uid < 65534)) || continue
-    if id -nG "$name" 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+# Soft-unblock radios early (before greeter); harmless if no hardware.
+if command -v rfkill >/dev/null 2>&1; then
+  rfkill unblock wifi 2>/dev/null || true
+  rfkill unblock bluetooth 2>/dev/null || true
+fi
+
+# Ensure common interactive groups exist, then join UID≥1000 users.
+for g in audio video input render network power rfkill bluetooth gamemode; do
+  groupadd -f "$g" 2>/dev/null || true
+done
+
+while IFS=: read -r name _ uid _rest; do
+  [[ "$uid" =~ ^[0-9]+$ ]] || continue
+  ((uid >= 1000 && uid < 65534)) || continue
+  for g in audio video input render network power rfkill bluetooth; do
+    getent group "$g" >/dev/null 2>&1 || continue
+    if id -nG "$name" 2>/dev/null | tr ' ' '\n' | grep -qx "$g"; then
       continue
     fi
-    usermod -aG gamemode "$name" 2>/dev/null || true
-  done < <(getent passwd)
-fi
+    usermod -aG "$g" "$name" 2>/dev/null || true
+  done
+  if getent group gamemode >/dev/null 2>&1; then
+    if ! id -nG "$name" 2>/dev/null | tr ' ' '\n' | grep -qx gamemode; then
+      usermod -aG gamemode "$name" 2>/dev/null || true
+    fi
+  fi
+done < <(getent passwd)
 
 exit 0

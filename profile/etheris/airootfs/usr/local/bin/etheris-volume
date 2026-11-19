@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Etheris OS — volume adjust + optional mako toast (synchronous replace).
+set -euo pipefail
+
+quiet=0
+action=""
+for a in "$@"; do
+  case "$a" in
+    --quiet|-q) quiet=1 ;;
+    up|down|mute|mic) action="$a" ;;
+    *) echo "usage: etheris-volume [--quiet] up|down|mute|mic" >&2; exit 2 ;;
+  esac
+done
+[[ -n "$action" ]] || { echo "usage: etheris-volume [--quiet] up|down|mute|mic" >&2; exit 2; }
+
+case "$action" in
+  up) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+ ;;
+  down) wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+  mute) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+  mic) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+esac
+
+# Hardware keys toast; Waybar scroll stays quiet to avoid spam.
+((quiet)) && exit 0
+
+if command -v notify-send >/dev/null 2>&1 && command -v wpctl >/dev/null 2>&1; then
+  if [[ "$action" == mic ]]; then
+    sraw="$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null || true)"
+    if grep -qi MUTED <<<"$sraw"; then
+      notify-send -a Etheris -t 800 -h string:x-canonical-private-synchronous:etheris-vol "Mic" "Muted"
+    else
+      notify-send -a Etheris -t 800 -h string:x-canonical-private-synchronous:etheris-vol "Mic" "On"
+    fi
+    exit 0
+  fi
+  raw="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || true)"
+  if [[ -n "$raw" ]]; then
+    pct="$(awk '{printf "%d", ($2+0)*100}' <<<"$raw")"
+    if grep -qi MUTED <<<"$raw"; then
+      notify-send -a Etheris -t 800 -h string:x-canonical-private-synchronous:etheris-vol "Audio" "Muted"
+    else
+      notify-send -a Etheris -t 800 -h string:x-canonical-private-synchronous:etheris-vol \
+        -h "int:value:$pct" "Audio" "${pct}%"
+    fi
+  fi
+fi

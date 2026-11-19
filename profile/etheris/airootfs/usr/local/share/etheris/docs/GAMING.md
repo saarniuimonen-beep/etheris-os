@@ -19,7 +19,7 @@ Package list source of truth: `/usr/local/share/etheris/gaming-packages.list`
 - Vulkan + Mesa ICDs (Intel/AMD) + **lib32** graphics/audio/net/font libs (`openal`; Arch no longer ships `lib32-openal`)
 - **GameMode** (user must be in `gamemode` group — installer / `etheris-auth-setup` / `etheris-gaming-setup`), **MangoHud**, **Gamescope**
 - GStreamer base/good/bad + **gst-libav** (launcher / in-game video)
-- PipeWire audio, Bluetooth (`bluez`)
+- PipeWire audio + Waybar/`etheris-volume`, Bluetooth (`bluez` + Blueman + AutoEnable)
 - `vm.max_map_count` raised for Proton/Wine (`99-etheris-gaming.conf`)
 
 Launchers: `/usr/local/share/applications/steam.desktop` → `etheris-steam` (XDG; wins over stock). Template `/usr/local/share/etheris/desktop/steam.desktop` + pacman hook / live-ready rewrite `/usr/share` after Steam package installs. No second airootfs XDG basename (check-profile).

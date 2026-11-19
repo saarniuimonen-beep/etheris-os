@@ -9,7 +9,7 @@
   "spacing": 4,
   "modules-left": ["custom/logo", "sway/workspaces", "custom/overview", "sway/mode", "sway/window", "custom/winctl"],
   "modules-center": ["clock"],
-  "modules-right": ["tray", "pulseaudio", "network", "memory", "battery", "custom/cc", "custom/power"],
+  "modules-right": ["tray", "pulseaudio", "custom/bluetooth", "network", "memory", "battery", "custom/cc", "custom/power"],
   "custom/logo": {
     "format": "etheris",
     "tooltip": "Etheris OS — Super+D launcher",
@@ -72,17 +72,35 @@
   "pulseaudio": {
     "format": "{volume}%",
     "format-muted": "mute",
+    "format-source": "mic {volume}%",
+    "format-source-muted": "mic off",
+    "tooltip-format": "{desc}\nSink {volume}% · Source {source_volume}%\nLeft: Menu · Middle: pavucontrol · Right: mute · Scroll: volume",
     "on-click": "etheris-overlay control-center",
-    "on-click-right": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
-    "on-click-middle": "etheris-overlay menu pavucontrol"
+    "on-click-right": "etheris-volume mute",
+    "on-click-middle": "pavucontrol",
+    "on-scroll-up": "etheris-volume --quiet up",
+    "on-scroll-down": "etheris-volume --quiet down"
+  },
+  "custom/bluetooth": {
+    "exec": "etheris-bt-status",
+    "return-type": "json",
+    "interval": 8,
+    "on-click": "blueman-manager",
+    "on-click-right": "bluetoothctl power on",
+    "on-click-middle": "blueman-applet"
   },
   "network": {
     "format-wifi": "{essid}",
     "format-ethernet": "lan",
+    "format-linked": "link",
     "format-disconnected": "off",
-    "interval": 15,
+    "tooltip-format-wifi": "{essid} ({signalStrength}%)\n{ipaddr}/{cidr} · {ifname}\nLeft: Menu · Right: nmtui · Middle: connection editor",
+    "tooltip-format-ethernet": "{ifname}\n{ipaddr}/{cidr}\nLeft: Menu · Right: nmtui",
+    "tooltip-format-disconnected": "Disconnected — click Menu or right-click nmtui",
+    "interval": 8,
     "on-click": "etheris-overlay control-center",
-    "on-click-right": "etheris-overlay menu foot -e nmtui"
+    "on-click-right": "foot -e nmtui",
+    "on-click-middle": "nm-connection-editor"
   },
   "battery": {
     "format": "{capacity}%",

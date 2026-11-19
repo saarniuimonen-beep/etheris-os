@@ -8,6 +8,18 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 
 ---
 
+## Status snapshot — CONTINUE HERE (2026-11-19 · Audio/net/BT refine)
+
+| Item | Status |
+|------|--------|
+| Tree | PipeWire global sockets + `etheris-session-ready` + `etheris-volume` toasts |
+| Waybar | volume scroll/mute · network tooltips · `custom/bluetooth` (`etheris-bt-status`) |
+| Wi‑Fi | NM + iwd (no IP in iwd) · nm-applet · AutoEnable BT · blueman polkit |
+| Seals | `scripts/test-connectivity-tree.sh` **22 OK** · check-profile PASS |
+| Still | Physical Wi‑Fi/BT DUT rows open — rebake ISO to ship |
+
+---
+
 ## Status snapshot — CONTINUE HERE (2026-11-19 · Game-ready ROCK-SOLID PASS)
 
 | Item | Status |

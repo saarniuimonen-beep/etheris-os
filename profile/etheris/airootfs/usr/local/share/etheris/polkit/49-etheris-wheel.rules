@@ -56,14 +56,20 @@ polkit.addRule(function (action, subject) {
 
     var id = action.id;
 
-    // --- A. NetworkManager ---
+    // --- A. NetworkManager (+ Bluetooth radio toggle when NM exposes it) ---
     if (id === "org.freedesktop.NetworkManager.network-control" ||
         id === "org.freedesktop.NetworkManager.enable-disable-network" ||
         id === "org.freedesktop.NetworkManager.enable-disable-wifi" ||
         id === "org.freedesktop.NetworkManager.enable-disable-wwan" ||
+        id === "org.freedesktop.NetworkManager.enable-disable-bluetooth" ||
         id === "org.freedesktop.NetworkManager.wifi.scan" ||
         id === "org.freedesktop.NetworkManager.settings.modify.own" ||
         id === "org.freedesktop.NetworkManager.settings.modify.system") {
+        return polkit.Result.YES;
+    }
+
+    // --- A2. Blueman (pair / power without password for wheel) ---
+    if (id.indexOf("org.blueman.") === 0) {
         return polkit.Result.YES;
     }
 

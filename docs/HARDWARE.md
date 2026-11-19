@@ -51,6 +51,17 @@ Live ISO ships the **open** stack (Mesa/nouveau as kernel chooses). Proprietary 
 3. Hybrid graphics / PRIME / suspend: implement detection now; **physical validation pending**.
 4. `build.sh` must keep `[multilib]` enabled (patched after copying archiso releng `pacman.conf`).
 
+## Audio / network / Bluetooth
+
+| Stack | Live + disk install |
+|-------|---------------------|
+| Audio | PipeWire + WirePlumber (global user sockets) · `etheris-session-ready` · Waybar volume (scroll/mute) · `pavucontrol` · mic mute + media keys |
+| Network | NetworkManager + **iwd** · Waybar SSID · `nm-applet` (secrets) · `nmtui` / connection editor · Control Center → Network |
+| Bluetooth | `bluetooth.service` · Waybar `etheris-bt-status` · Blueman · OBEX user service · `bluetooth` + `rfkill` groups · soft-unblock on live-ready |
+
+Doctor: `etheris doctor` checks NM / iwd / bluetooth / PipeWire / helpers.  
+Physical Wi‑Fi AP and BT headset rows stay in [HARDWARE-TEST-MATRIX.md](HARDWARE-TEST-MATRIX.md).
+
 ## Related
 
 - [GAMING.md](GAMING.md)

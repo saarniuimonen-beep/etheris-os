@@ -114,6 +114,10 @@ file://$HOME/Downloads/Etheris%20Transfers Etheris Transfers
 EOF
   # Bluetooth OBEX receive (user unit; no-op if bluez-obex missing)
   systemctl --user enable --now obex.service >/dev/null 2>&1 || true
+  # Ensure PipeWire is up before optional startup sound
+  if [[ -x /usr/local/bin/etheris-session-ready ]]; then
+    etheris-session-ready >/dev/null 2>&1 || true
+  fi
   # Startup sound once per login (no-op if disabled / already played)
   if [[ -x /usr/local/bin/etheris-sound ]]; then
     etheris-sound play-startup >/dev/null 2>&1 || true
@@ -254,6 +258,30 @@ cmd_status() {
   echo "  wallpaper: $(get_setting wallpaper)"
   echo "  blur:      $(get_setting blur)"
   cmd_ram
+  echo
+  echo "  connectivity:"
+  if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    echo "    NetworkManager: active"
+    if command -v nmcli >/dev/null 2>&1; then
+      nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null \
+        | head -5 | sed 's/^/    /' || true
+    fi
+  else
+    echo "    NetworkManager: inactive"
+  fi
+  if systemctl is-active --quiet bluetooth 2>/dev/null; then
+    echo "    bluetooth:     active"
+  else
+    echo "    bluetooth:     inactive"
+  fi
+  if pgrep -u "$UID" -x pipewire >/dev/null 2>&1; then
+    echo "    pipewire:      running"
+  else
+    echo "    pipewire:      stopped"
+  fi
+  if [[ -x /usr/local/bin/etheris-bt-status ]]; then
+    etheris-bt-status 2>/dev/null | sed 's/^/    bt-status:     /' || true
+  fi
   echo
   echo "  Available desktops at login:"
   cmd_desktops | sed 's/^/    /'

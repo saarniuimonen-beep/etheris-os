@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Etheris OS — bring up audio / RF session stack for the logged-in user.
+# PipeWire is socket-activated via systemd --user when enabled globally; this
+# is a safety net for lean installs and slow user-manager bring-up.
+set -euo pipefail
+
+log() { printf 'etheris-session-ready: %s\n' "$*" >&2; }
+
+# Publish Wayland/DBus to systemd --user so PipeWire portals see the seat.
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+  dbus-update-activation-environment --systemd \
+    DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP \
+    SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE 2>/dev/null || true
+fi
+
+start_pw_user() {
+  systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
+  systemctl --user start pipewire.service pipewire-pulse.service 2>/dev/null || true
+}
+
+wait_default_sink() {
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    if command -v wpctl >/dev/null 2>&1; then
+      if wpctl status 2>/dev/null | grep -q 'Sinks:'; then
+        return 0
+      fi
+    fi
+    if command -v pactl >/dev/null 2>&1; then
+      if [[ "$(pactl get-default-sink 2>/dev/null || true)" != "" ]]; then
+        return 0
+      fi
+    fi
+    sleep 0.35
+  done
+  return 1
+}
+
+if command -v systemctl >/dev/null 2>&1; then
+  start_pw_user
+  for _ in 1 2 3 4 5 6; do
+    if pgrep -u "$UID" -x pipewire >/dev/null 2>&1; then
+      break
+    fi
+    start_pw_user
+    sleep 0.35
+  done
+  wait_default_sink || log "no default sink yet (OK in VMs without audio hw)"
+fi
+
+# Bluetooth file-transfer daemon (OBEX) — used by etheris-transfer / Blueman.
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl --user enable --now obex.service 2>/dev/null || true
+fi
+
+# Soft-unblock Wi-Fi / BT when the user is in rfkill (live/laptop).
+if command -v rfkill >/dev/null 2>&1; then
+  rfkill unblock wifi 2>/dev/null || true
+  rfkill unblock bluetooth 2>/dev/null || true
+fi
+
+# Power Bluetooth adapter on if service is up (idempotent; no-op without hw).
+if systemctl is-active --quiet bluetooth 2>/dev/null \
+  && command -v bluetoothctl >/dev/null 2>&1; then
+  bluetoothctl power on >/dev/null 2>&1 || true
+fi
+
+exit 0

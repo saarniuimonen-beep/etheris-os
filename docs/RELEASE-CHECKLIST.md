@@ -23,7 +23,9 @@ Use before claiming a new ISO or website download row. Do not invent hardware re
 - [ ] Live smoke: greetd/ReGreet → Etheris (Sway) → `etheris` / `etheris`
 - [ ] Polkit scoped / auth-setup live-only spot check
 - [ ] Installer E2E against [`INSTALL-PERSISTENCE.md`](INSTALL-PERSISTENCE.md) gates (cold reboot)
-- [ ] Update website `pages/download.html` SHA + date **only** after local verify (public publish still needs owner approval)
+- [ ] Update website `pages/download.html` SHA + date after local verify
+- [ ] Tag + `scripts/publish-github-release.sh` (checksums + notes; ISO if &lt;2 GiB or mirror link)
+- [ ] Announce Issues-friendly feedback path on website Community page
 
 ## Do not claim without evidence
 

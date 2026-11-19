@@ -20,9 +20,11 @@ The polkit rule **never** returns `YES` for every action. Unlisted actions use u
 - `org.freedesktop.NetworkManager.enable-disable-network`
 - `org.freedesktop.NetworkManager.enable-disable-wifi`
 - `org.freedesktop.NetworkManager.enable-disable-wwan`
+- `org.freedesktop.NetworkManager.enable-disable-bluetooth`
 - `org.freedesktop.NetworkManager.wifi.scan`
 - `org.freedesktop.NetworkManager.settings.modify.own`
 - `org.freedesktop.NetworkManager.settings.modify.system`
+- `org.blueman.*` (pair / power without password for wheel)
 
 ### B. Timedate (`YES` for active wheel)
 

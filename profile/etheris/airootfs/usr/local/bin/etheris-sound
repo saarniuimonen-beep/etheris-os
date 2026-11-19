@@ -80,6 +80,20 @@ cmd_status() {
   echo "startup_file=$(sound_file)"
   echo "default_file=$DEFAULT_WAV"
   echo "conf=$CONF"
+  if pgrep -u "$UID" -x pipewire >/dev/null 2>&1; then
+    echo "pipewire=running"
+  else
+    echo "pipewire=stopped"
+  fi
+  if command -v wpctl >/dev/null 2>&1; then
+    sink="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null || true)"
+    src="$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null || true)"
+    echo "default_sink=${sink:-unknown}"
+    echo "default_source=${src:-unknown}"
+  elif command -v pactl >/dev/null 2>&1; then
+    echo "default_sink=$(pactl get-default-sink 2>/dev/null || echo unknown)"
+    echo "default_source=$(pactl get-default-source 2>/dev/null || echo unknown)"
+  fi
 }
 
 cmd_preview() {

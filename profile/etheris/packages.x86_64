@@ -20,6 +20,7 @@ efibootmgr
 
 # --- networking ---
 networkmanager
+network-manager-applet
 iwd
 wpa_supplicant
 
@@ -31,6 +32,8 @@ pipewire-jack
 wireplumber
 pavucontrol
 playerctl
+alsa-utils
+alsa-ucm-conf
 
 # --- login ---
 greetd

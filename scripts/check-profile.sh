@@ -176,6 +176,71 @@ else
   bad "etheris-browser missing scratchpad hygiene for preload"
 fi
 
+# Audio / network / Bluetooth wiring (tree seals — physical DUT still separate)
+if [[ -x "$BASE/usr/local/bin/etheris-session-ready" ]] \
+  && [[ -L "$BASE/etc/systemd/user/sockets.target.wants/pipewire.socket" ]] \
+  && [[ -L "$BASE/etc/systemd/user/sockets.target.wants/pipewire-pulse.socket" ]] \
+  && [[ -L "$BASE/etc/systemd/user/default.target.wants/wireplumber.service" ]]; then
+  ok "PipeWire user sockets + etheris-session-ready"
+else
+  bad "PipeWire user enablement / etheris-session-ready incomplete"
+fi
+if grep -q 'nm-applet' "$BASE/etc/skel/.config/sway/config" \
+  && grep -q 'blueman-applet' "$BASE/etc/skel/.config/sway/config" \
+  && grep -q 'etheris-session-ready' "$BASE/etc/skel/.config/sway/config"; then
+  ok "Sway starts session-ready + nm-applet + blueman-applet"
+else
+  bad "Sway missing audio/network/BT session autostart"
+fi
+if grep -qx 'network-manager-applet' "$ROOT/profile/etheris/packages.x86_64" \
+  && grep -qx 'alsa-utils' "$ROOT/profile/etheris/packages.x86_64" \
+  && grep -qx 'blueman' "$ROOT/profile/etheris/packages.x86_64"; then
+  ok "packages: nm-applet + alsa-utils + blueman"
+else
+  bad "packages missing network-manager-applet / alsa-utils / blueman"
+fi
+if grep -q 'bluetooth' "$BASE/usr/local/bin/etheris-auth-setup" \
+  && grep -q 'bluetooth' "$BASE/usr/local/bin/etheris-installer" \
+  && grep -q 'bluetooth' "$BASE/usr/local/bin/etheris-ensure-gaming-groups"; then
+  ok "bluetooth group joined (auth-setup / installer / ensure)"
+else
+  bad "bluetooth group wiring incomplete"
+fi
+if [[ -f "$BASE/etc/NetworkManager/conf.d/wifi_backend.conf" ]] \
+  && grep -q 'wifi.backend=iwd' "$BASE/etc/NetworkManager/conf.d/wifi_backend.conf" \
+  && [[ -L "$BASE/etc/systemd/system/multi-user.target.wants/NetworkManager.service" ]] \
+  && [[ -L "$BASE/etc/systemd/system/multi-user.target.wants/bluetooth.service" ]]; then
+  ok "NM+iwd + bluetooth.service enabled"
+else
+  bad "NM/iwd/bluetooth enablement incomplete"
+fi
+if grep -q 'custom/bluetooth' "$BASE/etc/skel/.config/waybar/config.jsonc" \
+  && grep -q 'etheris-bt-status' "$BASE/etc/skel/.config/waybar/config.jsonc" \
+  && [[ -x "$BASE/usr/local/bin/etheris-bt-status" ]]; then
+  ok "Waybar Bluetooth module + etheris-bt-status"
+else
+  bad "Waybar Bluetooth module incomplete"
+fi
+if [[ -f "$BASE/etc/pipewire/pipewire.conf.d/99-etheris.conf" ]] \
+  && [[ -f "$BASE/etc/wireplumber/wireplumber.conf.d/99-etheris-bluetooth.conf" ]]; then
+  ok "PipeWire + WirePlumber Etheris drops"
+else
+  bad "PipeWire/WirePlumber Etheris conf drops missing"
+fi
+if grep -q 'etheris-volume' "$BASE/etc/skel/.config/sway/config" \
+  && grep -q 'playerctl' "$BASE/etc/skel/.config/sway/config" \
+  && [[ -x "$BASE/usr/local/bin/etheris-volume" ]]; then
+  ok "etheris-volume + media keys bound"
+else
+  bad "etheris-volume / media keybinds missing"
+fi
+if [[ -f "$BASE/etc/iwd/main.conf" ]] \
+  && grep -q 'EnableNetworkConfiguration=false' "$BASE/etc/iwd/main.conf"; then
+  ok "iwd defers IP config to NetworkManager"
+else
+  bad "iwd main.conf missing or manages IP itself"
+fi
+
 if ((fail)); then
   echo
   echo "Profile consistency FAILED"

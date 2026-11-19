@@ -288,7 +288,11 @@ page_network() {
     echo "  NetworkManager tools not available in this session."
   fi
   echo
-  echo "  Wi-Fi can be configured later with: nmtui  or  nmcli"
+  echo "  After login you can also use:"
+  echo "    • Waybar network chip · Menu → Network · nm-applet tray"
+  echo "    • nmtui / nmcli (terminal)"
+  echo "    • Bluetooth: Waybar bt · Menu → Bluetooth · Blueman"
+  echo "    • Sound: Waybar volume · pavucontrol · Media keys"
   echo "  Offline setup is fully supported."
   echo
   echo "    1) Continue offline / skip"
@@ -296,6 +300,9 @@ page_network() {
   local choice
   read -r -p "  Choice [1-2] (default 1): " choice || true
   if [[ "${choice:-1}" == "2" ]] && command -v nmtui >/dev/null 2>&1; then
+    # Soft-unblock radios before the UI (laptops often ship soft-blocked).
+    rfkill unblock wifi 2>/dev/null || true
+    rfkill unblock bluetooth 2>/dev/null || true
     nmtui || true
     # Persistence: ensure at least one connection will autoconnect after reboot
     if command -v nmcli >/dev/null 2>&1; then

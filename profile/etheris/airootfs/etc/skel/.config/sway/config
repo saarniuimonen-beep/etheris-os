@@ -28,6 +28,9 @@ smart_gaps on
 
 output * bg /usr/local/share/etheris/wallpapers/ocean-glass.png fill
 
+# Seat env for PipeWire / portals, then audio + RF stack.
+exec dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP
+exec etheris-session-ready
 # Fast session bring-up: theme/wallpaper, then shell. Motion only if enabled.
 exec etheris apply-session
 exec mako
@@ -39,6 +42,9 @@ exec sh -c 'sleep 0.35; etheris-menu-hover'
 exec sh -c 'grep -qE "^animations=(on|1|true)$" "${XDG_CONFIG_HOME:-$HOME/.config}/etheris/settings.conf" 2>/dev/null && exec etheris-motion || true'
 exec sh -c 'sleep 0.5; etheris-widgets apply'
 exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+# Network + Bluetooth trays (nm-applet needs network-manager-applet)
+exec sh -c 'command -v nm-applet >/dev/null && nm-applet --indicator || true'
+exec sh -c 'command -v blueman-applet >/dev/null && blueman-applet || true'
 # Prepare lean Firefox profile early (warm resident only if browser_preload=on).
 # Default off keeps ≤500 MiB idle; Super+B still uses lean profile (docs/IDLE-RAM-CRITERIA.md).
 exec sh -c 'sleep 0.35; etheris-browser --preload'
@@ -118,9 +124,15 @@ exec sh -c 'sleep 2; etheris-guide'
 bindsym Print exec sh -c 'd="$HOME/Pictures/Screenshots"; mkdir -p "$d"; f="$d/Etheris-$(date +%Y%m%d-%H%M%S).png"; grim "$f" && wl-copy < "$f"'
 bindsym Shift+Print exec sh -c 'd="$HOME/Pictures/Screenshots"; mkdir -p "$d"; f="$d/Etheris-$(date +%Y%m%d-%H%M%S).png"; grim -g "$(slurp)" "$f" && wl-copy < "$f"'
 
-bindsym XF86AudioRaiseVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
-bindsym XF86AudioLowerVolume exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
-bindsym XF86AudioMute exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+bindsym XF86AudioRaiseVolume exec etheris-volume up
+bindsym XF86AudioLowerVolume exec etheris-volume down
+bindsym XF86AudioMute exec etheris-volume mute
+bindsym XF86AudioMicMute exec etheris-volume mic
+# Headset / media keys (playerctl; no-op if nothing playing)
+bindsym XF86AudioPlay exec playerctl play-pause
+bindsym XF86AudioPause exec playerctl play-pause
+bindsym XF86AudioNext exec playerctl next
+bindsym XF86AudioPrev exec playerctl previous
 bindsym XF86MonBrightnessUp exec brightnessctl set +5%
 bindsym XF86MonBrightnessDown exec brightnessctl set 5%-
 

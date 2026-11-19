@@ -189,6 +189,83 @@ run_tooling() {
   fi
 }
 
+run_connectivity() {
+  section "Audio / network / Bluetooth"
+  if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    pass "NetworkManager active"
+  else
+    bad "NetworkManager not active"
+  fi
+  if systemctl is-enabled --quiet iwd 2>/dev/null || systemctl is-active --quiet iwd 2>/dev/null; then
+    pass "iwd enabled/active (Wi-Fi backend)"
+  else
+    note "iwd not enabled (Wi-Fi may use wpa_supplicant)"
+  fi
+  if [[ -f /etc/NetworkManager/conf.d/wifi_backend.conf ]] \
+    && grep -q 'wifi.backend=iwd' /etc/NetworkManager/conf.d/wifi_backend.conf; then
+    pass "NM wifi.backend=iwd"
+  else
+    note "NM iwd wifi_backend.conf missing"
+  fi
+  if systemctl is-active --quiet bluetooth 2>/dev/null; then
+    pass "bluetooth.service active"
+  elif systemctl is-enabled --quiet bluetooth 2>/dev/null; then
+    note "bluetooth enabled (no adapter or not started yet)"
+  else
+    bad "bluetooth.service not enabled"
+  fi
+  if [[ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]]; then
+    if pgrep -u "$UID" -x pipewire >/dev/null 2>&1; then
+      pass "pipewire running for user"
+    else
+      bad "pipewire not running in graphical session"
+    fi
+    if pgrep -u "$UID" -x wireplumber >/dev/null 2>&1 \
+      || systemctl --user is-active --quiet wireplumber 2>/dev/null; then
+      pass "wireplumber running for user"
+    else
+      note "wireplumber not observed (may still be starting)"
+    fi
+  else
+    note "skip user PipeWire check (not in graphical session)"
+  fi
+  if [[ -L /etc/systemd/user/sockets.target.wants/pipewire.socket ]] \
+    || [[ -L /etc/systemd/user/default.target.wants/wireplumber.service ]]; then
+    pass "PipeWire user units enabled globally"
+  else
+    note "PipeWire global user wants missing (session-ready may still start it)"
+  fi
+  if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx bluetooth; then
+    pass "user in bluetooth group"
+  else
+    note "current user not in bluetooth group (re-login after ensure)"
+  fi
+  if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx audio; then
+    pass "user in audio group"
+  else
+    note "current user not in audio group"
+  fi
+  if [[ -x /usr/local/bin/etheris-session-ready ]] \
+    && [[ -x /usr/local/bin/etheris-bt-status ]]; then
+    pass "session-ready + bt-status helpers"
+  else
+    bad "session-ready / bt-status missing"
+  fi
+  if command -v nm-applet >/dev/null 2>&1 && command -v blueman-manager >/dev/null 2>&1 \
+    && command -v pavucontrol >/dev/null 2>&1; then
+    pass "nm-applet + blueman + pavucontrol present"
+  else
+    note "one of nm-applet / blueman / pavucontrol missing from PATH"
+  fi
+  if command -v rfkill >/dev/null 2>&1; then
+    if rfkill list 2>/dev/null | grep -qi 'Soft blocked: yes'; then
+      note "rfkill soft-block present (session-ready unblocks wifi/bt)"
+    else
+      pass "no rfkill soft-blocks"
+    fi
+  fi
+}
+
 emit_json() {
   printf '{"ok":%d,"fail":%d,"warn":%d,"passed":%s}\n' \
     "$ok" "$fail" "$warn" "$([[ $fail -eq 0 ]] && echo true || echo false)"
@@ -214,6 +291,7 @@ main() {
   run_greeter
   run_session_hint
   run_tooling
+  run_connectivity
 
   echo
   echo "Summary: $ok OK, $fail FAIL, $warn WARN"

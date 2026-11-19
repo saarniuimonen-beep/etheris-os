@@ -330,17 +330,18 @@ enable_multilib() {
 }
 # Core desktop install set. Gaming is opt-in: ETHERIS_INSTALL_GAMING=1
 # (live ISO may still ship the stack for try-before-install).
-PKGS=(base linux linux-firmware networkmanager pipewire pipewire-pulse wireplumber
+PKGS=(base linux linux-firmware sof-firmware
+  networkmanager network-manager-applet iwd wireless-regdb wpa_supplicant
+  pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber
+  pavucontrol alsa-utils alsa-ucm-conf playerctl
   sway swaybg swayidle swaylock waybar foot wofi rofi mako pcmanfm
   gvfs gvfs-mtp gvfs-smb gvfs-nfs
-  warpinator blueman bluez-obex avahi
+  warpinator blueman bluez bluez-utils bluez-obex avahi
   xdg-desktop-portal-wlr greetd greetd-regreet greetd-tuigreet
   sudo polkit polkit-gnome nano micro git nftables
   amd-ucode intel-ucode efibootmgr dosfstools e2fsprogs
-  iwd wireless-regdb
   mesa mesa-utils vulkan-icd-loader vulkan-intel vulkan-radeon
   intel-media-driver libva-utils
-  bluez bluez-utils
   lm_sensors cpupower)
 # Gaming stack: OFF by default (lean installs). Opt in: ETHERIS_INSTALL_GAMING=1
 GAMING="${ETHERIS_INSTALL_GAMING:-0}"
@@ -403,8 +404,10 @@ cat > /etc/hosts <<EOF
 ::1 localhost
 127.0.1.1 ${HOSTNAME}.localdomain ${HOSTNAME}
 EOF
-id "$USERNAME" >/dev/null 2>&1 || useradd -m -G wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users -s /bin/bash "$USERNAME"
-usermod -aG wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,users "$USERNAME"
+id "$USERNAME" >/dev/null 2>&1 || useradd -m -G wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,bluetooth,users -s /bin/bash "$USERNAME"
+usermod -aG wheel,audio,video,storage,input,render,network,power,lp,optical,rfkill,bluetooth,users "$USERNAME"
+groupadd -f bluetooth 2>/dev/null || true
+usermod -aG bluetooth "$USERNAME" 2>/dev/null || true
 # GameMode renice privileges (group from gamemode package; create if gaming stack present)
 if command -v gamemoderun >/dev/null 2>&1 || pacman -Qq gamemode &>/dev/null; then
   groupadd -f gamemode 2>/dev/null || true
@@ -471,8 +474,11 @@ if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
     printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
   fi
 fi
-# Network + time sync (reconnect + correct clock after reboot)
+# Network + Bluetooth + time sync (reconnect + correct clock after reboot)
 systemctl enable NetworkManager iwd greetd nftables bluetooth avahi-daemon systemd-timesyncd
+# PipeWire user sockets (same as live airootfs) — fixes silent installs with no sink
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
+systemctl --global mask pulseaudio.socket pulseaudio.service 2>/dev/null || true
 systemctl mask sshd.service 2>/dev/null || true
 # Never enable live password-resetter on installed systems
 systemctl disable etheris-auth-setup.service 2>/dev/null || true
@@ -560,12 +566,31 @@ if [[ -x /usr/local/bin/etheris-keymap-apply ]]; then
 elif [[ -f "$MNT/etc/greetd/sway-config" ]]; then
   sed -i -E "s/^(\s*xkb_layout\s+).*/\1${KEYMAP}/" "$MNT/etc/greetd/sway-config" || true
 fi
-# NetworkManager Wi-Fi backend (iwd) so reconnect works like live
+# NetworkManager Wi-Fi backend (iwd) + Etheris Wi-Fi defaults so reconnect works like live
 mkdir -p "$MNT/etc/NetworkManager/conf.d"
-if [[ -f /etc/NetworkManager/conf.d/wifi_backend.conf ]]; then
-  cp -a /etc/NetworkManager/conf.d/wifi_backend.conf "$MNT/etc/NetworkManager/conf.d/"
-else
+if [[ -d /etc/NetworkManager/conf.d ]]; then
+  cp -a /etc/NetworkManager/conf.d/. "$MNT/etc/NetworkManager/conf.d/" 2>/dev/null || true
+fi
+if [[ ! -f "$MNT/etc/NetworkManager/conf.d/wifi_backend.conf" ]]; then
   printf '[device]\nwifi.backend=iwd\n' >"$MNT/etc/NetworkManager/conf.d/wifi_backend.conf"
+fi
+# PipeWire / WirePlumber Etheris drops (quantum + Bluetooth codecs)
+mkdir -p "$MNT/etc/pipewire/pipewire.conf.d" "$MNT/etc/wireplumber/wireplumber.conf.d"
+[[ -d /etc/pipewire/pipewire.conf.d ]] && cp -a /etc/pipewire/pipewire.conf.d/. "$MNT/etc/pipewire/pipewire.conf.d/" 2>/dev/null || true
+[[ -d /etc/wireplumber/wireplumber.conf.d ]] && cp -a /etc/wireplumber/wireplumber.conf.d/. "$MNT/etc/wireplumber/wireplumber.conf.d/" 2>/dev/null || true
+# iwd: NM owns IP config
+mkdir -p "$MNT/etc/iwd"
+if [[ -f /etc/iwd/main.conf ]]; then
+  cp -a /etc/iwd/main.conf "$MNT/etc/iwd/"
+else
+  printf '[General]\nEnableNetworkConfiguration=false\nAddressRandomization=network\n' >"$MNT/etc/iwd/main.conf"
+fi
+# Bluetooth AutoEnable (adapters power on after boot)
+mkdir -p "$MNT/etc/bluetooth"
+if [[ -f /etc/bluetooth/main.conf ]]; then
+  cp -a /etc/bluetooth/main.conf "$MNT/etc/bluetooth/"
+else
+  printf '[Policy]\nAutoEnable=true\n' >"$MNT/etc/bluetooth/main.conf"
 fi
 # Polkit wheel rule (path the chroot expects)
 mkdir -p "$MNT/usr/local/share/etheris/polkit" "$MNT/etc/polkit-1/rules.d"

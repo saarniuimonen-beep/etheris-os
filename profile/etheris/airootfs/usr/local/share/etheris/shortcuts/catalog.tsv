@@ -36,8 +36,14 @@ System	—	GPU Manager	etheris-gpu-manager
 Screenshots	Print	Screenshot to clipboard	
 Screenshots	Shift+Print	Region screenshot to clipboard	
 Desktop navigation	Super+/	Open Shortcut Center	This window
-Media and audio	XF86AudioRaiseVolume	Volume up	
+Media and audio	XF86AudioRaiseVolume	Volume up	Waybar scroll also works
 Media and audio	XF86AudioLowerVolume	Volume down	
 Media and audio	XF86AudioMute	Mute toggle	
+Media and audio	XF86AudioMicMute	Microphone mute toggle	
+Media and audio	XF86AudioPlay / Pause	Play / pause	playerctl
+Media and audio	XF86AudioNext / Prev	Next / previous track	playerctl
 Media and audio	XF86MonBrightnessUp	Brightness up	When supported
 Media and audio	XF86MonBrightnessDown	Brightness down	When supported
+Connectivity	—	Network (Wi‑Fi / Ethernet)	Waybar · Menu → Network · nm-applet · nmtui
+Connectivity	—	Bluetooth	Waybar bt · Menu → Bluetooth · Blueman
+Connectivity	—	Sound mixer	Waybar middle-click · pavucontrol · Menu → Sound

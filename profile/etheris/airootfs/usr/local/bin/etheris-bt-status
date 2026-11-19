@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Etheris OS — Waybar custom/bluetooth JSON (powered / connected / off).
+set -euo pipefail
+
+json() {
+  printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' "$1" "$2" "$3"
+}
+
+if ! command -v bluetoothctl >/dev/null 2>&1; then
+  json "bt?" "bluetoothctl missing" "missing"
+  exit 0
+fi
+
+if ! systemctl is-active --quiet bluetooth 2>/dev/null; then
+  json "bt" "Bluetooth service inactive" "off"
+  exit 0
+fi
+
+out="$(bluetoothctl show 2>/dev/null || true)"
+if ! grep -q 'Powered: yes' <<<"$out"; then
+  json "bt" "Bluetooth powered off — click to open Blueman" "off"
+  exit 0
+fi
+
+names=()
+add_name() {
+  local n="$1"
+  [[ -n "$n" ]] || return 0
+  names+=("$n")
+}
+
+if bluetoothctl help 2>&1 | grep -q 'devices Connected'; then
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    add_name "$(sed -E 's/^Device[[:space:]]+[0-9A-Fa-f:]+[[:space:]]*//' <<<"$line")"
+  done < <(bluetoothctl devices Connected 2>/dev/null || true)
+else
+  while IFS= read -r line; do
+    mac="$(awk '{print $2}' <<<"$line")"
+    [[ -n "$mac" ]] || continue
+    info="$(bluetoothctl info "$mac" 2>/dev/null || true)"
+    if grep -q 'Connected: yes' <<<"$info"; then
+      n="$(grep -m1 '^[[:space:]]*Name:' <<<"$info" | sed 's/.*Name:[[:space:]]*//')"
+      add_name "${n:-$mac}"
+    fi
+  done < <(bluetoothctl devices 2>/dev/null || true)
+fi
+
+if ((${#names[@]})); then
+  joined="$(printf '%s, ' "${names[@]}" | sed 's/, $//')"
+  json "bt●" "Connected: ${joined}" "connected"
+  exit 0
+fi
+
+json "bt" "Bluetooth on — no device connected" "on"

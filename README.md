@@ -2,7 +2,9 @@
 
 A lightweight Arch-based Wayland distribution. The default session is **Sway** with the Etheris desktop (themes, panel, launcher, and login screen).
 
-Version: see `VERSION` (currently **0.1.0-alpha**).
+**Public development:** [GitHub](https://github.com/saarniuimonen-beep/etheris-os) · [Website](https://saarniuimonen-beep.github.io/etheris-website/) · [Releases](https://github.com/saarniuimonen-beep/etheris-os/releases) · [Getting started](docs/GETTING-STARTED.md)
+
+Version: see `VERSION` (currently **0.1.0-alpha** — experimental, not a stable product release).
 
 ## Goals
 
@@ -26,6 +28,8 @@ Version: see `VERSION` (currently **0.1.0-alpha**).
 - [docs/HARDWARE.md](docs/HARDWARE.md) — CPU/GPU detection and drivers
 - [docs/GAMING.md](docs/GAMING.md) — Steam / Proton / gaming
 - [docs/GAME-READY-CRITERIA.md](docs/GAME-READY-CRITERIA.md) — strict gaming / driver readiness seals
+- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — try the public alpha (VM / install)
+- [docs/RELEASE-NOTES-0.1.0-alpha.md](docs/RELEASE-NOTES-0.1.0-alpha.md) — first public tag
 - [docs/LOGIN.md](docs/LOGIN.md) — graphical login (ReGreet)
 - [docs/FLOW.md](docs/FLOW.md) — design tokens and themes
 - Live login: `etheris` / `etheris`
@@ -81,7 +85,9 @@ sudo etheris-update upgrade
 3. Session: **Etheris (Sway)**
 4. Install: `sudo etheris-installer`
 
-Shortcuts: **Super+Return** terminal · **Super+D** / **Super+Space** launcher · **Super+A** Control Center · **Super+,** Settings · **Super+Shift+E** power menu
+Shortcuts: **Super+Return** terminal · **Super+D** / **Super+Space** launcher · **Super+A** Control Center · **Super+,** Settings · **Super+Shift+E** power menu  
+
+Connectivity: Waybar volume / network / **bt** · Menu → Network / Bluetooth / Sound · `nm-applet` + Blueman trays · media keys + mic mute
 
 ## Current status
 

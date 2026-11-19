@@ -1,40 +1,44 @@
-# Etheris OS 0.1.0-alpha (pre-release)
+# Etheris OS 0.1.0-alpha — first public development release
 
-**Status:** Experimental development build — not a stable release.  
-**Latest development bake:** 2026-11-15 (`etheris-2026.11.15-x86_64.iso`).
+**Date:** 2026-11-19  
+**Tag:** `v0.1.0-alpha`  
+**Channel:** experimental / development
+
+This is the first **public** alpha: source, website, and release metadata are open so people outside the private build loop can try Etheris. It is **not** a stable product release.
 
 ## Highlights
 
-- Ocean Glass themed desktop on Sway (Waybar, Rofi, ReGreet login)
-- Menu (Super+A), icon launcher (Super+D), Settings, wallpaper and transfer tools
-- CPU & GPU Performance Manager (`etheris-perf`) with four profiles
-- GPU Manager (`etheris-gpu`) linked to driver helpers
-- Gaming stack (Steam / Proton helpers) without anti-cheat bypasses
-- Privacy defaults: no telemetry, firewall on, SSH off by default
-- Installer with optional LUKS (QEMU E2E verified); Software Center; `etheris doctor`
+- Arch-based live ISO with **Etheris (Sway)** desktop, ReGreet login, themes / Menu / launcher / power menu
+- Installer (UEFI, ext4/btrfs, optional LUKS) with lean disk installs by default
+- Security defaults: nftables, scoped polkit, no telemetry, live credentials stripped on install
+- Update channels: stable (Archive lag) · rc · edge via `etheris-update`
+- Software Center, doctor, Performance / GPU managers
+- Live gaming stack path (Steam/Proton helpers, GameMode, honesty-limited game-ready seals)
+- Audio / network / Bluetooth wiring: PipeWire, NetworkManager+iwd, Blueman, Waybar indicators
 
-## Progress since 2026-11-10
+## How to get it
 
-- Desktop polish (thin panel, Menu hover, frost power menu, Flow tokens)
-- Rock-solid QEMU gates: stability, reliability, maturity STRICT, security, bugs, idle RAM (~169 MiB)
-- Install persistence + optional LUKS unlock E2E
-- Source CI workflow and maturity/security/bug test harnesses
+1. Release page: https://github.com/saarniuimonen-beep/etheris-os/releases/tag/v0.1.0-alpha  
+2. Website: https://saarniuimonen-beep.github.io/etheris-website/pages/download.html  
+3. Build from source: `./build.sh` (see [GETTING-STARTED.md](GETTING-STARTED.md))
 
-## Artifacts
+The ISO is ~2.2 GiB and may be linked from an external mirror when available. GitHub Releases always include **SHA256SUMS** and these notes. Never skip checksum verification.
 
-ISOs are built locally with `./build.sh` — public GitHub Release hosting is not published yet.  
-Checksums: `out/SHA256SUMS` (latest Nov 15: `eb677f92d3d6a336b1eca3f6b8f64de4e649badabf22c17366468c3a4b05dfd6`).
+## Known limits (read before installing)
 
-## Known limitations
-
-- Alpha quality; expect bugs
-- Full frosted-glass blur is not available on Sway
-- Hardware support rows require evidence — see `docs/HARDWARE-TEST-MATRIX.md`
-- Secure Boot is unsupported; immutable installs are planned only
-- Idle RAM ~169 MiB verified in QEMU with browser preload off (target remains ≤500 MiB)
+- Alpha quality — expect bugs; keep backups
+- Physical GPU / Wi‑Fi / Bluetooth matrix mostly open
+- No Secure Boot signing yet
+- No “stable” channel promise for this tag (tag name is alpha on purpose)
+- Extra desktops (Hyprland/KDE/XFCE) not shipping as defaults
 
 ## Verify
 
 ```bash
-sha256sum -c SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
 ```
+
+## Feedback
+
+- Issues: https://github.com/saarniuimonen-beep/etheris-os/issues  
+- Please include `etheris doctor` / `etheris report create` output when useful (no secrets).
