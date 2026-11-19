@@ -92,7 +92,7 @@ Connectivity: Waybar volume / network / **bt** · Menu → Network / Bluetooth /
 ## Current status
 
 **Latest local ISO:** `etheris-2026.11.19-x86_64.iso`  
-SHA256: `10ea77d5b2c183341b85635a9f10693bd102f02b620cf809170e08c394482265`  
+SHA256: `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63`  
 (see `SESSION-LOG.md` / `out/SHA256SUMS`).
 
 **Verified in QEMU (2026-11-19):** validate-iso **30 OK** · reliability/maturity host PASS · rock-solid live **11 OK** · bug criteria **38 OK** · game-ready **32 OK** (G0–G2 + live G3 stack) · Software Center / Monitor / Privacy · doctor **16 OK** · session_pss ~209 MiB. Prior 2026-11-15 gates (security / idle RAM / LUKS E2E) still apply.

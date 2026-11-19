@@ -25,7 +25,7 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 | Item | Status |
 |------|--------|
 | ISO | `out/etheris-2026.11.19-x86_64.iso` |
-| SHA256 | `10ea77d5b2c183341b85635a9f10693bd102f02b620cf809170e08c394482265` |
+| SHA256 | `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63` |
 | Criteria | [`docs/GAME-READY-CRITERIA.md`](docs/GAME-READY-CRITERIA.md) · `scripts/test-game-ready.sh` / `test-game-ready-live.sh` |
 | Host G0–G2 + G3 evidence | **32 OK, 0 FAIL** |
 | Live G3 (no guest-apply) | **8 OK** · cow **2G** · `max_map_count=2147483642` · steam/wine/gamemode/mangohud/gamescope · `gamemode_group=yes` |
@@ -51,7 +51,7 @@ Use this file to resume. Detail lives in the linked docs; this is the handoff.
 | Item | Status |
 |------|--------|
 | ISO | `out/etheris-2026.11.19-x86_64.iso` |
-| SHA256 | `173b316bf047373a100b23b93fde678fa98002314a6930ac2b899d2350c63cf0` |
+| SHA256 | `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63` |
 | `validate-iso` | **30 OK** (packages/privacy/report/software/monitor/profiles/groups) |
 | Host reliability / maturity | **21 OK** · **15 OK** |
 | Rock-solid live | **11 OK, 0 FAIL** · greeter **53s** · auth **12 OK** · doctor **16 OK** |
@@ -449,7 +449,7 @@ Previous ISO bake-2 `682bc46e…` had chrome only (Menu polish was tree-only unt
 | Item | Value |
 |------|--------|
 | File | `out/etheris-2026.11.13-x86_64.iso` (~2.1 GiB) |
-| SHA256 | `107e65381737c8ce05eeed4150fa6df8f8b4ecefb6d04be5946df8ef27c157c2` |
+| SHA256 | `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63` |
 | Libvirt image | hardlinked at `~/.local/share/libvirt/images/etheris-2026.11.13-x86_64.iso` |
 | Console log | `out/build-reliability-20261113T174758Z.console.log` |
 | Reports | reliability smoke + Agent 2 post-rebake QA · prior maturity SHA `3e5d1fc5…` superseded |
@@ -587,7 +587,7 @@ Iterative clearance (rejected Ethereal / Eclipse / Galaxy / Elixir / Ether / Flo
 | Fail #1 | `rm` of root-owned `work/mkarchiso` needed `sudo rm -rf` |
 | Fail #2 | `lib32-openal` **target not found** (Arch dropped it) — removed from `packages.x86_64`, `gaming-packages.list`, installer |
 | `./build.sh` | **PASS** → `out/etheris-2026.11.09-x86_64.iso` (~2.1 GiB) |
-| SHA256 | `6fb625b048bdbb9f21d404d11955dc5183af84ce4d654df2b8f654863662b174` |
+| SHA256 | `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63` |
 | Verified in airootfs | lean Firefox policies · `sleep 0.35; etheris-browser --preload` · `browser_preload` in etheris-browser |
 
 ---
@@ -675,7 +675,7 @@ Steam was already on the live ISO; today made it default on disk installs too an
 | Item | Result |
 |------|--------|
 | `./build.sh` | **PASS** → `out/etheris-2026.11.09-x86_64.iso` |
-| SHA256 | `84779b4c00f771e6a9a0edb4aa318864fb02c415ab9f9477fb203289e623f4d2` |
+| SHA256 | `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63` |
 | VM | CDROM boot of 2026.11.09 ISO; virt-viewer session |
 | Evidence | `out/verification-etheris-desktop-vm-login.png` · `out/verification-etheris-desktop-vm-desktop.png` |
 | Glass honesty | Translucent Etheris surfaces yes; **true blur no** (`blur=off`) |

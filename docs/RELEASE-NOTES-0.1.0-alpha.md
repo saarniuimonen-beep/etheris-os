@@ -18,6 +18,9 @@ This is the first **public** alpha: source, website, and release metadata are op
 
 ## How to get it
 
+**ISO SHA256 (2026.11.19 public bake):** `b85e420473966437b3534e7c253d639e27305bd5725dd2b6cfcd45d393036a63`
+
+
 1. Release page: https://github.com/saarniuimonen-beep/etheris-os/releases/tag/v0.1.0-alpha  
 2. Website: https://saarniuimonen-beep.github.io/etheris-website/pages/download.html  
 3. Build from source: `./build.sh` (see [GETTING-STARTED.md](GETTING-STARTED.md))
